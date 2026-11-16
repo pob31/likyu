@@ -128,7 +128,7 @@ Each band owns one detector SVF per channel of its key (the main input's channel
 - **Quadrature envelope for band-pass detectors** (*corrected 2026-11-16, proposed, to be confirmed by the Phase 3 detector tests*). `env = k * sqrt(max(0, v1² − v2 * hp))`, with `hp = x − k * v1 − v2`. In the TPT form the low-pass and high-pass outputs are each one integrator away from the band-pass, so LP · HP = BP² holds exactly: for a single sine the expression is the band-pass magnitude at any frequency, with no ripple and with the band-pass's own selectivity. With several components the cross terms can go negative for an instant, hence the max. The first draft's `k * sqrt(v1² + v2²)` is rejected: v2 is the low-pass output, so everything below fc reached the detector at gain k (unity at Q = 1). This is what allows millisecond time constants on low bands without the envelope ripple becoming distortion. High-pass and low-pass detectors use a peak follower whose shortest time constant is bounded to a few periods of the detector frequency.
 - **Level.** `L = 20 log10(env)`, floored at −120 dB. A fast log2 is allowed; error under 0.05 dB.
 - **Key sources.** Self is the plugin's main input. Sidechain is the plugin's second input bus (mono or stereo). Per band.
-- **Channel linking**, per instance: Linked (default) or Unlinked (decided 2026-11-16). Linked: each key channel is detected on its own and the band's level is the **maximum** of the channel levels (decided 2026-11-16, replacing the mean mixdown of draft 0.1); one gain and one frequency per band apply to every channel, which keeps the image still. A signal present in one channel of 64 drives the band exactly as it would in all of them, and nothing cancels between channels. The cost is one detector per band per key channel, not one per band. Unlinked: each main channel is its own key for Self bands. A sidechain band takes the maximum over the sidechain's channels in both cases. A maximum is defined on levels, not on signals, so the Track estimators, which need one signal, and the seeding bank run on the mean of the key's channels when linked: frequency estimation does not depend on level, and the remaining limit is that a component out of phase between channels can cancel for the tracker. Whether an LFE channel takes part in the maximum is open.
+- **Channel linking**, per instance: Linked (default) or Unlinked (decided 2026-11-16). Linked: each key channel is detected on its own and the band's level is the **maximum** of the channel levels (decided 2026-11-16, replacing the mean mixdown of draft 0.1); one gain and one frequency per band apply to every channel, which keeps the image still. A signal present in one channel of 64 drives the band exactly as it would in all of them, and nothing cancels between channels. The cost is one detector per band per key channel, not one per band. Unlinked: each main channel is its own key for Self bands. A sidechain band takes the maximum over the sidechain's channels in both cases. A maximum is defined on levels, not on signals, so the Track estimators, which need one signal, and the seeding bank run on the mean of the key's channels when linked: frequency estimation does not depend on level, and the remaining limit is that a component out of phase between channels can cancel for the tracker. **Channels left out of the link** (decided 2026-11-16): a channel the host's layout reports as LFE is left out by default; any other channel, such as a subwoofer feed in a discrete layout that names nothing, is left out by hand. A channel left out does not contribute to the maximum or to the trackers' mean and does not receive the linked gain and frequency: for Self bands it runs on its own key, as in Unlinked. Sidechain bands still apply to it. The set of channels left out is a per-instance list in the state chunk, set in the editor, not a host parameter and not automatable (*proposed*).
 - **Listen**, per band: the band's detector output replaces the plugin output while held, a solo in place. Self: each channel hears its own detector. Sidechain: the mean of the sidechain's detector outputs, on every channel. Not automatable, not saved. In a DAW it acts at once; in a live host it is guarded, because it can put an actor's microphone on the main output (decided 2026-11-16; the mechanism is an open decision).
 - **Metering out of the audio thread:** per band, the current gain offset, current frequency and tracker confidence are published through a lock-free snapshot for the editor at about 30 Hz.
 
@@ -260,7 +260,7 @@ The parameter list is declared in one table in `lib/dsp` (ID, name, unit, range,
 | `fhold` | 0 to 2000 ms | 200 | Track |
 | `fcgain` | off, on (confidence scales gain) | off | Track |
 
-That is 35 parameters per band and 284 in all. Listen is an editor action, not a parameter.
+That is 35 parameters per band and 284 in all. Listen is an editor action, not a parameter. The list of channels left out of the link is state, not a parameter: it is stored by channel index together with the layout it was made for, and is reset to the host-reported LFE channels when the layout changes.
 
 **State chunk.** JSON, `version` 1, written and read by `likyu::core` with locale-independent number text. Unknown fields are kept and written back; a reader exists for every version ever shipped, each with a fixture in `tests/state/`. A chunk with fewer bands than the build loads with the remaining bands off; one with more keeps the surplus bands in the chunk untouched. The suite runs under `C` and `fr_FR`, as in the OSCQuery plugin.
 
@@ -328,7 +328,8 @@ One resizable window: the response curve on top, one strip for the selected band
 - **Band strip.** Only the controls of the selected band's current gain mode and frequency mode are shown; the others keep their values.
 - **Listen** as a momentary button on the strip.
 - **Analyser** (optional, off by default): spectrum of the input and of the sidechain, computed off the audio thread from a lock-free tap. It is a display aid and never feeds the DSP.
-- Touch and the Go.dot control surfaces are served by the host parameters; the editor adds nothing a parameter cannot do, except Listen.
+- Touch and the Go.dot control surfaces are served by the host parameters; the editor adds nothing a parameter cannot do, except Listen and the list of channels left out of the link.
+- **Link list.** With more than one channel, a row of channel toggles beside the Link switch shows which channels are in the link; those the host reports as LFE start out of it and are marked as such.
 - What a node and a strip say in each state is written as pure functions over the band's state, so headless tests assert it, as `SlotPresentation.h` does.
 
 * **Multitouch**, on the systems where JUCE delivers it (Windows, Linux; macOS only where the host and OS pass touches through): several nodes dragged at once, one finger each; two fingers on one node pinch its Q, the touch equivalent of the wheel; the crosshair arms take touches as they take the mouse. Arms and nodes have touch-sized hit areas that do not overlap at the default window size. Whether a host forwards touches to a plugin editor at all is checked per host in Phase 1; the mouse path must always be complete without touch.
@@ -361,6 +362,7 @@ A feature is done when its row below passes in CI on the three platforms. Thresh
 | Sidechain fallback | Sidechain selected, bus absent | Band behaves as Self; status says so |
 | Channel linking | Stereo signal with a transient on one side | Linked: identical gain on both channels |
 | Linked maximum | A tone in one channel of 8, then the same tone in all 8; then the tone in two channels in opposite phase | The same offset in the three cases |
+| Link exclusion | 5.1 with a burst on the LFE only, then on the left only; then a discrete 6-channel layout with channel 4 left out by hand | LFE burst moves the LFE's gain only; left burst moves every channel but the LFE; the same with the hand-set channel; the list survives a state round trip |
 | Layouts | Mono, stereo, 5.1 and 64 channels; sidechain absent, mono and stereo | Processes correctly; no channel reads another's state when unlinked |
 | State | Round trip; every shipped version's fixture; unknown fields; under `C` and `fr_FR` | Identical parameters; unknown fields written back |
 | Realtime | 500 blocks of every mode under the allocation counter; RTSan job | Zero violations |
@@ -399,7 +401,8 @@ Nothing blocks Phase 0 any more. The three identity items are decided; they are 
 - [x] **Linked key:** maximum over the key's channel levels (decided 2026-11-16).
 - [x] **Sidechain fallback:** Self (decided 2026-11-16).
 - [x] **Precision, effective gain limit, return to zero, range rules, Speed for Track only:** as written (decided 2026-11-16).
-- [ ] **LFE channel:** whether it takes part in the linked maximum.
+- [x] **LFE channel:** left out of the link when the host reports it as LFE, otherwise left out by hand (decided 2026-11-16).
+- [ ] **Link list, form:** a per-instance list in the state chunk, set in the editor and reset when the layout changes, as proposed; or host parameters, if Go.dot's control surfaces must reach it.
 - [ ] **Listen guard, mechanism:** how the plugin knows it is in a live host and what the guard is. *Proposed:* guarded when the host identifies itself as Go.dot, or when a per-machine preference says so; the guard is an Arm switch on the strip that must be on before Listen acts, off each time the editor opens. Settled with the Go.dot integration at the latest.
 - [ ] **Quadrature envelope and deflation forms**, as corrected on 2026-11-16: confirmed by the Phase 3 detector tests and the Phase 0 spike.
 - [ ] **Tracker estimator:** gradient ANF or energy-ratio discriminator, settled by the Phase 0 spike.
@@ -425,6 +428,7 @@ Nothing blocks Phase 0 any more. The three identity items are decided; they are 
 | 2026-11-16 | Channels linked by default; a linked level is the maximum over the key's channels (trackers on their mean) |
 | 2026-11-16 | Name Likyū in the editor and documentation, Likyu for hosts and files, likyu in identifiers; plugin code Lkyu |
 | 2026-11-16 | Sidechain absent or disabled: fall back to Self |
+| 2026-11-16 | LFE left out of the link when the host reports it, any channel by hand otherwise |
 | 2026-11-16 | Listen acts at once in a DAW and is guarded in a live host |
 | 2026-11-16 | Effective gain limited to ±30 dB; offsets return to exactly 0; double in the audio path, float in detection |
 | 2026-11-16 | Band-pass detector envelope from BP² − LP·HP; deflation without delay, from the raw key |
