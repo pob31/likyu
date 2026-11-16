@@ -277,7 +277,7 @@ VST3 on Windows, macOS and Linux, AU on macOS, LV2 on all three, all through JUC
 
 | Host | Formats | To establish |
 | --- | --- | --- |
-| Go.dot (Tracktion Engine) | VST3, AU, LV2 | How a cue routes a second source to the sidechain bus; state recall on cue launch |
+| Go.dot (Tracktion Engine) | VST3, AU, LV2 | Loading, Self-keyed operation, state recall on cue launch. Sidechain routing is not benched here: Go.dot does not offer it yet (see Phase 8) |
 | REAPER (Windows, macOS, Linux) | VST3, AU, LV2 | Channels 3 and 4 as sidechain; bus disabled |
 | Bitwig Studio | VST3 | Sidechain selector; latency change on lookahead |
 | Ableton Live | VST3, AU | Sidechain routing; 284 parameters in the automation chooser |
@@ -385,7 +385,8 @@ Each phase ends with CI green, a bench note and a handoff note, as in the OSCQue
 | 5. Frequency modes | Env; Track with the chosen estimator, confidence, hold; deflation, spacing, seeding bank | Phase 0 spike result |
 | 6. Editor | Curve, nodes, brackets, strip, ghost detector node, analyser |  |
 | 7. Performance and packaging | SIMD detector lanes, bench against the budget, installers, signing and notarisation from WFS-DIY's scripts |  |
-| 8. Go.dot integration | Sidechain routing from a cue, recall, control-surface mapping; then public beta |  |
+| 8. Go.dot integration | Recall, control-surface mapping, the Listen guard; public beta (*proposed:* the beta does not wait for the sidechain in Go.dot) |  |
+| 9. Sidechain in Go.dot | Routing a second source from a cue to the plugin's sidechain bus: work in Go.dot, not in this plugin, taken up once the rest of Go.dot is thoroughly tested (decided 2026-11-16). Until then sidechain bands in Go.dot fall back to Self, and the reference use case is exercised in the other bench hosts | Go.dot |
 | Later | CLAP shim; native linking of `lib/dsp` in Go.dot; frequency momentum for crossings; a wide LV2 variant if one is asked for |  |
 
 Phases 2 to 5 are testable headless before any editor exists: a host's generic parameter view is enough to listen.
@@ -409,7 +410,8 @@ Nothing blocks Phase 0 any more. The three identity items are decided; they are 
 - [ ] **Transient time constants and the Time range**, settled by the Phase 4 listening pass, before those IDs' ranges freeze.
 - [ ] **Performance budget**: confirm or replace the proposed 1 % figure once Phase 2 gives a first measurement.
 - [ ] **Band-pass as a band type** in a series EQ: kept for envelope-filter use; drop it if it proves a trap in practice.
-- [ ] **Sidechain in Go.dot:** whether a cue can route a second source to a plugin's sidechain bus today, or whether that is Go.dot work ahead of Phase 8.
+- [x] **Sidechain in Go.dot:** Go.dot work, implemented later, once the rest of the app is thoroughly tested (decided 2026-11-16). It is its own phase, after the integration.
+- [ ] **Public beta and the Go.dot sidechain:** whether the beta goes out at the end of Phase 8, without the sidechain in Go.dot, as proposed, or waits for Phase 9.
 
 **Decided so far**
 
@@ -429,6 +431,7 @@ Nothing blocks Phase 0 any more. The three identity items are decided; they are 
 | 2026-11-16 | Name Likyū in the editor and documentation, Likyu for hosts and files, likyu in identifiers; plugin code Lkyu |
 | 2026-11-16 | Sidechain absent or disabled: fall back to Self |
 | 2026-11-16 | LFE left out of the link when the host reports it, any channel by hand otherwise |
+| 2026-11-16 | Sidechain routing in Go.dot is Go.dot work, done later, after the app is thoroughly tested |
 | 2026-11-16 | Listen acts at once in a DAW and is guarded in a live host |
 | 2026-11-16 | Effective gain limited to ±30 dB; offsets return to exactly 0; double in the audio path, float in detection |
 | 2026-11-16 | Band-pass detector envelope from BP² − LP·HP; deflation without delay, from the raw key |
