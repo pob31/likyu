@@ -54,7 +54,7 @@ Each instance owns **8 bands**, numbered 1 to 8, processed in series in that ord
 
 - Parameter IDs are strings of the form `b<n>_<param>` (`b3_freq`), frozen for good, never renamed, never positional. Underscore, not dot: LV2 symbols allow `[_a-zA-Z][_a-zA-Z0-9]*` only. Raising the band count later adds IDs and renumbers none.
 - The host sees every parameter in real units with its own range (Hz, dB, ms), unlike the OSCQuery plugin's normalised slots.
-- The effective gain of a band is `static gain + dynamic offset`, in dB, the offset clamped to the Range and the sum clamped to −30 to +30 dB (*proposed 2026-11-16*). Static mode: offset 0.
+- The effective gain of a band is `static gain + dynamic offset`, in dB, the offset clamped to the Range and the sum clamped to −30 to +30 dB (decided 2026-11-16). Static mode: offset 0.
 - All detection reads the plugin input (Self) or the sidechain bus, both undelayed. No detector reads another band's output.
 - Sidechain selected but the sidechain bus absent or disabled: the band falls back to Self and the editor says so. A bus that is enabled but silent cannot be told from a quiet key and is treated as a key.
 - Track bands that share a key source exclude each other automatically. There is no user-defined set.
@@ -118,18 +118,18 @@ With A = 10^(gain\_dB / 40):
 - **Shelves under modulation** need g rescaled by √A: a multiply by a square root, no new tan.
 - Denormals: flush-to-zero and denormals-are-zero set in the process call, and tested with silence after signal.
 - Parameter smoothing: user moves arrive at control rate and are smoothed in `lib/dsp` (frequency in log domain, gain in dB), about 20 ms, so that a native client of the library gets the same smoothing as the plugin.
-- **Precision** (*proposed 2026-11-16*): the audio path keeps its states and coefficients in double, for low frequencies with high Q at high sample rates; the detection path is float, eight lanes to an AVX2 register. The host's buffers may be either precision.
+- **Precision** (decided 2026-11-16): the audio path keeps its states and coefficients in double, for low frequencies with high Q at high sample rates; the detection path is float, eight lanes to an AVX2 register. The host's buffers may be either precision.
 
 ## Detection
 
-Each band owns one detector SVF when channels are linked, and one per channel when they are not. It reads the band's key source and produces one level, in dB, for the gain computer and the envelope follower.
+Each band owns one detector SVF per channel of its key (the main input's channels for Self, the sidechain's one or two for Sidechain). Each reads its key channel and produces a level in dB; linking decides how those levels are combined for the gain computer and the envelope follower.
 
 - **Detector filter.** *Follow band* copies the band's current frequency and Q (including a moving frequency in Env and Track) as a band-pass. *Own* gives the detector its own type (band-pass, high-pass, low-pass), frequency and Q.
 - **Quadrature envelope for band-pass detectors** (*corrected 2026-11-16, proposed, to be confirmed by the Phase 3 detector tests*). `env = k * sqrt(max(0, v1² − v2 * hp))`, with `hp = x − k * v1 − v2`. In the TPT form the low-pass and high-pass outputs are each one integrator away from the band-pass, so LP · HP = BP² holds exactly: for a single sine the expression is the band-pass magnitude at any frequency, with no ripple and with the band-pass's own selectivity. With several components the cross terms can go negative for an instant, hence the max. The first draft's `k * sqrt(v1² + v2²)` is rejected: v2 is the low-pass output, so everything below fc reached the detector at gain k (unity at Q = 1). This is what allows millisecond time constants on low bands without the envelope ripple becoming distortion. High-pass and low-pass detectors use a peak follower whose shortest time constant is bounded to a few periods of the detector frequency.
 - **Level.** `L = 20 log10(env)`, floored at −120 dB. A fast log2 is allowed; error under 0.05 dB.
 - **Key sources.** Self is the plugin's main input. Sidechain is the plugin's second input bus (mono or stereo). Per band.
-- **Channel linking**, per instance: Linked (default) or Unlinked (decided 2026-11-16). Linked: the key, whether the main input or the sidechain, is mixed down to mono (mean of its channels) before the detectors, and one gain and one frequency per band apply to every channel, which keeps the image still and costs one set of detectors whatever the width. Unlinked: each main channel is its own key for Self bands; a sidechain is still mixed down. Known limits of a mixdown: content out of phase between channels cancels in the key, and a mean dilutes a signal present in few channels (one channel of 64 arrives 36 dB down), so thresholds depend on the layout. Whether the linked key should instead be a power sum or a maximum over channels, and whether an LFE channel joins it, are open.
-- **Listen**, per band: the band's detector output replaces the plugin output while held. Not automatable, not saved.
+- **Channel linking**, per instance: Linked (default) or Unlinked (decided 2026-11-16). Linked: each key channel is detected on its own and the band's level is the **maximum** of the channel levels (decided 2026-11-16, replacing the mean mixdown of draft 0.1); one gain and one frequency per band apply to every channel, which keeps the image still. A signal present in one channel of 64 drives the band exactly as it would in all of them, and nothing cancels between channels. The cost is one detector per band per key channel, not one per band. Unlinked: each main channel is its own key for Self bands. A sidechain band takes the maximum over the sidechain's channels in both cases. A maximum is defined on levels, not on signals, so the Track estimators, which need one signal, and the seeding bank run on the mean of the key's channels when linked: frequency estimation does not depend on level, and the remaining limit is that a component out of phase between channels can cancel for the tracker. Whether an LFE channel takes part in the maximum is open.
+- **Listen**, per band: the band's detector output replaces the plugin output while held, a solo in place. Self: each channel hears its own detector. Sidechain: the mean of the sidechain's detector outputs, on every channel. Not automatable, not saved. In a DAW it acts at once; in a live host it is guarded, because it can put an actor's microphone on the main output (decided 2026-11-16; the mechanism is an open decision).
 - **Metering out of the audio thread:** per band, the current gain offset, current frequency and tracker confidence are published through a lock-free snapshot for the editor at about 30 Hz.
 
 ## Gain modes
@@ -149,7 +149,7 @@ offset = sign(Range) * min(amount, |Range|)     then attack / release smoothing
 
 - Range negative: the band cuts as the key gets louder (de-ess, de-boom, ducking from the sidechain). Range positive: it boosts (upward expansion, or a band that opens when the actor speaks).
 - The band travels between its static gain and static gain + Range, which is what the editor draws.
-- **Return to zero** (*proposed 2026-11-16*): an exponentially smoothed offset never reaches 0 by itself. When its target is 0 and it is within 0.0001 dB of it, the offset is set to exactly 0, in Dynamic and in Transient, so that an idle band is again an exact bypass. The step this makes is about 100 dB under the band's content.
+- **Return to zero** (decided 2026-11-16): an exponentially smoothed offset never reaches 0 by itself. When its target is 0 and it is within 0.0001 dB of it, the offset is set to exactly 0, in Dynamic and in Transient, so that an idle band is again an exact bypass. The step this makes is about 100 dB under the band's content.
 
 **Transient.** Threshold-free differential envelopes in dB, in the manner of the SPL Transient Designer, per band.
 
@@ -175,7 +175,7 @@ Frequency is a second axis, independent of the gain mode, and applies to every b
 
 **Env.** The key's level, between a Sensitivity threshold and that threshold plus a Span, maps onto the range from Low to High (direction Up) or High to Low (Down), in log frequency. Its attack and release (`fatk`, `frel`) smooth the level before the mapping and are the only smoothing in Env; Speed belongs to Track.
 
-**Range rules** (*proposed 2026-11-16*), for Env and Track: if Low is above High the two are swapped; in Track, the rest frequency is the band's Frequency clamped into \[Low, High\].
+**Range rules** (decided 2026-11-16), for Env and Track: if Low is above High the two are swapped; in Track, the rest frequency is the band's Frequency clamped into \[Low, High\].
 
 **Track.** The band follows the dominant sinusoidal component of its key inside \[Low, High\].
 
@@ -224,7 +224,7 @@ The parameter list is declared in one table in `lib/dsp` (ID, name, unit, range,
 | `bypass` | off, on | off | yes (host bypass) |
 | `out_gain` | −24 to +24 dB | 0 | yes |
 | `lookahead` | Off, 0.25 ms, 1 ms, 3 ms | Off | no |
-| `link` | Linked (mixdown key), Unlinked | Linked | no |
+| `link` | Linked (maximum over key channels), Unlinked | Linked | no |
 
 **Per band** (`b1_` to `b8_`)
 
@@ -269,8 +269,8 @@ That is 35 parameters per band and 284 in all. Listen is an editor action, not a
 VST3 on Windows, macOS and Linux, AU on macOS, LV2 on all three, all through JUCE's own wrappers. CLAP comes later through a shim of our own, ported from the OSCQuery plugin's `src/shims/clap`; neither `clap-juce-extensions` nor `clap-wrapper` enters the build (decided 2026-11-16, consistent with 2026-11-04 there).
 
 - **JUCE 9.0.5**, pinned at the same commit as WFS-DIY, Go.dot and the OSCQuery plugin. C++20. CMake 3.22.
-- **Identity, fixed before the first session is saved against it:** name **Likyū** (a play on *l'EQ*; plain `likyu` in every identifier), company "Pix et Bel", manufacturer code `PxBl`, plugin code `Lkyu`, `JUCE_VST3_CAN_REPLACE_VST2=0` (decided 2026-11-16). *Decided 2026-11-16:* LV2 URIs `https://pixetbel.org/lv2/likyu/mono` and `https://pixetbel.org/lv2/likyu/stereo`, bundle ID `io.github.pob31.likyu`. Changing any of these later orphans saved sessions.
-- **Buses:** main in and out with the same layout both sides. VST3 and AU negotiate it with the host at run time, any layout up to 64 channels; per-channel state is allocated in prepare. LV2 ports are fixed in the bundle's manifest, so LV2 ships two plugins, mono and stereo, each with its own URI (to confirm against JUCE's LV2 wrapper in Phase 0, where LV2 first ships). One optional sidechain input bus, mono or stereo whatever the main width, always mixed down to mono. The plugin must process correctly with the sidechain bus disabled or absent.
+- **Identity, fixed before the first session is saved against it:** name **Likyū** (a play on *l'EQ*) in the editor, the documentation and the website; ASCII **Likyu** for everything a host or a file system reads (product name, the plugin name reported to hosts, bundle and installer file names) and `likyu` in every identifier (decided 2026-11-16), company "Pix et Bel", manufacturer code `PxBl`, plugin code `Lkyu`, `JUCE_VST3_CAN_REPLACE_VST2=0` (decided 2026-11-16). *Decided 2026-11-16:* LV2 URIs `https://pixetbel.org/lv2/likyu/mono` and `https://pixetbel.org/lv2/likyu/stereo`, bundle ID `io.github.pob31.likyu`. Changing any of these later orphans saved sessions.
+- **Buses:** main in and out with the same layout both sides. VST3 and AU negotiate it with the host at run time, any layout up to 64 channels; per-channel state is allocated in prepare. LV2 ports are fixed in the bundle's manifest, so LV2 ships two plugins, mono and stereo, each with its own URI (to confirm against JUCE's LV2 wrapper in Phase 0, where LV2 first ships). One optional sidechain input bus, mono or stereo whatever the main width; a stereo sidechain is detected per channel and the maximum taken. The plugin must process correctly with the sidechain bus disabled or absent.
 - **No MIDI**, not a synth.
 
 **Host bench, Phase 1.** Sidechain routing is where hosts differ most, so it is measured before the editor assumes anything, and the findings are written to `docs/spikes/`:
@@ -301,7 +301,7 @@ JUCE for the shell, plain C++ for the DSP (decided 2026-11-16). The layout is th
 Namespace and target prefix: `likyu`. Display name: Likyū. In this document "the DSP core" always means `lib/dsp`; `likyu::core` is named in full.
 
 - **Why the DSP has no JUCE:** Go.dot or an app can link `lib/dsp` directly without a second copy of JUCE in the process, and the DSP suite builds and runs in seconds.
-- **Layout for speed.** State is structure-of-arrays. The eight detectors read the same key in parallel (one set per instance when linked, one per channel when unlinked) and fill one AVX2 register (two NEON registers); they are the SIMD lanes. The audio chain is serial per channel and stays scalar per channel, vectorised across channels where there are several.
+- **Layout for speed.** State is structure-of-arrays. The eight detectors of a key channel read the same signal in parallel (one set per key channel, linked or not) and fill one AVX2 register (two NEON registers); they are the SIMD lanes. The audio chain is serial per channel and stays scalar per channel, vectorised across channels where there are several.
 - **Copied from the OSCQuery plugin, as is:** `CMakePresets.json`, `cmake/*ThirdParty.cmake` and `*Options.cmake` cut down, the `pins` CI job and the three `scripts/check-*.py`, the three-platform CI with ccache, pluginval and the validators' settings discipline, `rt/RtCheck` and `tests/support/RtAllocCounter.cpp`, the GPL file header, `THIRD_PARTY_NOTICES.md`, the `docs/` structure (PRD, devplan, bench, handoffs, spikes) and the rule that `CLAUDE.md` reproduces two PRD sections verbatim.
 - **Not copied:** the shared core library and registry (no cross-instance state here), `lib/oscquery`, `juce_simpleweb`, the plugin's own server.
 - Pull requests with CI green for code; documentation and tests may go straight to `main`. Never rewrite history on `main`.
@@ -360,6 +360,7 @@ A feature is done when its row below passes in CI on the three platforms. Thresh
 | Track, loss | Sine removed | Hold, then glide to rest; no jump |
 | Sidechain fallback | Sidechain selected, bus absent | Band behaves as Self; status says so |
 | Channel linking | Stereo signal with a transient on one side | Linked: identical gain on both channels |
+| Linked maximum | A tone in one channel of 8, then the same tone in all 8; then the tone in two channels in opposite phase | The same offset in the three cases |
 | Layouts | Mono, stereo, 5.1 and 64 channels; sidechain absent, mono and stereo | Processes correctly; no channel reads another's state when unlinked |
 | State | Round trip; every shipped version's fixture; unknown fields; under `C` and `fr_FR` | Identical parameters; unknown fields written back |
 | Realtime | 500 blocks of every mode under the allocation counter; RTSan job | Zero violations |
@@ -394,12 +395,12 @@ Nothing blocks Phase 0 any more. The three identity items are decided; they are 
 - [x] **Name:** Likyū, `likyu` in identifiers (decided 2026-11-16).
 - [x] **Plugin code:** `Lkyu`, under manufacturer `PxBl` (decided 2026-11-16).
 - [x] **LV2 URIs and bundle ID:** `https://pixetbel.org/lv2/likyu/mono`, `https://pixetbel.org/lv2/likyu/stereo`, `io.github.pob31.likyu` (decided 2026-11-16).
-- [ ] **Host-visible name:** whether the product name and the bundle file names are `Likyu` or `Likyū`. A non-ASCII file name is a risk in installers, `auval` and LV2 bundle paths; *proposed:* `Likyu` there, Likyū in the editor and the documentation. To settle in Phase 0, before the identity is used.
-- [ ] **Linked key on wide layouts:** mean of channels (current), power sum or maximum; and whether an LFE channel joins it.
-- [ ] **Sidechain fallback:** Self (current) or idle, offset 0. A band meant to be keyed by a voice pumps on the music when it falls back to Self.
-- [ ] **Listen on a show:** it puts the undelayed key, possibly an actor's microphone, on the main output. Whether it needs a guard (an arming switch, or disabled by a host flag).
-- [ ] **Precision:** double in the audio path and float in detection, as proposed, or float throughout, settled by the Phase 2 noise measurements at 20 Hz and 192 kHz.
-- [ ] **Effective gain limit:** ±30 dB on static gain plus offset, as proposed.
+- [x] **Host-visible name:** `Likyu` for hosts and files, Likyū in the editor and the documentation (decided 2026-11-16).
+- [x] **Linked key:** maximum over the key's channel levels (decided 2026-11-16).
+- [x] **Sidechain fallback:** Self (decided 2026-11-16).
+- [x] **Precision, effective gain limit, return to zero, range rules, Speed for Track only:** as written (decided 2026-11-16).
+- [ ] **LFE channel:** whether it takes part in the linked maximum.
+- [ ] **Listen guard, mechanism:** how the plugin knows it is in a live host and what the guard is. *Proposed:* guarded when the host identifies itself as Go.dot, or when a per-machine preference says so; the guard is an Arm switch on the strip that must be on before Listen acts, off each time the editor opens. Settled with the Go.dot integration at the latest.
 - [ ] **Quadrature envelope and deflation forms**, as corrected on 2026-11-16: confirmed by the Phase 3 detector tests and the Phase 0 spike.
 - [ ] **Tracker estimator:** gradient ANF or energy-ratio discriminator, settled by the Phase 0 spike.
 - [ ] **Transient time constants and the Time range**, settled by the Phase 4 listening pass, before those IDs' ranges freeze.
@@ -421,7 +422,11 @@ Nothing blocks Phase 0 any more. The three identity items are decided; they are 
 | 2026-11-16 | GPLv3 |
 | 2026-11-16 | Not a target for WFS-DIY's per-output EQs |
 | 2026-11-16 | Channel count set by the host on VST3 and AU, up to 64; mono and stereo variants on LV2 |
-| 2026-11-16 | Channels linked by default; a linked key is a mono mixdown |
-| 2026-11-16 | Name Likyū (likyu in identifiers), plugin code Lkyu |
+| 2026-11-16 | Channels linked by default; a linked level is the maximum over the key's channels (trackers on their mean) |
+| 2026-11-16 | Name Likyū in the editor and documentation, Likyu for hosts and files, likyu in identifiers; plugin code Lkyu |
+| 2026-11-16 | Sidechain absent or disabled: fall back to Self |
+| 2026-11-16 | Listen acts at once in a DAW and is guarded in a live host |
+| 2026-11-16 | Effective gain limited to ±30 dB; offsets return to exactly 0; double in the audio path, float in detection |
+| 2026-11-16 | Band-pass detector envelope from BP² − LP·HP; deflation without delay, from the raw key |
 | 2026-11-16 | LV2 URIs on pixetbel.org (mono, stereo), bundle ID io.github.pob31.likyu |
 | 2026-11-16 | Editor: crosshair arms for frequency-only and gain-only drags, wheel or pinch for Q, multitouch where supported |
