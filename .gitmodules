@@ -1,0 +1,6 @@
+[submodule "ThirdParty/JUCE"]
+	path = ThirdParty/JUCE
+	url = https://github.com/juce-framework/JUCE.git
+[submodule "ThirdParty/doctest"]
+	path = ThirdParty/doctest
+	url = https://github.com/doctest/doctest.git

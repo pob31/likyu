@@ -1,0 +1,316 @@
+# Likyu — Copyright (C) 2026 Pierre-Olivier Boulant
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Origin: OSCQuery Automation Plugin .github/workflows/ci.yml at 1d8caa8 (structure from
+# go.dot's ci.yml, plugin specifics from WFS-DIY's plugins-ci.yml), with the LV2 bundles,
+# auval, pluginval at strictness 10 and the RTSan job; without the CLAP.
+#
+# Three-platform CI (devplan, Phase 0 and cross-cutting).
+#
+#   pins     no compiler: CLAUDE.md against the PRD, submodule pins against
+#            THIRD_PARTY_NOTICES.md, GPL headers, lib/dsp's includes. The cheapest job;
+#            the others wait for it.
+#   linux    build, test under C and fr_FR, Release plugins, pluginval on the VST3, the
+#            two LV2 bundles through lilv and lv2lint, artefact.
+#   macos    the same, VST3 and AU; pluginval on the VST3, auval on the AU.
+#   windows  the same, VST3, on the VS 2026 image.
+#   rtsan    lib/dsp and its suite alone under Clang's realtime sanitizer.
+#
+# Artefacts are unsigned. Signing and notarisation belong to the release workflow (Phase 7).
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PLUGINVAL_URL: https://github.com/Tracktion/pluginval/releases/download/v1.0.4
+  PLUGIN_DIR: src/shims/juce/likyu_plugin_artefacts/Release
+  MONO_DIR: src/shims/juce/likyu_plugin_lv2_mono_artefacts/Release
+  LV2_STEREO_URI: https://pixetbel.org/lv2/likyu/stereo
+  LV2_MONO_URI: https://pixetbel.org/lv2/likyu/mono
+
+jobs:
+  pins:
+    name: pins (no compiler)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: CLAUDE.md matches the PRD
+        run: python3 scripts/check-claude-md.py
+
+      - name: Submodule pins match THIRD_PARTY_NOTICES.md
+        run: python3 scripts/check-pins.py
+
+      - name: GPL headers on every source file
+        run: python3 scripts/check-headers.py
+
+      - name: lib/dsp includes the standard library only
+        run: python3 scripts/check-dsp-includes.py
+
+  linux:
+    name: build + test + pluginval + LV2 (Linux)
+    needs: pins
+    runs-on: ubuntu-latest
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 1G
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Install build dependencies
+        # go.dot's list for JUCE 9 with the web browser and curl off; xvfb for pluginval;
+        # lilv-utils and lv2-dev for the LV2 listing.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config ninja-build ccache locales xvfb unzip \
+            libasound2-dev libjack-jackd2-dev libfreetype-dev libfontconfig1-dev \
+            libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev \
+            libxi-dev libxrandr-dev libxrender-dev libgl-dev \
+            lilv-utils lv2-dev
+          # lv2lint is not packaged on every Ubuntu; the step that runs it says so.
+          sudo apt-get install -y --no-install-recommends lv2lint || echo "::notice::lv2lint is not packaged on this image"
+
+      - name: Generate the fr_FR.UTF-8 locale
+        run: |
+          sudo locale-gen fr_FR.UTF-8
+          sudo update-locale
+
+      - name: Submodule SHAs, for the cache key
+        id: subs
+        run: echo "juce=$(git rev-parse HEAD:ThirdParty/JUCE)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v5
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-linux-${{ steps.subs.outputs.juce }}-${{ github.sha }}
+          restore-keys: |
+            ccache-linux-${{ steps.subs.outputs.juce }}-
+            ccache-linux-
+
+      - name: Configure (ci-linux), no CMake warnings outside ThirdParty
+        run: |
+          set -euo pipefail
+          cmake --preset ci-linux 2>&1 | tee configure.log
+          if grep '^CMake Warning' configure.log | grep -v 'ThirdParty/'; then
+            echo "::error::configure emitted warnings outside ThirdParty/"
+            exit 1
+          fi
+
+      - name: Build (Debug)
+        run: cmake --build --preset ci-linux-debug
+
+      - name: Test (Debug, C and fr_FR)
+        run: ctest --preset ci-linux
+
+      - name: Build the plugins (Release)
+        run: cmake --build --preset ci-linux-release --target likyu_plugin_All likyu_plugin_lv2_mono_All
+
+      - name: pluginval, strictness 10 (VST3)
+        run: |
+          curl -sSL -o pluginval.zip "$PLUGINVAL_URL/pluginval_Linux.zip"
+          unzip -q pluginval.zip -d pluginval
+          chmod +x pluginval/pluginval
+          xvfb-run -a ./pluginval/pluginval --strictness-level 10 --validate-in-process \
+            --timeout-ms 300000 --validate "build/ci-linux/$PLUGIN_DIR/VST3/Likyu.vst3"
+
+      # The hard part: lilv, which every LV2 host on Linux is built on, finds both plugins
+      # by their URIs and reads their ports.
+      - name: LV2, both bundles listed and read by lilv
+        run: |
+          set -euo pipefail
+          STAGE="$RUNNER_TEMP/lv2"
+          mkdir -p "$STAGE"
+          cp -R "build/ci-linux/$PLUGIN_DIR/LV2/Likyu.lv2" "build/ci-linux/$MONO_DIR/LV2/Likyu-Mono.lv2" "$STAGE/"
+          export LV2_PATH="$STAGE:/usr/lib/lv2"
+          lv2ls | tee lv2ls.txt
+          grep -qx "$LV2_STEREO_URI" lv2ls.txt
+          grep -qx "$LV2_MONO_URI" lv2ls.txt
+          lv2info "$LV2_STEREO_URI" | head -60
+          lv2info "$LV2_MONO_URI" | grep -c "Port " || true
+
+      # Information for now (devplan 0c: "whichever proves usable in a runner; the report
+      # says which and why"). The record of Phase 0 decides what becomes a gate.
+      - name: LV2, lv2lint and lv2_validate (information)
+        continue-on-error: true
+        run: |
+          STAGE="$RUNNER_TEMP/lv2"
+          export LV2_PATH="$STAGE:/usr/lib/lv2"
+          if command -v lv2lint >/dev/null; then
+            xvfb-run -a lv2lint -Mpack -I "$STAGE/Likyu.lv2" "$LV2_STEREO_URI" || echo "::warning::lv2lint reports on the stereo LV2"
+            xvfb-run -a lv2lint -Mpack -I "$STAGE/Likyu-Mono.lv2" "$LV2_MONO_URI" || echo "::warning::lv2lint reports on the mono LV2"
+          else
+            echo "::notice::lv2lint not available"
+          fi
+          if command -v lv2_validate >/dev/null; then
+            lv2_validate "$STAGE"/Likyu.lv2/*.ttl || echo "::warning::lv2_validate reports on the stereo LV2"
+            lv2_validate "$STAGE"/Likyu-Mono.lv2/*.ttl || echo "::warning::lv2_validate reports on the mono LV2"
+          else
+            echo "::notice::lv2_validate not available"
+          fi
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: likyu-linux-unsigned
+          path: |
+            build/ci-linux/${{ env.PLUGIN_DIR }}/VST3/
+            build/ci-linux/${{ env.PLUGIN_DIR }}/LV2/
+            build/ci-linux/${{ env.MONO_DIR }}/LV2/
+          if-no-files-found: error
+
+  macos:
+    name: build + test + pluginval + auval (macOS)
+    needs: pins
+    runs-on: macos-latest
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 1G
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Install ninja and ccache
+        run: brew install ninja ccache
+
+      - name: Submodule SHAs, for the cache key
+        id: subs
+        run: echo "juce=$(git rev-parse HEAD:ThirdParty/JUCE)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v5
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-macos-${{ steps.subs.outputs.juce }}-${{ github.sha }}
+          restore-keys: |
+            ccache-macos-${{ steps.subs.outputs.juce }}-
+            ccache-macos-
+
+      - name: Configure (ci-macos)
+        run: cmake --preset ci-macos
+
+      - name: Build (Debug)
+        run: cmake --build --preset ci-macos-debug
+
+      - name: Test (Debug, C and fr_FR)
+        run: ctest --preset ci-macos
+
+      - name: Build the plugins (Release)
+        run: cmake --build --preset ci-macos-release --target likyu_plugin_All likyu_plugin_lv2_mono_All
+
+      # The AU registrar only sees a bundle signed as a whole, and JUCE's CMake under Ninja
+      # does not sign (OSCQuery plugin, Phase 1). Ad hoc: no identity on a runner.
+      - name: Ad-hoc sign the bundles
+        run: codesign --force --deep -s - "build/ci-macos/$PLUGIN_DIR/VST3/Likyu.vst3" "build/ci-macos/$PLUGIN_DIR/AU/Likyu.component"
+
+      - name: pluginval, strictness 10 (VST3)
+        run: |
+          curl -sSL -o pluginval.zip "$PLUGINVAL_URL/pluginval_macOS.zip"
+          unzip -q pluginval.zip -d pluginval
+          ./pluginval/pluginval.app/Contents/MacOS/pluginval --strictness-level 10 --validate-in-process \
+            --timeout-ms 300000 --validate "build/ci-macos/$PLUGIN_DIR/VST3/Likyu.vst3"
+
+      - name: auval (aufx Lkyu PxBl)
+        run: |
+          mkdir -p "$HOME/Library/Audio/Plug-Ins/Components"
+          cp -R "build/ci-macos/$PLUGIN_DIR/AU/Likyu.component" "$HOME/Library/Audio/Plug-Ins/Components/"
+          killall -9 AudioComponentRegistrar 2>/dev/null || true
+          auval -v aufx Lkyu PxBl
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: likyu-macos-unsigned
+          path: |
+            build/ci-macos/${{ env.PLUGIN_DIR }}/VST3/
+            build/ci-macos/${{ env.PLUGIN_DIR }}/AU/
+            build/ci-macos/${{ env.PLUGIN_DIR }}/LV2/
+            build/ci-macos/${{ env.MONO_DIR }}/LV2/
+          if-no-files-found: error
+
+  windows:
+    name: build + test + pluginval (Windows)
+    needs: pins
+    # windows-2025 is the VS 2026 image, the same deliberate pin as WFS-DIY and go.dot.
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Configure (ci-windows)
+        run: cmake --preset ci-windows
+
+      - name: Build (Debug)
+        run: cmake --build --preset ci-windows-debug --parallel
+
+      - name: Test (Debug, C and fr-FR)
+        run: ctest --preset ci-windows
+
+      - name: Build the plugins (Release)
+        run: cmake --build --preset ci-windows-release --target likyu_plugin_All likyu_plugin_lv2_mono_All --parallel
+
+      - name: pluginval, strictness 10 (VST3)
+        shell: bash
+        run: |
+          curl -sSL -o pluginval.zip "$PLUGINVAL_URL/pluginval_Windows.zip"
+          unzip -q pluginval.zip -d pluginval
+          ./pluginval/pluginval.exe --strictness-level 10 --validate-in-process \
+            --timeout-ms 300000 --validate "build/ci-windows/$PLUGIN_DIR/VST3/Likyu.vst3"
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: likyu-windows-unsigned
+          path: |
+            build/ci-windows/${{ env.PLUGIN_DIR }}/VST3/
+            build/ci-windows/${{ env.PLUGIN_DIR }}/LV2/
+            build/ci-windows/${{ env.MONO_DIR }}/LV2/
+          if-no-files-found: error
+
+  rtsan:
+    name: lib/dsp under the realtime sanitizer (Clang)
+    needs: pins
+    runs-on: ubuntu-latest
+    env:
+      LLVM_VERSION: 20
+    steps:
+      # No JUCE in this job: doctest is the only submodule lib/dsp's suite needs.
+      - uses: actions/checkout@v5
+
+      - name: Initialise doctest only
+        run: git submodule update --init ThirdParty/doctest
+
+      - name: Install Clang with the realtime sanitizer
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build wget lsb-release software-properties-common gnupg
+          wget -q https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh "$LLVM_VERSION"
+          sudo apt-get install -y "libclang-rt-$LLVM_VERSION-dev"
+          "clang++-$LLVM_VERSION" --version
+
+      - name: Configure (rtsan)
+        run: CC="clang-$LLVM_VERSION" CXX="clang++-$LLVM_VERSION" cmake --preset rtsan
+
+      - name: Build (Debug)
+        run: cmake --build --preset rtsan-debug
+
+      # The suite must pass, and the canary, which allocates on purpose inside a function
+      # marked nonblocking, must die: CTest holds it to WILL_FAIL.
+      - name: Test, canary included
+        run: ctest --preset rtsan
