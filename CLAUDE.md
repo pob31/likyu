@@ -2,7 +2,7 @@
 
 The two sections below are **PRD *Goals and non-goals* and *Band model: two axes, one
 detector*, reproduced verbatim** from the PRD in `docs/`. They are the review criterion for every
-pull request.
+change.
 
 **If this file and the PRD disagree, the PRD wins and this file is stale. Fix it by copying,
 never by editing.** `scripts/check-claude-md.py` compares them in CI.
@@ -96,9 +96,9 @@ Each instance owns **8 bands**, numbered 1 to 8, processed in series in that ord
   is not for saving sessions.
 - **Anything under the PRD's *Open decisions* is not decided by the implementer.** Surface it,
   propose, wait.
-- **Pull requests with CI green for code.** A change that touches only documentation (`docs/`,
-  `CLAUDE.md`, READMEs) or only tests (`tests/`) may go straight to `main`. Never rewrite history
-  on `main`.
+- **Commits go straight to `main` for now**, code included (decided 2026-11-16, by the author).
+  Run the suites and the four `scripts/check-*.py` before pushing, and watch CI after. Never
+  rewrite history on `main`.
 
 ## Code to reuse, and where it is
 

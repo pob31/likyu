@@ -16,7 +16,7 @@ of that app is thoroughly tested.
 ## How to read this
 
 - **Read the PRD first.** Its *Goals and non-goals* and *Band model: two axes, one detector*
-  sections are the review criterion for every PR. A `CLAUDE.md` holding those two sections
+  sections are the review criterion for every change. A `CLAUDE.md` holding those two sections
   verbatim is Phase 0 work.
 - **DSP before core, core before shim, editor last.** Nothing reaches the plugin before `lib/dsp`
   has it and a headless test drives it. `lib/dsp` includes the C++ standard library and nothing
@@ -30,8 +30,8 @@ of that app is thoroughly tested.
   ends with a written pass or fail in `docs/spikes/`.
 - **Listening is part of acceptance** for Phases 3 to 5. The automated rows say the maths is
   right; only the author's ears say the time constants are. Notes go in `docs/bench/`.
-- **Small PRs per subphase.** One concern per PR; the test is part of the PR. Documentation and
-  tests may go straight to `main`.
+- **Small commits per subphase, straight to `main`** (decided 2026-11-16, by the author: no pull
+  requests for now). One concern per commit; the test is part of it; CI is watched after the push.
 
 Sizes are relative: **S** days, **M** weeks, **L** several weeks. No dates.
 
@@ -49,6 +49,7 @@ These change the build, not the design. Each is re-checked at the phase that dep
 | The same wrapper exposes parameters as patch properties, not control ports. Each IRI is the plugin URI plus the parameter ID, and the ID must survive URL escaping and Turtle sanitising unchanged | same file, `ParameterStorage::getIri` | `b3_freq` passes. The PRD's reason for the underscore (LV2 symbols) is not the mechanism JUCE uses, but the rule stands and is now tested: Phase 0 asserts every ID in the table is unchanged by both sanitisers. |
 | Go.dot hosts a plugin's main bus and **feeds silence to every other input**, a sidechain above all; its own engine plugins answer `canSidechain()` false | `src/wfg/engine/plugin/LaneMapping.h` and the schema text, in the `go.dot-juce9` checkout of 2026-11-02 | The sidechain bus is enabled and silent in Go.dot, so a Sidechain band there is keyed by silence and does **not** fall back to Self. The PRD's Phase 9 row said otherwise and is amended. Until Phase 9 the editor must say so in Go.dot (Phase 8). |
 | WFS-DIY has the bench runner the PRD names and the installer scripts | `tools/validation/pipeline-bench/`, `Plugin/Installer/` (Inno Setup script, `build-pkg.sh`, `build-tarball-linux.sh`), `Plugin/Scripts/build-all.*` in the `WFS_DIY_v1-juce905` checkout | Phase 2's bench runner starts from the first, Phase 7's packaging from the second. |
+| GitHub's `ubuntu-latest` is Ubuntu 26.04 ("resolute"): `apt.llvm.org` has no repository for it, `lv2lint` is not packaged, and its own packages carry Clang 22 | The first two CI runs of this repository, 2026-11-16 | The RTSan job installs the newest Clang the image offers. `lv2lint` is dropped until it is packaged again. |
 | The template pins line endings to LF in `.gitattributes`, because the author's Windows machine has `autocrlf=true` | `.gitattributes` there | Copied in Phase 0; it also ends the warning Git prints on every commit of this repository. |
 
 ---
@@ -151,6 +152,33 @@ deflation form, with the plots; the PRD's two open items on them are closed with
   a tom, or a room mode excited by a voice), a full mix. A few seconds each.
 - **Copyright line** for the file headers. *Proposed:* `Copyright (C) 2026 Pierre-Olivier Boulant`.
 - **File name of the mono LV2 bundle.** *Proposed:* `Likyu.lv2` for stereo, `Likyu-Mono.lv2`.
+
+**Record, 2026-11-16.** Built the same day as this plan, on a branch merged to `main` (pull
+request 1, the only one: the author decided that day that commits go straight to `main` for now).
+Handoff: [`docs/handoffs/2026-11-16-after-phase0.md`](handoffs/2026-11-16-after-phase0.md); bench
+note: [`docs/bench/2026-11-16-phase0.md`](bench/2026-11-16-phase0.md); spike:
+[`docs/spikes/phase0-tracker.md`](spikes/phase0-tracker.md).
+
+- *0a to 0c, done.* The scaffold, the pass-through plugin with its buses, 284 parameters, real
+  lookahead and provisional state, and five CI jobs green: pluginval at strictness 10 on three
+  platforms, `auval`, both LV2 bundles read by lilv, `lib/dsp` under the realtime sanitizer.
+- *Not as planned:* `lv2lint` is not packaged on the runner's Ubuntu 26.04 and was not run;
+  `lv2_validate` runs as information and reports only what JUCE's wrapper writes. The LV2 gate is
+  therefore lilv listing and reading both plugins. The suite is two executables, not one: the DSP
+  suite has no JUCE in it at all, which is what lets the RTSan job skip JUCE entirely.
+- *Added beyond the plan:* a canary in the RTSan job, a program that allocates inside a
+  nonblocking function and must die, so that a sanitizer that is not looking cannot pass for a
+  clean suite; `scripts/check-dsp-includes.py`.
+- *0d, the spike, on synthetic signals only.* Envelope form confirmed, to 0.0001 dB. Estimator:
+  the gradient notch, as a frequency-locked loop on one SVF. Deflation: from the raw key; the
+  rotated delayed form measures the same and is the fallback. Six findings beyond the questions
+  are in the report, two of them new open decisions in the PRD (the Confidence threshold; Speed
+  and close low pairs).
+- *Done-when, not yet met in full:* the spike has not run on recordings, so the estimator and
+  the deflation form stay provisional and `spikes/tracker/` is not deleted. The plugin passes
+  audio bit for bit with lookahead Off (tested in the processor, not yet heard in a host).
+- *Proposals standing unless changed:* headers read `Copyright (C) 2026 Pierre-Olivier Boulant`;
+  the mono LV2 is `Likyu-Mono.lv2`, plugin name "Likyu Mono".
 
 ---
 

@@ -30,6 +30,8 @@ parameter IDs are not frozen.
 - [Development plan, draft 0.1](docs/Devplan%20—%20Likyū%20(draft%200.1).md): the phases, what each
   delivers and what it needs.
 - [`CLAUDE.md`](CLAUDE.md): the review criterion for every change, and where to look.
+- [Tracker spike](docs/spikes/phase0-tracker.md): how a band follows a frequency, measured on
+  synthetic signals.
 
 ## What it is not
 
