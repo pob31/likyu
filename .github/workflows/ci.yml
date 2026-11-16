@@ -74,7 +74,7 @@ jobs:
 
       - name: Install build dependencies
         # go.dot's list for JUCE 9 with the web browser and curl off; xvfb for pluginval;
-        # lilv-utils and lv2-dev for the LV2 listing.
+        # lilv-utils and lv2-dev for the LV2 listing, sordi for lv2_validate's sord_validate.
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
@@ -82,7 +82,7 @@ jobs:
             libasound2-dev libjack-jackd2-dev libfreetype-dev libfontconfig1-dev \
             libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev \
             libxi-dev libxrandr-dev libxrender-dev libgl-dev \
-            lilv-utils lv2-dev
+            lilv-utils lv2-dev sordi
           # lv2lint is not packaged on every Ubuntu; the step that runs it says so.
           sudo apt-get install -y --no-install-recommends lv2lint || echo "::notice::lv2lint is not packaged on this image"
 
@@ -284,8 +284,6 @@ jobs:
     name: lib/dsp under the realtime sanitizer (Clang)
     needs: pins
     runs-on: ubuntu-latest
-    env:
-      LLVM_VERSION: 20
     steps:
       # No JUCE in this job: doctest is the only submodule lib/dsp's suite needs.
       - uses: actions/checkout@v5
@@ -293,19 +291,27 @@ jobs:
       - name: Initialise doctest only
         run: git submodule update --init ThirdParty/doctest
 
+      # The realtime sanitizer arrived in Clang 20. The newest the image's own packages
+      # offer is taken: apt.llvm.org has no repository for an Ubuntu this recent (the first
+      # run of this job, 2026-11-16, on "resolute").
       - name: Install Clang with the realtime sanitizer
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ninja-build wget lsb-release software-properties-common gnupg
-          wget -q https://apt.llvm.org/llvm.sh
-          chmod +x llvm.sh
-          sudo ./llvm.sh "$LLVM_VERSION"
-          sudo apt-get install -y "libclang-rt-$LLVM_VERSION-dev"
-          "clang++-$LLVM_VERSION" --version
+          sudo apt-get install -y --no-install-recommends ninja-build
+          for v in 22 21 20; do
+            if sudo apt-get install -y "clang-$v" "libclang-rt-$v-dev"; then
+              echo "CC=clang-$v" >> "$GITHUB_ENV"
+              echo "CXX=clang++-$v" >> "$GITHUB_ENV"
+              "clang++-$v" --version
+              exit 0
+            fi
+          done
+          echo "::error::no Clang 20 or later in this image's packages"
+          exit 1
 
       - name: Configure (rtsan)
-        run: CC="clang-$LLVM_VERSION" CXX="clang++-$LLVM_VERSION" cmake --preset rtsan
+        run: cmake --preset rtsan
 
       - name: Build (Debug)
         run: cmake --build --preset rtsan-debug
