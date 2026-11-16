@@ -373,7 +373,7 @@ Beside the automated suite, a listening pass on real material (drums, plucked st
 
 ## Phases
 
-Each phase ends with CI green, a bench note and a handoff note, as in the OSCQuery plugin. A devplan with the detail of each phase is the next document to write from this one.
+Each phase ends with CI green, a bench note and a handoff note, as in the OSCQuery plugin. The detail of each phase is in the devplan, `docs/Devplan — Likyū (draft 0.1).md`.
 
 | Phase | Delivers | Needs |
 | --- | --- | --- |
@@ -386,7 +386,7 @@ Each phase ends with CI green, a bench note and a handoff note, as in the OSCQue
 | 6. Editor | Curve, nodes, brackets, strip, ghost detector node, analyser |  |
 | 7. Performance and packaging | SIMD detector lanes, bench against the budget, installers, signing and notarisation from WFS-DIY's scripts |  |
 | 8. Go.dot integration | Recall, control-surface mapping, the Listen guard; public beta (*proposed:* the beta does not wait for the sidechain in Go.dot) |  |
-| 9. Sidechain in Go.dot | Routing a second source from a cue to the plugin's sidechain bus: work in Go.dot, not in this plugin, taken up once the rest of Go.dot is thoroughly tested (decided 2026-11-16). Until then sidechain bands in Go.dot fall back to Self, and the reference use case is exercised in the other bench hosts | Go.dot |
+| 9. Sidechain in Go.dot | Routing a second source from a cue to the plugin's sidechain bus: work in Go.dot, not in this plugin, taken up once the rest of Go.dot is thoroughly tested (decided 2026-11-16). Until then Go.dot feeds the sidechain bus silence (checked in its source 2026-11-16), so a Sidechain band there is keyed by silence and does not fall back to Self; the editor says so, and the reference use case is exercised in the other bench hosts | Go.dot |
 | Later | CLAP shim; native linking of `lib/dsp` in Go.dot; frequency momentum for crossings; a wide LV2 variant if one is asked for |  |
 
 Phases 2 to 5 are testable headless before any editor exists: a host's generic parameter view is enough to listen.
