@@ -150,8 +150,8 @@ deflation form, with the plots; the PRD's two open items on them are closed with
 
 - **Recordings for the spike**: speech with sibilance, a note with a wandering resonance (a bass,
   a tom, or a room mode excited by a voice), a full mix. A few seconds each.
-- **Copyright line** for the file headers. *Proposed:* `Copyright (C) 2026 Pierre-Olivier Boulant`.
-- **File name of the mono LV2 bundle.** *Proposed:* `Likyu.lv2` for stereo, `Likyu-Mono.lv2`.
+- **Copyright line** for the file headers. *Decided 2026-11-16:* `Copyright (C) 2026 Pierre-Olivier Boulant`; no other contributor for now.
+- **Name of the mono LV2.** *Decided 2026-11-16:* "Likyu mono" to a host; the bundles are `Likyu.lv2` and `Likyu-mono.lv2`.
 
 **Record, 2026-11-16.** Built the same day as this plan, on a branch merged to `main` (pull
 request 1, the only one: the author decided that day that commits go straight to `main` for now).
@@ -177,8 +177,8 @@ note: [`docs/bench/2026-11-16-phase0.md`](bench/2026-11-16-phase0.md); spike:
 - *Done-when, not yet met in full:* the spike has not run on recordings, so the estimator and
   the deflation form stay provisional and `spikes/tracker/` is not deleted. The plugin passes
   audio bit for bit with lookahead Off (tested in the processor, not yet heard in a host).
-- *Proposals standing unless changed:* headers read `Copyright (C) 2026 Pierre-Olivier Boulant`;
-  the mono LV2 is `Likyu-Mono.lv2`, plugin name "Likyu Mono".
+- *Decided by the author the same day:* headers read `Copyright (C) 2026 Pierre-Olivier Boulant`,
+  no other contributor for now; the mono LV2 is "Likyu mono" to a host, `Likyu-mono.lv2` on disk.
 
 ---
 
@@ -450,7 +450,7 @@ for.
 | Phase | Need | Blocking |
 | --- | --- | --- |
 | 0 | Recordings for the tracker spike | The spike, not the scaffold |
-| 0 | Copyright line; mono LV2 bundle name | No: proposals stand unless changed |
+| 0 | Copyright line; mono LV2 name | Decided 2026-11-16 |
 | 1 | Time at each host; the farm; a Go.dot build | Yes |
 | 2 | The performance budget, after the first figure | No |
 | 3 | Form of the link list | Yes, for 3c |

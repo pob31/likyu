@@ -101,10 +101,10 @@ likyu_add_plugin(likyu_plugin
     "${LIKYU_PLUGIN_LV2_URI}/stereo"
     2 LIKYU_PLUGIN_FORMATS)
 
-# The mono LV2. The bundle's file name is a proposal awaiting the author (devplan, Phase 0).
+# The mono LV2: "Likyu mono" to a host (decided by the author 2026-11-16), Likyu-mono.lv2 on disk.
 set(LIKYU_PLUGIN_FORMATS_MONO LV2)
 likyu_add_plugin(likyu_plugin_lv2_mono
-    "Likyu-Mono" "Likyu Mono"
+    "Likyu-mono" "Likyu mono"
     "${LIKYU_PLUGIN_BUNDLE_ID}.mono"
     "${LIKYU_PLUGIN_LV2_URI}/mono"
     1 LIKYU_PLUGIN_FORMATS_MONO)

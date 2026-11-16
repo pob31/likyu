@@ -136,7 +136,7 @@ jobs:
           set -euo pipefail
           STAGE="$RUNNER_TEMP/lv2"
           mkdir -p "$STAGE"
-          cp -R "build/ci-linux/$PLUGIN_DIR/LV2/Likyu.lv2" "build/ci-linux/$MONO_DIR/LV2/Likyu-Mono.lv2" "$STAGE/"
+          cp -R "build/ci-linux/$PLUGIN_DIR/LV2/Likyu.lv2" "build/ci-linux/$MONO_DIR/LV2/Likyu-mono.lv2" "$STAGE/"
           export LV2_PATH="$STAGE:/usr/lib/lv2"
           lv2ls | tee lv2ls.txt
           grep -qx "$LV2_STEREO_URI" lv2ls.txt
@@ -153,13 +153,13 @@ jobs:
           export LV2_PATH="$STAGE:/usr/lib/lv2"
           if command -v lv2lint >/dev/null; then
             xvfb-run -a lv2lint -Mpack -I "$STAGE/Likyu.lv2" "$LV2_STEREO_URI" || echo "::warning::lv2lint reports on the stereo LV2"
-            xvfb-run -a lv2lint -Mpack -I "$STAGE/Likyu-Mono.lv2" "$LV2_MONO_URI" || echo "::warning::lv2lint reports on the mono LV2"
+            xvfb-run -a lv2lint -Mpack -I "$STAGE/Likyu-mono.lv2" "$LV2_MONO_URI" || echo "::warning::lv2lint reports on the mono LV2"
           else
             echo "::notice::lv2lint not available"
           fi
           if command -v lv2_validate >/dev/null; then
             lv2_validate "$STAGE"/Likyu.lv2/*.ttl || echo "::warning::lv2_validate reports on the stereo LV2"
-            lv2_validate "$STAGE"/Likyu-Mono.lv2/*.ttl || echo "::warning::lv2_validate reports on the mono LV2"
+            lv2_validate "$STAGE"/Likyu-mono.lv2/*.ttl || echo "::warning::lv2_validate reports on the mono LV2"
           else
             echo "::notice::lv2_validate not available"
           fi

@@ -94,7 +94,7 @@ fi
 step "LV2: both plugins listed by lilv"
 if command -v lv2ls >/dev/null; then
   STAGE=$(mktemp -d)
-  cp -R "$ART/LV2/Likyu.lv2" "$MONO/LV2/Likyu-Mono.lv2" "$STAGE/"
+  cp -R "$ART/LV2/Likyu.lv2" "$MONO/LV2/Likyu-mono.lv2" "$STAGE/"
   LISTED=$(LV2_PATH="$STAGE" lv2ls)
   echo "$LISTED"
   echo "$LISTED" | grep -qx "https://pixetbel.org/lv2/likyu/stereo" || { echo "!! stereo LV2 not listed"; exit 1; }

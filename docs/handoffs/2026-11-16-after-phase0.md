@@ -28,10 +28,9 @@
   the two open decisions it closes in the PRD, and the deletion of `spikes/tracker/`. It needs
   numpy and matplotlib, which are not installed in this machine's Python: use a virtual
   environment.
-- **Three answers from the author**: the copyright line (headers currently read
-  `Copyright (C) 2026 Pierre-Olivier Boulant`), the mono LV2 bundle's file name (currently
-  `Likyu-Mono.lv2`, plugin name "Likyu Mono"), and the two questions the spike raised (Confidence
-  threshold, Speed and close low pairs; PRD, Open decisions).
+- **Two answers from the author**: the questions the spike raised (Confidence threshold, Speed
+  and close low pairs; PRD, Open decisions). The copyright line and the mono LV2's name ("Likyu
+  mono", `Likyu-mono.lv2`) were decided later the same day.
 
 ## Things that will bite
 
