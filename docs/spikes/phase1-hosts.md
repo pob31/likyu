@@ -196,8 +196,9 @@ decided here. To be completed when the matrix is.
    **no pinch gesture** (`mouseMagnify` is never called); with it off, one finger and the
    system's pinch. That is why pinch events were seen once in Samplitude. For Phase 6: the
    editor asks for multitouch, and computes its own pinch from two touches on a node. The probe
-   now asks for it; every touch cell of the matrix above was measured without it and is to be
-   measured again.
+   now asks for it, and in a window of its own four fingers draw four discs (the author,
+   2026-11-17). Every touch cell of the matrix above was measured without it and is to be
+   measured again, in the hosts.
 7. **Samplitude's generic view shows no units** and seven decimals: the plugin should supply its
    own value text (Phase 2).
 
@@ -1026,4 +1027,11 @@ lookahead nor link".
   suggests Live can blend the track's own signal into what it sends to the sidechain bus, so in
   Live the key a Sidechain band reads may be a mix made by the host.
 - Of the plugin's own, "Output Gain" comes first, then the bands.
+
+### No host, Windows 11, 2026-11-17 about 19:10: multitouch asked for
+
+`LikyuProbeNoHost.exe` rebuilt with `setUsingWindowsMultiTouch (true)`. The author: "4 fingers >
+four coloured discs." JUCE at the pin delivers every finger on this machine once it is asked to.
+Whether a host lets them through to a plugin's window is the next thing to try, with the probe
+installed at 18:34, which asks through `usesWindowsMultiTouch()`.
 
