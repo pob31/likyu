@@ -3,7 +3,7 @@
 Started 2026-11-17. Devplan Phase 1. Code: `spikes/hostprobe/`, still in the tree because the
 matrix is open; it is deleted when the matrix is filled.
 
-**Status: Samplitude is measured (part 8); no other host yet.** The probe is built and validated, the procedure is written,
+**Status: Samplitude is measured (part 8); REAPER has its touch cell; nothing else yet.** The probe is built and validated, the procedure is written,
 and the validators' rows are filled for Windows. Every host row below is empty and waits for the
 author at the hosts. Part 4 says what JUCE's wrappers do as read from their source: it tells what
 to expect and is not a measurement.
@@ -118,7 +118,7 @@ to that host.
 
 | Host, format, system | 1 fed | 2 nothing routed | 3 lookahead | 4 parameters | 5 state | 6 layouts | 7 touch |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| REAPER, VST3, Windows |  |  |  |  |  |  |  |
+| REAPER, VST3, Windows |  |  |  |  |  |  | **As Samplitude**: the first finger only (the author, 2026-11-17; format not stated, no report saved) |
 | REAPER, LV2, Windows |  |  |  |  |  |  |  |
 | Bitwig, VST3, Windows |  |  |  |  |  | n/a |  |
 | Live 12, VST3, Windows |  |  |  |  |  | n/a |  |
@@ -514,4 +514,12 @@ then I won't see it again unless I lift all fingers off the screen."
 - No pinch on this try either.
 
 Row 7 for Samplitude is settled as far as it can be: one touch, used as a mouse would be.
+
+### REAPER, Windows 11, 2026-11-17, touch (the author's note)
+
+"In Reaper same for touch as in Samplitude": the first finger down reaches the editor, the others
+do not. Two hosts by two makers behaving alike points at what they share, which is how a Windows
+host embeds a plugin's window and how JUCE at this pin receives touches inside it, rather than at
+either host. Not established here; Bitwig, which is built for touch screens, is the host that can
+tell the two apart.
 
