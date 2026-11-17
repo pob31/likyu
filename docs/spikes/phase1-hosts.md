@@ -3,7 +3,7 @@
 Started 2026-11-17. Devplan Phase 1. Code: `spikes/hostprobe/`, still in the tree because the
 matrix is open; it is deleted when the matrix is filled.
 
-**Status: no host has been measured.** The probe is built and validated, the procedure is written,
+**Status: one partial session, Samplitude at load (part 8); no row is complete.** The probe is built and validated, the procedure is written,
 and the validators' rows are filled for Windows. Every host row below is empty and waits for the
 author at the hosts. Part 4 says what JUCE's wrappers do as read from their source: it tells what
 to expect and is not a measurement.
@@ -122,7 +122,7 @@ to that host.
 | REAPER, LV2, Windows |  |  |  |  |  |  |  |
 | Bitwig, VST3, Windows |  |  |  |  |  | n/a |  |
 | Live 12, VST3, Windows |  |  |  |  |  | n/a |  |
-| Samplitude, VST3, Windows |  |  |  | n/a |  | n/a |  |
+| Samplitude, VST3, Windows |  | Partial, 2026-11-17: at load the host leaves the sidechain bus inactive and the plugin has it **disabled**. No block had been processed when the report was saved, so what the buffer holds is not yet seen (part 8) |  | n/a |  | n/a |  |
 | Go.dot, VST3, Windows | n/a |  |  |  |  |  |  |
 | Go.dot, LV2, Windows | n/a |  |  |  |  |  |  |
 | REAPER, VST3, macOS |  |  |  |  |  |  | n/a |
@@ -150,3 +150,46 @@ Go.dot's sidechain is not benched (row 1): it feeds that bus silence until devpl
 None yet. When the matrix is filled: the answer to row 2 per format, the fallback rule confirmed
 or the amendment proposed to the author, and a line in the PRD for each host that cannot do what
 it assumes.
+
+## 8. Reports, as saved
+
+### Samplitude, VST3, Windows 11, 2026-11-17 13:44, session 1 (loaded, not played)
+
+Saved eleven seconds after the plugin was inserted, before any audio ran: `Blocks 0`. What it
+shows is how Samplitude sets the plugin up, and nothing of steps A to H yet.
+
+- It asks about three layouts: main and sidechain both stereo (accepted, and applied for an
+  instant), main in without an output (refused), then main stereo with the sidechain disabled,
+  which is the one it keeps. So Samplitude knows the bus is there and leaves it inactive.
+- One `prepareToPlay`: 48000 Hz, block 2000, float.
+- No process call in those eleven seconds, and no play head seen. Whether Samplitude calls the
+  plugin at all while stopped is not known from this: the next report, saved while playing, says.
+- `getStateInformation` twice, three seconds after loading.
+
+```text
+Host       Magix Samplitude (Sam_x64.exe) - VST3 - Windows 11
+Prepared   48000 Hz, block 2000 - prepareToPlay x1, releaseResources x0, reset x0
+Blocks     0 - zero-length 0 - float 0, double 0 - bypassed 0
+Transport  no play head seen
+Main bus   Stereo (L R) - LFE: none reported - peak exact zero
+Sidechain  disabled - process buffer 0 channels, buses add up to 0
+  SEEN AS  NO AUDIO PROCESSED YET - now exact zero, exact zero
+           highest ever exact zero, exact zero
+Latency    0 samples (lookahead 0 ms) - changed 0 times - prepareToPlay calls since the last change: 1
+State      fingerprint 1CC8BDCE - 0 of 284 off default - get x2, set x0
+Pointers   most down at once 0 - kinds seen: none yet
+Layout     in [Stereo (L R) | disabled] out [Stereo (L R)]
+Layouts    3 distinct layouts asked about
+
+13:44:24.796  constructed as VST3 in Magix Samplitude (Sam_x64.exe), Windows 11
+13:44:24.796  default layout: in [Stereo (L R) | disabled] out [Stereo (L R)]
+13:44:24.798  host asks: in [Stereo (L R) | Stereo (L R)] out [Stereo (L R)]  -> yes
+13:44:24.798  host asks: in [Stereo (L R) | disabled] out [disabled]  -> no
+13:44:24.798  numChannelsChanged: in [Stereo (L R) | Stereo (L R)] out [Stereo (L R)]
+13:44:24.798  processorLayoutsChanged: in [Stereo (L R) | Stereo (L R)] out [Stereo (L R)]
+13:44:24.798  host asks: in [Stereo (L R) | disabled] out [Stereo (L R)]  -> yes
+13:44:24.798  numChannelsChanged: in [Stereo (L R) | disabled] out [Stereo (L R)]
+13:44:24.798  processorLayoutsChanged: in [Stereo (L R) | disabled] out [Stereo (L R)]
+13:44:24.798  prepareToPlay #1: 48000 Hz, block 2000, float, realtime, latency 0; in [Stereo (L R) | disabled] out [Stereo (L R)]
+13:44:27.406  getStateInformation x2 (total 2); fingerprint 1CC8BDCE
+```
