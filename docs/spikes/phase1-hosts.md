@@ -3,7 +3,7 @@
 Started 2026-11-17. Devplan Phase 1. Code: `spikes/hostprobe/`, still in the tree because the
 matrix is open; it is deleted when the matrix is filled.
 
-**Status: Samplitude is measured (part 8); REAPER VST3 is begun; nothing else yet.** The probe is built and validated, the procedure is written,
+**Status: Samplitude is measured; REAPER VST3 is mostly measured and has two findings that touch the PRD (part 7); nothing else yet.** The probe is built and validated, the procedure is written,
 and the validators' rows are filled for Windows. Every host row below is empty and waits for the
 author at the hosts. Part 4 says what JUCE's wrappers do as read from their source: it tells what
 to expect and is not a measurement.
@@ -118,7 +118,7 @@ to that host.
 
 | Host, format, system | 1 fed | 2 nothing routed | 3 lookahead | 4 parameters | 5 state | 6 layouts | 7 touch |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| REAPER, VST3, Windows | Not yet: nothing sent to the sidechain | **Two states seen.** As inserted: bus disabled, two channels. Later in the session: **bus enabled, four channels, exact zeros**, with nothing routed (part 8) | **Realigns at every setting** (null test, the author); REAPER does it without restarting the plugin: no `prepareToPlay` after any of five changes. Whether the null holds through a change made while playing, without a stop, is to be confirmed | Not yet | Partial: project saved with the defaults; not scrambled, not reopened | Not yet; on loading REAPER asks for 64 channels (7th order Ambisonics) and is told yes | **As Samplitude**: the first finger only; the report reads "most down at once 1, mouse and touch" |
+| REAPER, VST3, Windows | **Not by REAPER's usual way.** With the track at four channels and a send to 3/4, REAPER makes the plugin's **main bus four channels wide** and the send lands in main channels 3 and 4; the sidechain, enabled after them as channels 5 and 6, stays at exact zeros (part 8). Through the pin connector: not yet tried | **Two states seen.** As inserted: bus disabled, two channels. Later: **bus enabled, exact zeros**, with nothing reaching it | **Realigns at every setting, also on the fly**, with a slip of sound at the change (the author); no `prepareToPlay` after a change | Not yet | Partial: scrambled (`BEF24EA3`) and saved; not reopened | **A four-channel track is given as "L R C Lfe", so an LFE is reported on channel 4** of a track that has none. Mono, 5.1 and wide tracks not yet; on loading REAPER asks for 64 channels and is told yes | **As Samplitude**: the first finger only |
 | REAPER, LV2, Windows |  |  |  |  |  |  |  |
 | Bitwig, VST3, Windows |  |  |  |  |  | n/a |  |
 | Live 12, VST3, Windows |  |  |  |  |  | n/a |  |
@@ -147,9 +147,34 @@ Go.dot's sidechain is not benched (row 1): it feeds that bus silence until devpl
 
 ## 7. Findings
 
-None yet. When the matrix is filled: the answer to row 2 per format, the fallback rule confirmed
-or the amendment proposed to the author, and a line in the PRD for each host that cannot do what
-it assumes.
+Provisional, from two hosts on Windows, VST3 only. Each is for the author to decide on; none is
+decided here. To be completed when the matrix is.
+
+1. **In REAPER the usual sidechain routing feeds the main bus, not the sidechain** (2026-11-17).
+   The plugin accepts any main layout up to 64 channels with output equal to input (PRD,
+   non-goals). REAPER offers the track's whole width to the main bus first: on a four-channel
+   track it asks for a four-channel main bus, is told yes, and only then adds the sidechain as
+   channels 5 and 6. A send to track channels 3/4, which is how a REAPER user keys a compressor,
+   therefore arrives as main channels 3 and 4 and is processed as audio; the sidechain reads
+   zeros. A plugin with a fixed stereo main bus does not meet this, because REAPER then has
+   nowhere to put channels 3/4 but the sidechain. Whether the pin connector can undo it by hand
+   is not yet tried. This sets the PRD's "any layout, chosen by the host" against its reference
+   use case in REAPER.
+2. **REAPER names a four-channel track "L R C Lfe"**, so the host "reports an LFE" on channel 4
+   of a track that is two stereo pairs or a quad. The PRD's default (a channel reported as LFE is
+   left out of the link) would leave that channel out wrongly.
+3. **An enabled sidechain with nothing in it exists in a VST3 host.** REAPER showed the bus
+   enabled and at exact zeros with no send at all. So the fallback to Self does not cover
+   "nothing routed" in REAPER even in VST3, and the prediction of part 4 (only AU and LV2 lack a
+   disabled state) was too kind to VST3.
+4. **Samplitude**, by contrast, keeps the bus disabled until a sidechain is chosen, and the
+   fallback applies there as written; but between opening a project and the first play it shows
+   a disabled bus although a sidechain is routed.
+5. **Latency:** REAPER realigns on the fly, with a slip of sound at the change; Samplitude only
+   at the next play start. Neither restarts the plugin for it.
+6. **Touch:** both deliver the first finger only. Pinch came once in Samplitude and not again.
+7. **Samplitude's generic view shows no units** and seven decimals: the plugin should supply its
+   own value text (Phase 2).
 
 ## 8. Reports, as saved
 
@@ -645,4 +670,80 @@ latency after each change and realigns, and does so without `prepareToPlay` or `
 Four of the five changes were made with the transport stopped and one while playing (144 to 48
 samples at 14:29:47, playback stopping two seconds later); the note does not say whether the null
 held across that one without a stop, which is where Samplitude failed.
+
+### REAPER, VST3, Windows 11, 2026-11-17 14:39 and 14:42, session 2 (scramble, then four channels and a send)
+
+A new instance after REAPER was restarted, on the probe build that logs wide layouts by name and
+size. Two reports of the same instance. The author: "With Reaper changing the look ahead on the
+fly did adjust with a slip of sound getting through while changing. Scrambled the values." and,
+of the second report, "After the Sidechain".
+
+- **Row 3, answered.** REAPER realigns after a lookahead change made during playback, without a
+  stop; something is heard at the moment of the change. (The plugin's delay jumps between two
+  blocks without a crossfade, as the Phase 0 handoff says, so part of that slip may be ours.)
+- **Row 5, in part.** Scramble gives `BEF24EA3`, 244 off default; `getStateInformation` follows
+  within half a second and again at each save. No `setStateInformation`: the project has not been
+  reopened with the scrambled values.
+- **Row 1: the send did not reach the sidechain.** At 14:41:18, when the track was given four
+  channels:
+  - REAPER asks for `in [L R C Lfe | L R C Lfe] out [L R C Lfe]` (refused: the sidechain is mono
+    or stereo), `in [Stereo | L R C Lfe] out [Stereo]` (refused), `in [L R C Lfe | Stereo] out
+    [Stereo]` (refused: output must equal input), then `in [L R C Lfe | Stereo] out [L R C Lfe]`,
+    which the plugin accepts, as it must by the PRD.
+  - It then settles on a **four-channel main bus** with the sidechain disabled (buffer of four
+    channels), and at 14:41:56 enables the sidechain: six channels, the sidechain being the last
+    two, at **exact zeros** through nine seconds of playback.
+  - The main input's highest peak rises to +1.3 dB: the send is in the main bus.
+  - It never asked for `in [Stereo | Stereo] out [Stereo]` on the four-channel track, the layout
+    that would have put channels 3/4 on the sidechain.
+- **Row 6, a first answer.** The four-channel layout REAPER gives has the speakers L, R, C and
+  Lfe; JUCE has no name for it ("Unknown"). The probe's *LFE* line reads "channel 4".
+- Sixteen distinct layouts asked about by the end.
+
+The second report's status lines, and the log from the change of width:
+
+```text
+Host       Reaper (reaper.exe) - VST3 - Windows 11
+Prepared   48000 Hz, block 128 - prepareToPlay x4, releaseResources x3, reset x7
+Blocks     58198 - sizes 128 to 128, last 128 - zero-length 0 - float 0, double 58198 - bypassed 0
+Transport  stopped - process calls: running
+Main bus   Unknown (L R C Lfe) - LFE: channel 4 - peak exact zero, highest ever 1.3 dB
+Sidechain  Stereo (L R) - process buffer 6 channels, buses add up to 6
+  SEEN AS  BUS ENABLED, EXACT ZEROS - now exact zero, exact zero
+           highest ever exact zero, exact zero
+Latency    0 samples (lookahead 0 ms) - changed 0 times - prepareToPlay calls since the last change: 4
+State      fingerprint BEF24EA3 - 244 of 284 off default - get x6, set x0
+Pointers   most down at once 0 - kinds seen: none yet
+Layout     in [Unknown (L R C Lfe) | Stereo (L R)] out [Unknown (L R C Lfe)]
+Layouts    16 distinct layouts asked about
+
+14:38:59.173  scrambled from the probe editor: fingerprint BEF24EA3
+14:38:59.644  getStateInformation x1 (total 3); fingerprint BEF24EA3
+14:39:18.262  getStateInformation x1 (total 4); fingerprint BEF24EA3
+14:41:18.708  releaseResources #2
+14:41:18.708  host asks: in [disabled | disabled] out [Stereo (L R)]  -> no
+14:41:18.708  numChannelsChanged: in [Stereo (L R) | Stereo (L R)] out [Stereo (L R)]
+14:41:18.708  host asks: in [Unknown (L R C Lfe) | Unknown (L R C Lfe)] out [Unknown (L R C Lfe)]  -> no
+14:41:18.708  host asks: in [Stereo (L R) | Unknown (L R C Lfe)] out [Stereo (L R)]  -> no
+14:41:18.708  host asks: in [Unknown (L R C Lfe) | Stereo (L R)] out [Stereo (L R)]  -> no
+14:41:18.708  host asks: in [Unknown (L R C Lfe) | Stereo (L R)] out [Unknown (L R C Lfe)]  -> yes
+14:41:18.708  numChannelsChanged: in [Unknown (L R C Lfe) | Stereo (L R)] out [Unknown (L R C Lfe)]
+14:41:18.708  host asks: in [Unknown (L R C Lfe) | disabled] out [disabled]  -> no
+14:41:18.708  host asks: in [Unknown (L R C Lfe) | disabled] out [Unknown (L R C Lfe)]  -> yes
+14:41:18.708  numChannelsChanged: in [Unknown (L R C Lfe) | disabled] out [Unknown (L R C Lfe)]
+14:41:18.708  prepareToPlay #3: 48000 Hz, block 128, double, realtime, latency 0; in [Unknown (L R C Lfe) | disabled] out [Unknown (L R C Lfe)]
+14:41:18.774  process buffer: 4 channels; the enabled buses add up to 4
+14:41:18.774  reset x1 (total 5)
+14:41:48.557  getStateInformation x1 (total 5); fingerprint BEF24EA3
+14:41:56.378  releaseResources #3
+14:41:56.379  numChannelsChanged: in [Unknown (L R C Lfe) | Stereo (L R)] out [Unknown (L R C Lfe)]
+14:41:56.379  prepareToPlay #4: 48000 Hz, block 128, double, realtime, latency 0; in [Unknown (L R C Lfe) | Stereo (L R)] out [Unknown (L R C Lfe)]
+14:41:56.437  process buffer: 6 channels; the enabled buses add up to 6
+14:41:56.437  sidechain seen as: bus enabled, exact zeros
+14:41:56.437  reset x1 (total 6)
+14:42:15.409  getStateInformation x1 (total 6); fingerprint BEF24EA3
+14:42:17.227  reset x1 (total 7)
+14:42:17.227  transport: playing
+14:42:26.506  transport: stopped
+```
 
