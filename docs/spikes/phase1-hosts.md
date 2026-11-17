@@ -122,7 +122,7 @@ to that host.
 | REAPER, LV2, Windows |  |  |  |  |  |  |  |
 | Bitwig, VST3, Windows |  |  |  |  |  | n/a |  |
 | Live 12, VST3, Windows |  |  |  |  |  | n/a |  |
-| Samplitude, VST3, Windows | **Yes.** *Side chain input* menu in the plug-in window; on choosing, the host enables the bus as stereo and the buffer has four channels with the key in the last two (-20.0 and -21.4 dB). Mono main does not exist in this host; a mono source not tried | **Bus disabled** until a sidechain is chosen; the buffer then holds the two main channels only (2584 blocks) | **Realigns at the next play start, not during playback.** A change while playing leaves the null broken until stop and start; the host does not restart the plugin by itself | Generic view of eight slots, each a chooser over the parameters; names shown, choices as text, **no units**, continuous values with seven decimals | **Restored exactly**: one `getStateInformation` per save, one `setStateInformation` on opening (6913 bytes, after the first `prepareToPlay`); the sidechain routing comes back with the project | n/a: no mono tracks | **One touch pointer; pinch unreliable**: the first finger arrives as touch #0; a second is never a second pointer; pinch events came once (809 of them) and not at all on a later try |
+| Samplitude, VST3, Windows | **Yes.** *Side chain input* menu in the plug-in window; on choosing, the host enables the bus as stereo and the buffer has four channels with the key in the last two (-20.0 and -21.4 dB). Mono main does not exist in this host; a mono source not tried | **Bus disabled** until a sidechain is chosen; the buffer then holds the two main channels only (2584 blocks) | **Realigns at the next play start, not during playback.** A change while playing leaves the null broken until stop and start; the host does not restart the plugin by itself | Generic view of eight slots, each a chooser over the parameters; names shown, choices as text, **no units**, continuous values with seven decimals | **Restored exactly**: one `getStateInformation` per save, one `setStateInformation` on opening (6913 bytes, after the first `prepareToPlay`); the sidechain routing comes back with the project | n/a: no mono tracks | **One touch pointer; pinch unreliable**: the first finger arrives as touch #0; only the first finger down is ever delivered, and no other until every finger is lifted; pinch events came once (809 of them) and not at all on later tries |
 | Go.dot, VST3, Windows | n/a |  |  |  |  |  |  |
 | Go.dot, LV2, Windows | n/a |  |  |  |  |  |  |
 | REAPER, VST3, macOS |  |  |  |  |  |  | n/a |
@@ -497,4 +497,21 @@ after the other; and the mouse cursor left over the pad against left elsewhere.
 
 **For Phase 6, as it stands:** in Samplitude neither a second pointer nor a pinch can be counted
 on. The wheel and the mouse must do everything there, as the PRD already requires.
+
+### Samplitude, VST3, Windows 11, 2026-11-17, touch: only the first finger
+
+The author, on the current build of the probe: "If I place 1 finger I see the red dot #0 touch.
+Then other fingers don't register as grey dots anymore since the last version. If I release #0
+then I won't see it again unless I lift all fingers off the screen."
+
+- **Only the first finger down is delivered to the editor**, as touch #0. Fingers that land
+  after it are not delivered at all, and when the first is lifted while others stay down, none
+  of those takes its place: a new touch arrives only after every finger has left the screen.
+  This is the system's "primary pointer" and nothing more.
+- The grey dots seen earlier under a second finger were not drawn by the probe (the pad draws
+  coloured, labelled discs, and its drawing of pointers did not change between builds; only the
+  pinch line did). Why they no longer appear is not known.
+- No pinch on this try either.
+
+Row 7 for Samplitude is settled as far as it can be: one touch, used as a mouse would be.
 
