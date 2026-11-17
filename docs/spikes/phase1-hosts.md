@@ -121,7 +121,7 @@ to that host.
 | REAPER, VST3, Windows | **Not by REAPER's usual way.** With the track at four channels and a send to 3/4, REAPER makes the plugin's **main bus four channels wide** and the send lands in main channels 3 and 4; the sidechain, enabled after them as channels 5 and 6, stays at exact zeros (part 8). **By dragging the key track's routing onto the plugin's window, the sidechain is fed** (14:55, signal while playing); the layout REAPER then uses is not yet on file | **Two states seen.** As inserted: bus disabled, two channels. Later: **bus enabled, exact zeros**, with nothing reaching it | **Realigns at every setting, also on the fly**, with a slip of sound at the change (the author); no `prepareToPlay` after a change | Not yet | Partial: scrambled (`BEF24EA3`) and saved; not reopened | **A four-channel track is given as "L R C Lfe", so an LFE is reported on channel 4** of a track that has none. Mono, 5.1 and wide tracks not yet; on loading REAPER asks for 64 channels and is told yes | **As Samplitude**: the first finger only |
 | REAPER, LV2, Windows |  |  |  |  |  |  |  |
 | Bitwig, VST3, Windows | **Yes**: a source chosen on the device enables the bus as stereo; four channels, signal on both sidechain channels (-10.1 dB), zeros when the source is silent | **Bus disabled** until a source is chosen; two channels | **Realigns on the fly**, a short burst at the change (the author). Bitwig **restarts the plugin** for every change: `releaseResources` and `prepareToPlay`, twice, within 40 ms | Not yet | State given back at construction (6913 bytes, `BEF24EA3`) in a fresh project: passed from an earlier instance to a new one, whole. Save and reopen not yet done | n/a | **As the others**: the first finger only (the author) |
-| Live 12, VST3, Windows | **Yes**: a source chosen on the device enables the bus as stereo; four channels, signal on both (-0.2 dB) | **Bus disabled** as inserted. **After a source has been chosen and removed again the bus stays enabled, at exact zeros** | **Realigns on the fly**, a small slip at the change (the author). Live restarts the plugin once for every change | **None shown until configured.** With *Configure* on, one press of Scramble in the probe brings all the parameters into Live's panel (the author). Names, units and the automation lanes not yet looked at | Saved and reloaded: `setStateInformation` once, after the first `prepareToPlay`; the values were the defaults, so the round trip is shown but not tested | n/a | **As the others**: one touch at a time |
+| Live 12, VST3, Windows | **Yes**: a source chosen on the device enables the bus as stereo; four channels, signal on both (-0.2 dB) | **Bus disabled** as inserted. **After a source has been chosen and removed again the bus stays enabled, at exact zeros** | **Realigns on the fly**, a small slip at the change (the author). Live restarts the plugin once for every change | **None shown until configured.** With *Configure* on, one press of Scramble in the probe brings all the parameters into Live's panel (the author). The clip's envelope chooser then lists them by name in table order, **one flat list of some 280 entries**, no groups, no search. Units not seen | Saved and reloaded: `setStateInformation` once, after the first `prepareToPlay`; the values were the defaults, so the round trip is shown but not tested | n/a | **As the others**: one touch at a time |
 | Samplitude, VST3, Windows | **Yes.** *Side chain input* menu in the plug-in window; on choosing, the host enables the bus as stereo and the buffer has four channels with the key in the last two (-20.0 and -21.4 dB). Mono main does not exist in this host; a mono source not tried | **Bus disabled** until a sidechain is chosen; the buffer then holds the two main channels only (2584 blocks) | **Realigns at the next play start, not during playback.** A change while playing leaves the null broken until stop and start; the host does not restart the plugin by itself | Generic view of eight slots, each a chooser over the parameters; names shown, choices as text, **no units**, continuous values with seven decimals | **Restored exactly**: one `getStateInformation` per save, one `setStateInformation` on opening (6913 bytes, after the first `prepareToPlay`); the sidechain routing comes back with the project | n/a: no mono tracks | **One touch pointer; pinch unreliable**: the first finger arrives as touch #0; only the first finger down is ever delivered, and no other until every finger is lifted; pinch events came once (809 of them) and not at all on later tries |
 | Go.dot, VST3, Windows | n/a |  |  |  |  |  |  |
 | Go.dot, LV2, Windows | n/a |  |  |  |  |  |  |
@@ -988,4 +988,24 @@ this window now ask for multitouch.
   tried.
 - The automation curves themselves were not seen: the author could not get Live to show any, the
   mixer's included, which is a matter of Live's views and not of the plugin.
+
+### Ableton Live 12, VST3, Windows 11, 2026-11-17, the envelope chooser (a screenshot)
+
+The clip view's *Envelopes* box, device chooser on "Likyu Probe", control chooser open.
+
+- The parameters are listed **by their names, in table order**: "Band 2 Transient Sustain",
+  "Band 2 Transient Time", ... "Band 3 On", "Band 3 Type", "Band 3 Frequency", "Band 3 Q", ...
+  "Band 4 Transient Sustain". The names read well and say which band.
+- It is **one flat list**. About seventy entries fill the height of a 2000-pixel screen, so the
+  284 make four screens of scrolling. No grouping by band, no search field. Finding "Band 7
+  Ratio" is a matter of scrolling to the seventh block of thirty-five.
+- The chooser's closed box cuts the name short ("Band 4 Transient Su"): the band number survives,
+  the end of the name does not. A name that puts what differs first would survive better; the
+  names are not frozen yet (devplan Phase 5).
+- Live's browser files the three plugins under "Pix et Bel": Likyu, Likyu Probe, Likyu Probe
+  fixed stereo.
+- Not on the screenshot: units, and whether `lookahead` and `link`, which are not automatable,
+  are kept out of this list (its top is above the screen).
+
+The author found the curves in Session view's clip envelopes, after "much rummaging".
 
