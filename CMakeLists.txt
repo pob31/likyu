@@ -53,7 +53,9 @@ set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
 # of its own across the boundary.
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
+# PROJECT_SOURCE_DIR here and below, never CMAKE_SOURCE_DIR: the tree names its own paths
+# from its own root, so another project can add it as a subdirectory.
+list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 
 include(LikyuOptions)
 include(LikyuThirdParty)

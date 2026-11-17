@@ -25,5 +25,5 @@ add_library(likyu::core ALIAS likyu_core)
 
 set_target_properties(likyu_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-target_include_directories(likyu_core PUBLIC "${CMAKE_SOURCE_DIR}/src")
+target_include_directories(likyu_core PUBLIC "${PROJECT_SOURCE_DIR}/src")
 target_link_libraries(likyu_core PUBLIC likyu::dsp likyu::deps PRIVATE likyu::warnings)

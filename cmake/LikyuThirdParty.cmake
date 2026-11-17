@@ -44,7 +44,7 @@ if(LIKYU_BUILD_PLUGINS)
 # ---------------------------------------------------------------------------
 # Not JUCE_MODULES_ONLY: the plugin needs juce_add_plugin, which that option removes. The
 # cost is the juceaide helper built once at configure.
-add_subdirectory("${CMAKE_SOURCE_DIR}/ThirdParty/JUCE" juce)
+add_subdirectory("${PROJECT_SOURCE_DIR}/ThirdParty/JUCE" juce)
 
 # ---------------------------------------------------------------------------
 # 2. likyu::juce_config — the switches, stated once
@@ -84,7 +84,7 @@ target_link_libraries(likyu_deps INTERFACE likyu::juce_config juce::juce_recomme
 
 # SYSTEM, so vendor warnings never meet -Werror on our code.
 target_include_directories(likyu_deps SYSTEM INTERFACE
-    "${CMAKE_SOURCE_DIR}/ThirdParty/JUCE/modules")
+    "${PROJECT_SOURCE_DIR}/ThirdParty/JUCE/modules")
 
 # JUCE_GLOBAL_MODULE_SETTINGS_INCLUDED is mandatory: without it the first JUCE header any
 # of our translation units includes is a hard #error. src/core uses juce_core and nothing

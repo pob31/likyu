@@ -33,7 +33,7 @@ add_executable(likyu_dsp_tests
     support/RtAllocCounter.cpp)
 
 # doctest from its own submodule, SYSTEM so its warnings stay off our -Werror.
-target_include_directories(likyu_dsp_tests SYSTEM PRIVATE "${CMAKE_SOURCE_DIR}/ThirdParty/doctest")
+target_include_directories(likyu_dsp_tests SYSTEM PRIVATE "${PROJECT_SOURCE_DIR}/ThirdParty/doctest")
 target_link_libraries(likyu_dsp_tests PRIVATE likyu::dsp likyu::warnings)
 
 add_test(NAME dsp COMMAND likyu_dsp_tests)
@@ -59,11 +59,11 @@ if(LIKYU_BUILD_PLUGINS)
         support/RtAllocCounter.cpp
 
         # The processor itself, without PluginEntry.cpp: no format wrapper here.
-        "${CMAKE_SOURCE_DIR}/src/shims/juce/PluginProcessor.h"
-        "${CMAKE_SOURCE_DIR}/src/shims/juce/PluginProcessor.cpp")
+        "${PROJECT_SOURCE_DIR}/src/shims/juce/PluginProcessor.h"
+        "${PROJECT_SOURCE_DIR}/src/shims/juce/PluginProcessor.cpp")
 
-    target_include_directories(likyu_tests SYSTEM PRIVATE "${CMAKE_SOURCE_DIR}/ThirdParty/doctest")
-    target_include_directories(likyu_tests PRIVATE "${CMAKE_SOURCE_DIR}/src/shims/juce")
+    target_include_directories(likyu_tests SYSTEM PRIVATE "${PROJECT_SOURCE_DIR}/ThirdParty/doctest")
+    target_include_directories(likyu_tests PRIVATE "${PROJECT_SOURCE_DIR}/src/shims/juce")
 
     target_compile_definitions(likyu_tests PRIVATE
         LIKYU_TEST_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
