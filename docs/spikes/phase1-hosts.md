@@ -121,7 +121,7 @@ to that host.
 | REAPER, VST3, Windows | **Not by REAPER's usual way.** With the track at four channels and a send to 3/4, REAPER makes the plugin's **main bus four channels wide** and the send lands in main channels 3 and 4; the sidechain, enabled after them as channels 5 and 6, stays at exact zeros (part 8). **By dragging the key track's routing onto the plugin's window, the sidechain is fed** (14:55, signal while playing); the layout REAPER then uses is not yet on file | **Two states seen.** As inserted: bus disabled, two channels. Later: **bus enabled, exact zeros**, with nothing reaching it | **Realigns at every setting, also on the fly**, with a slip of sound at the change (the author); no `prepareToPlay` after a change | Not yet | Partial: scrambled (`BEF24EA3`) and saved; not reopened | **A four-channel track is given as "L R C Lfe", so an LFE is reported on channel 4** of a track that has none. Mono, 5.1 and wide tracks not yet; on loading REAPER asks for 64 channels and is told yes | **As Samplitude**: the first finger only |
 | REAPER, LV2, Windows |  |  |  |  |  |  |  |
 | Bitwig, VST3, Windows | **Yes**: a source chosen on the device enables the bus as stereo; four channels, signal on both sidechain channels (-10.1 dB), zeros when the source is silent | **Bus disabled** until a source is chosen; two channels | **Realigns on the fly**, a short burst at the change (the author). Bitwig **restarts the plugin** for every change: `releaseResources` and `prepareToPlay`, twice, within 40 ms | Not yet | State given back at construction (6913 bytes, `BEF24EA3`) in a fresh project: passed from an earlier instance to a new one, whole. Save and reopen not yet done | n/a | **As the others**: the first finger only (the author) |
-| Live 12, VST3, Windows | **Yes**: a source chosen on the device enables the bus as stereo; four channels, signal on both (-0.2 dB) | **Bus disabled** as inserted. **After a source has been chosen and removed again the bus stays enabled, at exact zeros** | **Realigns on the fly**, a small slip at the change (the author). Live restarts the plugin once for every change | **None shown until configured.** With *Configure* on, one press of Scramble in the probe brings all the parameters into Live's panel (the author). The clip's envelope chooser then lists them by name in table order, **one flat list of some 280 entries**, no groups, no search. Units not seen | Saved and reloaded: `setStateInformation` once, after the first `prepareToPlay`; the values were the defaults, so the round trip is shown but not tested | n/a | **As the others**: one touch at a time |
+| Live 12, VST3, Windows | **Yes**: a source chosen on the device enables the bus as stereo; four channels, signal on both (-0.2 dB) | **Bus disabled** as inserted. **After a source has been chosen and removed again the bus stays enabled, at exact zeros** | **Realigns on the fly**, a small slip at the change (the author). Live restarts the plugin once for every change | **None shown until configured.** With *Configure* on, one press of Scramble in the probe brings all the parameters into Live's panel (the author). The clip's envelope chooser then lists them by name in table order, **one flat list of some 280 entries**, no groups, no search; `lookahead` and `link` are rightly absent, `bypass` is Live's own "Device On". Units not seen | Saved and reloaded: `setStateInformation` once, after the first `prepareToPlay`; the values were the defaults, so the round trip is shown but not tested | n/a | **As the others**: one touch at a time |
 | Samplitude, VST3, Windows | **Yes.** *Side chain input* menu in the plug-in window; on choosing, the host enables the bus as stereo and the buffer has four channels with the key in the last two (-20.0 and -21.4 dB). Mono main does not exist in this host; a mono source not tried | **Bus disabled** until a sidechain is chosen; the buffer then holds the two main channels only (2584 blocks) | **Realigns at the next play start, not during playback.** A change while playing leaves the null broken until stop and start; the host does not restart the plugin by itself | Generic view of eight slots, each a chooser over the parameters; names shown, choices as text, **no units**, continuous values with seven decimals | **Restored exactly**: one `getStateInformation` per save, one `setStateInformation` on opening (6913 bytes, after the first `prepareToPlay`); the sidechain routing comes back with the project | n/a: no mono tracks | **One touch pointer; pinch unreliable**: the first finger arrives as touch #0; only the first finger down is ever delivered, and no other until every finger is lifted; pinch events came once (809 of them) and not at all on later tries |
 | Go.dot, VST3, Windows | n/a |  |  |  |  |  |  |
 | Go.dot, LV2, Windows | n/a |  |  |  |  |  |  |
@@ -1008,4 +1008,22 @@ The clip view's *Envelopes* box, device chooser on "Likyu Probe", control choose
   are kept out of this list (its top is above the screen).
 
 The author found the curves in Session view's clip envelopes, after "much rummaging".
+
+### Ableton Live 12, VST3, Windows 11, 2026-11-17, the top of the envelope chooser (a screenshot)
+
+The list begins: "Device On", "Sidechain On", "Sidechain Input Gain", "Input/Sidechain Mix",
+"Output Gain", "Band 1 On", "Band 1 Type", "Band 1 Frequency", "Band 1 Q". The author: "No
+lookahead nor link".
+
+- **`lookahead` and `link` are not offered for automation**, as the table declares them. Live
+  honours the flag.
+- **`bypass` does not appear under its name.** The first entry is Live's own "Device On", which
+  is where a plugin's host bypass parameter goes.
+- **Live adds three controls of its own for a plugin with a sidechain input**: "Sidechain On",
+  "Sidechain Input Gain" and "Input/Sidechain Mix". They are Live's, ahead of the plugin's, and
+  can be automated. "Sidechain On" is a switch separate from the choice of a source, as in
+  Samplitude; what the plugin sees with it on and no source was not tried. "Input/Sidechain Mix"
+  suggests Live can blend the track's own signal into what it sends to the sidechain bus, so in
+  Live the key a Sidechain band reads may be a mix made by the host.
+- Of the plugin's own, "Output Gain" comes first, then the bands.
 
