@@ -276,3 +276,25 @@ Layouts    3 distinct layouts asked about
 13:46:43.992  releaseResources #8
 13:46:44.043  reset x1 (total 8)
 ```
+
+### Samplitude, VST3, Windows 11, 2026-11-17 13:49, session 1 continued (seven more plays)
+
+The same instance and the same build of the probe as above, so the two gaps named there still
+apply. Seven more stretches of playback between 13:47:56 and 13:49:32, at 144 samples of latency
+throughout. The author's notes on what was done in them are not in yet.
+
+- **Nothing new on the sidechain:** bus disabled, two channels in the buffer, in all 2584 blocks.
+- **The play and stop pattern holds without exception** over fourteen more `prepareToPlay` calls:
+  on play, `prepareToPlay`, `releaseResources`, `prepareToPlay`, `reset`; on stop,
+  `releaseResources`, `reset`. The 1841 new blocks are 76.7 s and the seven stretches add up to
+  76.3 s: no process call outside playback.
+- **Every `prepareToPlay` after the changes is made with latency 144**, so the plugin's figure is
+  there for the host to read at each play start. Whether Samplitude reads it is still the null
+  test's to say.
+- **No state call:** `getStateInformation` stays at the two calls made on loading and
+  `setStateInformation` at none. If the project was saved in this stretch, Samplitude saved it
+  without asking the plugin again; if it was not, this says nothing. To be settled by the author's
+  note.
+
+The log's new lines are fourteen repetitions of the pattern above and are not copied here.
+
