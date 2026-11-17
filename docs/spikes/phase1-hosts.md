@@ -118,7 +118,7 @@ to that host.
 
 | Host, format, system | 1 fed | 2 nothing routed | 3 lookahead | 4 parameters | 5 state | 6 layouts | 7 touch |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| REAPER, VST3, Windows | Not yet: nothing sent to the sidechain | **Two states seen.** As inserted: bus disabled, two channels. Later in the session: **bus enabled, four channels, exact zeros**, with nothing routed (part 8) | Partial: no `prepareToPlay` and no `releaseResources` after any of five changes; the null test not yet reported | Not yet | Partial: project saved with the defaults; not scrambled, not reopened | Not yet; on loading REAPER asks for 64 channels (7th order Ambisonics) and is told yes | **As Samplitude**: the first finger only; the report reads "most down at once 1, mouse and touch" |
+| REAPER, VST3, Windows | Not yet: nothing sent to the sidechain | **Two states seen.** As inserted: bus disabled, two channels. Later in the session: **bus enabled, four channels, exact zeros**, with nothing routed (part 8) | **Realigns at every setting** (null test, the author); REAPER does it without restarting the plugin: no `prepareToPlay` after any of five changes. Whether the null holds through a change made while playing, without a stop, is to be confirmed | Not yet | Partial: project saved with the defaults; not scrambled, not reopened | Not yet; on loading REAPER asks for 64 channels (7th order Ambisonics) and is told yes | **As Samplitude**: the first finger only; the report reads "most down at once 1, mouse and touch" |
 | REAPER, LV2, Windows |  |  |  |  |  |  |  |
 | Bitwig, VST3, Windows |  |  |  |  |  | n/a |  |
 | Live 12, VST3, Windows |  |  |  |  |  | n/a |  |
@@ -637,4 +637,12 @@ repeat the line above them, left out:
 14:33:40.300  process calls: started
 14:33:40.300  reset x1 (total 11)
 ```
+
+### REAPER, VST3, Windows 11, 2026-11-17, the null test (the author's note)
+
+"Null test was successful at any lookahead setting." With the log above: REAPER re-reads the
+latency after each change and realigns, and does so without `prepareToPlay` or `releaseResources`.
+Four of the five changes were made with the transport stopped and one while playing (144 to 48
+samples at 14:29:47, playback stopping two seconds later); the note does not say whether the null
+held across that one without a stop, which is where Samplitude failed.
 
