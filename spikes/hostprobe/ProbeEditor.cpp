@@ -96,8 +96,14 @@ namespace likyu::probe
 
     void TouchPad::mouseMagnify (const juce::MouseEvent& event, float scaleFactor)
     {
+        // One event says little: a pinch comes as hundreds of factors close to 1.
+        magnifyProduct *= scaleFactor;
+        magnifyLowest = juce::jmin (magnifyLowest, scaleFactor);
+        magnifyHighest = juce::jmax (magnifyHighest, scaleFactor);
+
         lastGesture = "pinch #" + juce::String (++magnifyEvents) + " from " + typeName (event.source.getType())
-                      + ": factor " + juce::String (scaleFactor, 3);
+                      + ": factor " + juce::String (scaleFactor, 4) + ", product " + juce::String (magnifyProduct, 3)
+                      + ", range " + juce::String (magnifyLowest, 4) + " to " + juce::String (magnifyHighest, 4);
         repaint();
     }
 

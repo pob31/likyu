@@ -122,7 +122,7 @@ to that host.
 | REAPER, LV2, Windows |  |  |  |  |  |  |  |
 | Bitwig, VST3, Windows |  |  |  |  |  | n/a |  |
 | Live 12, VST3, Windows |  |  |  |  |  | n/a |  |
-| Samplitude, VST3, Windows | **Yes.** *Side chain input* menu in the plug-in window; on choosing, the host enables the bus as stereo and the buffer has four channels with the key in the last two (-20.0 and -21.4 dB). Mono main does not exist in this host; a mono source not tried | **Bus disabled** until a sidechain is chosen; the buffer then holds the two main channels only (2584 blocks) | **Realigns at the next play start, not during playback.** A change while playing leaves the null broken until stop and start; the host does not restart the plugin by itself | Generic view of eight slots, each a chooser over the parameters; names shown, choices as text, **no units**, continuous values with seven decimals | **Restored exactly**: one `getStateInformation` per save, one `setStateInformation` on opening (6913 bytes, after the first `prepareToPlay`); the sidechain routing comes back with the project | n/a: no mono tracks | **One touch only**: the first finger is drawn, a second is not (the author, by eye) |
+| Samplitude, VST3, Windows | **Yes.** *Side chain input* menu in the plug-in window; on choosing, the host enables the bus as stereo and the buffer has four channels with the key in the last two (-20.0 and -21.4 dB). Mono main does not exist in this host; a mono source not tried | **Bus disabled** until a sidechain is chosen; the buffer then holds the two main channels only (2584 blocks) | **Realigns at the next play start, not during playback.** A change while playing leaves the null broken until stop and start; the host does not restart the plugin by itself | Generic view of eight slots, each a chooser over the parameters; names shown, choices as text, **no units**, continuous values with seven decimals | **Restored exactly**: one `getStateInformation` per save, one `setStateInformation` on opening (6913 bytes, after the first `prepareToPlay`); the sidechain routing comes back with the project | n/a: no mono tracks | **One touch pointer, and pinch as a gesture**: the first finger arrives as touch #0; a second is not a second pointer, but the pad counts hundreds of pinch events |
 | Go.dot, VST3, Windows | n/a |  |  |  |  |  |  |
 | Go.dot, LV2, Windows | n/a |  |  |  |  |  |  |
 | REAPER, VST3, macOS |  |  |  |  |  |  | n/a |
@@ -462,4 +462,18 @@ Layouts    3 distinct layouts asked about
   to have mono is to collapse the width of the panner to mono. Only export can be mono." So the
   plugin is always given a stereo main bus here, and "stereo into a mono main" does not exist in
   this host. A mono file as the sidechain source remains possible and was not tried.
+
+### Samplitude, VST3, Windows 11, 2026-11-17, the pointer pad on a screenshot
+
+The pad shows one disc labelled "#0 touch" and, on its last line, "pinch #809 from touch: factor
+1.000".
+
+- The first finger arrives as a **touch**, source index 0, not as a mouse.
+- **The second finger does reach the editor, as a pinch gesture and not as a pointer**: 809
+  `mouseMagnify` calls. So in Samplitude two fingers cannot drag two nodes, but a pinch can set a
+  Q, which is the gesture the PRD gives it. This corrects the note above, which read the missing
+  second disc as no multitouch at all.
+- The factor shown is that of the last event alone and reads 1.000 to three decimals: a pinch
+  comes as many factors close to 1. Whether their product follows the fingers was not on the
+  screen; the pad now shows the product and the range of the factors as well.
 

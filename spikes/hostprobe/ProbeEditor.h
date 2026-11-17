@@ -60,6 +60,7 @@ namespace likyu::probe
         std::map<int, Pointer> pointers;    // by MouseInputSource index
         juce::String lastGesture { "no wheel or pinch yet" };
         int wheelEvents = 0, magnifyEvents = 0;
+        float magnifyProduct = 1.0f, magnifyLowest = 1.0f, magnifyHighest = 1.0f;
     };
 
     //==========================================================================
