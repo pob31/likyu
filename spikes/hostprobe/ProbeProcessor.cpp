@@ -358,13 +358,16 @@ namespace likyu::probe
             sidechainSignal = sidechainSignal || shownSidechainPeak[i] > 0.0f;
         }
 
-        ticksSinceSidechainSignal = sidechainSignal ? 0 : juce::jmin (ticksSinceSidechainSignal + 1, 1000);
 
         /*  Is the host calling process at all? A host that stops calling when
             its transport stops leaves the last play head answer standing. */
         const auto blocksNow = audio.blocks.load (relaxed);
         ticksSinceBlock = blocksNow != seenBlocks ? 0 : juce::jmin (ticksSinceBlock + 1, 1000);
         seenBlocks = blocksNow;
+
+        // Only while blocks arrive: a host that stops calling has not sent zeros.
+        if (ticksSinceBlock == 0)
+            ticksSinceSidechainSignal = sidechainSignal ? 0 : juce::jmin (ticksSinceSidechainSignal + 1, 1000);
 
         if (const auto running = ticksSinceBlock < 3; running != processing)
         {

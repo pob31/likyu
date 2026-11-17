@@ -3,7 +3,7 @@
 Started 2026-11-17. Devplan Phase 1. Code: `spikes/hostprobe/`, still in the tree because the
 matrix is open; it is deleted when the matrix is filled.
 
-**Status: Samplitude has its "nothing routed" cell (part 8); nothing else is complete.** The probe is built and validated, the procedure is written,
+**Status: Samplitude is measured except for the reload and touch (part 8); no other host yet.** The probe is built and validated, the procedure is written,
 and the validators' rows are filled for Windows. Every host row below is empty and waits for the
 author at the hosts. Part 4 says what JUCE's wrappers do as read from their source: it tells what
 to expect and is not a measurement.
@@ -122,7 +122,7 @@ to that host.
 | REAPER, LV2, Windows |  |  |  |  |  |  |  |
 | Bitwig, VST3, Windows |  |  |  |  |  | n/a |  |
 | Live 12, VST3, Windows |  |  |  |  |  | n/a |  |
-| Samplitude, VST3, Windows | Partial: the plug-in window has a **Side chain input** menu listing the other tracks; none chosen yet | **Bus disabled**; the buffer holds the two main channels only, playing, 2584 blocks (2026-11-17, part 8) | Partial: two changes while playing were followed by no `prepareToPlay`; whether the host realigns is not known without the null test | Generic view of eight slots, each a chooser over the parameters; names shown, choices as text, **no units**, continuous values with seven decimals (part 8) | Partial: saving the project calls `getStateInformation` once; reload not yet done | n/a |  |
+| Samplitude, VST3, Windows | **Yes.** *Side chain input* menu in the plug-in window; on choosing, the host enables the bus as stereo and the buffer has four channels with the key in the last two (-20.0 and -21.4 dB). Mono source, and mono main, not tried | **Bus disabled** until a sidechain is chosen; the buffer then holds the two main channels only (2584 blocks) | **Realigns at the next play start, not during playback.** A change while playing leaves the null broken until stop and start; the host does not restart the plugin by itself | Generic view of eight slots, each a chooser over the parameters; names shown, choices as text, **no units**, continuous values with seven decimals | Partial: one `getStateInformation` per save; reload not yet done (expect `D72C0CAF`) | n/a |  |
 | Go.dot, VST3, Windows | n/a |  |  |  |  |  |  |
 | Go.dot, LV2, Windows | n/a |  |  |  |  |  |  |
 | REAPER, VST3, macOS |  |  |  |  |  |  | n/a |
@@ -324,4 +324,63 @@ saved. Seen on the screenshot:
 - The probe's editor draws correctly in Samplitude's plug-in window, on a scaled display.
 
 The project is `D:\Desktop6-11-17.VIP` on the author's machine.
+
+### Samplitude, VST3, Windows 11, 2026-11-17 13:56, session 1 continued (null test, then a sidechain)
+
+The same instance, still the first build of the probe. The author: "Null test requires a start
+and stop, but works as expected when the playback is restarted." The project was saved again
+after this report.
+
+- **Row 3, answered.** Three changes during playback (144 to 48, 48 to 12, 12 to 0, from
+  13:55:31). After each the null is broken until the author stops and starts; the log shows a
+  `releaseResources` 0.3 to 0.7 s after each change and the play-start pattern after it, which
+  are those stops and starts. Samplitude takes the new latency at the next play start and
+  realigns correctly from there. It does not act on the latency-changed notification while
+  playing.
+- **Row 1, answered for a stereo source on a stereo track.** At 13:56:42, with the plugin
+  released, the layout becomes `in [Stereo | Stereo]` (`numChannelsChanged`, no new
+  `isBusesLayoutSupported` question), then a play start; the buffer has four channels and the
+  probe reads signal on both sidechain channels, highest -20.0 and -21.4 dB. Which entry of the
+  *Side chain input* menu did it (a track, or *Side chain in*) is to be noted by the author.
+- **Row 2, completed by this:** the bus is disabled until the user chooses a sidechain and
+  enabled from then on. In Samplitude "sidechain selected in a band, none chosen in the host" is
+  therefore visible to the plugin as a disabled bus, and the PRD's fallback to Self applies as
+  written.
+- **State.** `getStateInformation` once per save (13:50:32, 13:55:30, 13:56:35, 13:56:49). The
+  fingerprint went from `38B0C07A` to `D72C0CAF` and the count off default from 252 to 251 when
+  the lookahead came back to Off: lookahead is one of the 284 values. The reload should show
+  `D72C0CAF`.
+- **A fault of the probe, again:** "sidechain seen as: bus enabled, exact zeros" at 13:56:45 and
+  on the *SEEN AS* line is not a measurement. Playback stopped at 13:56:44, no block came after,
+  and the probe took a second without signal for zeros. Fixed after this session: the
+  classification now moves only while blocks arrive. The *Main bus peak* and *Transport* lines
+  are stale for the reason given above.
+
+New lines of the log, the play and stop patterns left out:
+
+```text
+13:50:32.665  getStateInformation x1 (total 3); fingerprint 38B0C07A
+13:55:30.143  getStateInformation x1 (total 4); fingerprint 38B0C07A
+13:55:31.667  lookahead choice 2 (1 ms) set from the probe editor
+13:55:31.759  latency reported to the host: 144 -> 48 samples, transport playing
+13:55:32.386  releaseResources #24
+13:55:32.737  prepareToPlay #25: 48000 Hz, block 2000, float, realtime, latency 48; in [Stereo (L R) | disabled] out [Stereo (L R)]
+13:55:33.930  lookahead choice 1 (0.25 ms) set from the probe editor
+13:55:33.948  latency reported to the host: 48 -> 12 samples, transport playing
+13:55:34.238  releaseResources #26
+13:55:34.526  prepareToPlay #27: 48000 Hz, block 2000, float, realtime, latency 12; in [Stereo (L R) | disabled] out [Stereo (L R)]
+13:55:36.007  lookahead choice 0 (0 ms) set from the probe editor
+13:55:36.089  latency reported to the host: 12 -> 0 samples, transport playing
+13:55:36.333  releaseResources #28
+13:55:36.654  prepareToPlay #29: 48000 Hz, block 2000, float, realtime, latency 0; in [Stereo (L R) | disabled] out [Stereo (L R)]
+13:56:35.739  getStateInformation x1 (total 5); fingerprint D72C0CAF
+13:56:42.255  numChannelsChanged: in [Stereo (L R) | Stereo (L R)] out [Stereo (L R)]
+13:56:42.255  processorLayoutsChanged: in [Stereo (L R) | Stereo (L R)] out [Stereo (L R)]
+13:56:42.255  prepareToPlay #31: 48000 Hz, block 2000, float, realtime, latency 0; in [Stereo (L R) | Stereo (L R)] out [Stereo (L R)]
+13:56:42.401  process buffer: 4 channels; the enabled buses add up to 4
+13:56:42.401  sidechain seen as: bus enabled, signal
+13:56:44.223  releaseResources #32
+13:56:45.233  sidechain seen as: bus enabled, exact zeros
+13:56:49.551  getStateInformation x1 (total 6); fingerprint D72C0CAF
+```
 
