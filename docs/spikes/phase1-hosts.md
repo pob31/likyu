@@ -122,7 +122,7 @@ to that host.
 | REAPER, LV2, Windows |  |  |  |  |  |  |  |
 | Bitwig, VST3, Windows |  |  |  |  |  | n/a |  |
 | Live 12, VST3, Windows |  |  |  |  |  | n/a |  |
-| Samplitude, VST3, Windows | **Yes.** *Side chain input* menu in the plug-in window; on choosing, the host enables the bus as stereo and the buffer has four channels with the key in the last two (-20.0 and -21.4 dB). Mono main does not exist in this host; a mono source not tried | **Bus disabled** until a sidechain is chosen; the buffer then holds the two main channels only (2584 blocks) | **Realigns at the next play start, not during playback.** A change while playing leaves the null broken until stop and start; the host does not restart the plugin by itself | Generic view of eight slots, each a chooser over the parameters; names shown, choices as text, **no units**, continuous values with seven decimals | **Restored exactly**: one `getStateInformation` per save, one `setStateInformation` on opening (6913 bytes, after the first `prepareToPlay`); the sidechain routing comes back with the project | n/a: no mono tracks | **One touch pointer, and pinch as a gesture**: the first finger arrives as touch #0; a second is not a second pointer, but the pad counts hundreds of pinch events |
+| Samplitude, VST3, Windows | **Yes.** *Side chain input* menu in the plug-in window; on choosing, the host enables the bus as stereo and the buffer has four channels with the key in the last two (-20.0 and -21.4 dB). Mono main does not exist in this host; a mono source not tried | **Bus disabled** until a sidechain is chosen; the buffer then holds the two main channels only (2584 blocks) | **Realigns at the next play start, not during playback.** A change while playing leaves the null broken until stop and start; the host does not restart the plugin by itself | Generic view of eight slots, each a chooser over the parameters; names shown, choices as text, **no units**, continuous values with seven decimals | **Restored exactly**: one `getStateInformation` per save, one `setStateInformation` on opening (6913 bytes, after the first `prepareToPlay`); the sidechain routing comes back with the project | n/a: no mono tracks | **One touch pointer; pinch unreliable**: the first finger arrives as touch #0; a second is never a second pointer; pinch events came once (809 of them) and not at all on a later try |
 | Go.dot, VST3, Windows | n/a |  |  |  |  |  |  |
 | Go.dot, LV2, Windows | n/a |  |  |  |  |  |  |
 | REAPER, VST3, macOS |  |  |  |  |  |  | n/a |
@@ -476,4 +476,25 @@ The pad shows one disc labelled "#0 touch" and, on its last line, "pinch #809 fr
 - The factor shown is that of the last event alone and reads 1.000 to three decimals: a pinch
   comes as many factors close to 1. Whether their product follows the fingers was not on the
   screen; the pad now shows the product and the range of the factors as well.
+
+### Samplitude, VST3, Windows 11, 2026-11-17, pinch tried again
+
+The author, on a later try: "No pinch feedback. It still says 'No wheel or pinch yet'." So the
+809 pinch events of the screenshot above did not come back. **Pinch reaches the editor in
+Samplitude sometimes and not always**, and what makes the difference is not known.
+
+What is known of the mechanism, read from JUCE at the pin
+(`juce_gui_basics/native/juce_Windowing_windows.cpp`, `doGestureEvent`, about line 2970): on
+Windows a pinch is not built from two touch pointers. It comes from the system's own gesture
+message (`WM_GESTURE`, zoom), each event carrying the ratio of the fingers' distance to the
+previous one, and it is given to whichever JUCE window is under the mouse position at that
+moment. So it depends on which window the system sends the gesture to, the host's or the
+plugin's, and on where it believes the pointer is: both are the host's business, and both can
+differ from one try to the next (which finger lands first, where the mouse cursor was left).
+
+Untried, and worth one minute in the next host as well: both fingers landing together against one
+after the other; and the mouse cursor left over the pad against left elsewhere.
+
+**For Phase 6, as it stands:** in Samplitude neither a second pointer nor a pinch can be counted
+on. The wheel and the mouse must do everything there, as the PRD already requires.
 
