@@ -1042,3 +1042,15 @@ have multitouch now." Several fingers reach the plugin's editor in both. No repo
 the count and the pad's pinch line are not on file. Row 7 is answered for these two: a host does
 not stand in the way, the editor only has to ask.
 
+### Multitouch asked for, Windows 11, 2026-11-17: the pad on a screenshot
+
+Four discs, "#0 touch" to "#3 touch", and the pad's last line still "no wheel or pinch yet".
+
+- Four fingers arrive as four touch sources, numbered from 0 in the order they land.
+- **No pinch event at all with several fingers down**, as JUCE's note says of a window registered
+  for touch. The two modes do exclude each other: the editor that wants several fingers computes
+  its own pinch.
+- The discs are drawn at their largest size, which the pad gives to a pressure of 1 or more: a
+  pressure is reported with each touch on this screen. Its range was not looked at.
+- Which window this was (a host's or the one without a host) is not on the screenshot.
+
