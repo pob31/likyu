@@ -118,7 +118,7 @@ to that host.
 
 | Host, format, system | 1 fed | 2 nothing routed | 3 lookahead | 4 parameters | 5 state | 6 layouts | 7 touch |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| REAPER, VST3, Windows | **Not by REAPER's usual way.** With the track at four channels and a send to 3/4, REAPER makes the plugin's **main bus four channels wide** and the send lands in main channels 3 and 4; the sidechain, enabled after them as channels 5 and 6, stays at exact zeros (part 8). Through the pin connector: not yet tried | **Two states seen.** As inserted: bus disabled, two channels. Later: **bus enabled, exact zeros**, with nothing reaching it | **Realigns at every setting, also on the fly**, with a slip of sound at the change (the author); no `prepareToPlay` after a change | Not yet | Partial: scrambled (`BEF24EA3`) and saved; not reopened | **A four-channel track is given as "L R C Lfe", so an LFE is reported on channel 4** of a track that has none. Mono, 5.1 and wide tracks not yet; on loading REAPER asks for 64 channels and is told yes | **As Samplitude**: the first finger only |
+| REAPER, VST3, Windows | **Not by REAPER's usual way.** With the track at four channels and a send to 3/4, REAPER makes the plugin's **main bus four channels wide** and the send lands in main channels 3 and 4; the sidechain, enabled after them as channels 5 and 6, stays at exact zeros (part 8). **By dragging the key track's routing onto the plugin's window, the sidechain is fed** (14:55, signal while playing); the layout REAPER then uses is not yet on file | **Two states seen.** As inserted: bus disabled, two channels. Later: **bus enabled, exact zeros**, with nothing reaching it | **Realigns at every setting, also on the fly**, with a slip of sound at the change (the author); no `prepareToPlay` after a change | Not yet | Partial: scrambled (`BEF24EA3`) and saved; not reopened | **A four-channel track is given as "L R C Lfe", so an LFE is reported on channel 4** of a track that has none. Mono, 5.1 and wide tracks not yet; on loading REAPER asks for 64 channels and is told yes | **As Samplitude**: the first finger only |
 | REAPER, LV2, Windows |  |  |  |  |  |  |  |
 | Bitwig, VST3, Windows |  |  |  |  |  | n/a |  |
 | Live 12, VST3, Windows |  |  |  |  |  | n/a |  |
@@ -157,8 +157,10 @@ decided here. To be completed when the matrix is.
    channels 5 and 6. A send to track channels 3/4, which is how a REAPER user keys a compressor,
    therefore arrives as main channels 3 and 4 and is processed as audio; the sidechain reads
    zeros. A plugin with a fixed stereo main bus does not meet this, because REAPER then has
-   nowhere to put channels 3/4 but the sidechain. Whether the pin connector can undo it by hand
-   is not yet tried. This sets the PRD's "any layout, chosen by the host" against its reference
+   nowhere to put channels 3/4 but the sidechain. **Qualified the same day:** dragging the key
+   track's routing onto the plugin's window does feed the sidechain of the plugin as it is, so
+   REAPER has a way that works; what differs from the hand-made send (the pin mapping, the width
+   of the main bus) awaits a full report. This sets the PRD's "any layout, chosen by the host" against its reference
    use case in REAPER.
 2. **REAPER names a four-channel track "L R C Lfe"**, so the host "reports an LFE" on channel 4
    of a track that is two stereo pairs or a quad. The PRD's default (a channel reported as LFE is
@@ -746,4 +748,30 @@ Layouts    16 distinct layouts asked about
 14:42:17.227  transport: playing
 14:42:26.506  transport: stopped
 ```
+
+### REAPER, VST3, Windows 11, 2026-11-17 14:55, the sidechain fed (a fragment of the log)
+
+The author: "I figured it out. It was from the hidden routing section to the plugin." That is,
+the drag starts from the key track's routing control and ends on the plugin's window. The
+fingerprint `BEF24EA3` before the Scramble of 14:55:50 says this is the instance of session 2, the
+probe that accepts any main width, not the fixed-stereo control.
+
+```text
+14:55:30.960  sidechain seen as: bus enabled, signal
+14:55:30.960  transport: playing
+14:55:34.496  transport: stopped
+14:55:35.502  sidechain seen as: bus enabled, exact zeros
+14:55:53.380  sidechain seen as: bus enabled, signal
+14:55:53.380  transport: playing
+14:55:58.526  transport: stopped
+14:55:59.538  sidechain seen as: bus enabled, exact zeros
+```
+
+- **Row 1: the sidechain receives signal in REAPER**, while the key track plays.
+- The zeros after each stop are real this time: REAPER goes on calling the plugin when stopped,
+  with nothing in the sidechain. So a stopped REAPER shows an enabled, silent sidechain, which is
+  again the case the PRD treats as a key.
+- **Not in the fragment:** the status lines. Whether the main bus is two or four channels wide
+  here, how many channels the buffer has, and the levels, need a saved report. That decides
+  whether finding 1 of part 7 is a matter of which REAPER gesture is used, or stands.
 
