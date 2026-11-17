@@ -62,6 +62,14 @@ namespace likyu::probe
             return found.isEmpty() ? juce::String ("none reported") : found.joinIntoString (", ");
         }
 
+        /*  A parameter's value as it survives a save: through real units and
+            back. A toggle set to 0.58 by a host holds 0.58 until then, and
+            is "on" all the same. */
+        float settled (const juce::RangedAudioParameter& parameter)
+        {
+            return parameter.convertTo0to1 (parameter.convertFrom0to1 (parameter.getValue()));
+        }
+
         juce::String operatingSystem()
         {
             return juce::SystemStats::getOperatingSystemName();
@@ -500,7 +508,7 @@ namespace likyu::probe
 
         for (int i = 0; i < dsp::numParams; ++i)
         {
-            auto step = static_cast<std::uint32_t> (std::lround (parameterAt (i).getValue() * 10000.0f));
+            auto step = static_cast<std::uint32_t> (std::lround (settled (parameterAt (i)) * 10000.0f));
 
             for (int byte = 0; byte < 4; ++byte)
             {
@@ -517,7 +525,7 @@ namespace likyu::probe
         auto count = 0;
 
         for (int i = 0; i < dsp::numParams; ++i)
-            if (std::abs (parameterAt (i).getValue() - parameterAt (i).getDefaultValue()) > 1.0e-6f)
+            if (std::abs (settled (parameterAt (i)) - parameterAt (i).getDefaultValue()) > 1.0e-6f)
                 ++count;
 
         return count;

@@ -39,6 +39,35 @@ int main (int argc, char* argv[])
     const juce::File folder { juce::String (argv[1]) };
     const juce::ScopedJuceInitialiser_GUI gui;
 
+    /*  --roundtrip: scramble, lookahead off, save, load into a second
+        instance; print both fingerprints and every value that moved. */
+    if (argc > 2 && juce::String (argv[2]) == "--roundtrip")
+    {
+        likyu::probe::ProbeProcessor first (2), second (2);
+        first.scramble();
+        first.setLookaheadChoice (0);
+
+        juce::MemoryBlock state;
+        first.getStateInformation (state);
+        second.setStateInformation (state.getData(), static_cast<int> (state.getSize()));
+
+        std::cout << "saved " << first.fingerprint() << " (" << first.parametersOffDefault() << " off default), loaded "
+                  << second.fingerprint() << " (" << second.parametersOffDefault() << " off default), "
+                  << state.getSize() << " bytes" << std::endl;
+
+        for (int i = 0; i < likyu::dsp::numParams; ++i)
+        {
+            const auto before = first.parameterAt (i).getValue();
+            const auto after = second.parameterAt (i).getValue();
+
+            if (std::abs (before - after) > 1.0e-6f)
+                std::cout << "  " << first.parameterAt (i).paramID << ": " << before << " -> " << after
+                          << " (real " << first.valueOf (i) << " -> " << second.valueOf (i) << ")" << std::endl;
+        }
+
+        return 0;
+    }
+
     likyu::probe::ProbeProcessor processor (2);
 
     auto layout = processor.getBusesLayout();

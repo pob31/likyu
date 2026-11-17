@@ -3,7 +3,7 @@
 Started 2026-11-17. Devplan Phase 1. Code: `spikes/hostprobe/`, still in the tree because the
 matrix is open; it is deleted when the matrix is filled.
 
-**Status: Samplitude is measured except for the reload and touch (part 8); no other host yet.** The probe is built and validated, the procedure is written,
+**Status: Samplitude is measured except for touch and the mono cases (part 8); no other host yet.** The probe is built and validated, the procedure is written,
 and the validators' rows are filled for Windows. Every host row below is empty and waits for the
 author at the hosts. Part 4 says what JUCE's wrappers do as read from their source: it tells what
 to expect and is not a measurement.
@@ -122,7 +122,7 @@ to that host.
 | REAPER, LV2, Windows |  |  |  |  |  |  |  |
 | Bitwig, VST3, Windows |  |  |  |  |  | n/a |  |
 | Live 12, VST3, Windows |  |  |  |  |  | n/a |  |
-| Samplitude, VST3, Windows | **Yes.** *Side chain input* menu in the plug-in window; on choosing, the host enables the bus as stereo and the buffer has four channels with the key in the last two (-20.0 and -21.4 dB). Mono source, and mono main, not tried | **Bus disabled** until a sidechain is chosen; the buffer then holds the two main channels only (2584 blocks) | **Realigns at the next play start, not during playback.** A change while playing leaves the null broken until stop and start; the host does not restart the plugin by itself | Generic view of eight slots, each a chooser over the parameters; names shown, choices as text, **no units**, continuous values with seven decimals | Partial: one `getStateInformation` per save; reload not yet done (expect `D72C0CAF`) | n/a |  |
+| Samplitude, VST3, Windows | **Yes.** *Side chain input* menu in the plug-in window; on choosing, the host enables the bus as stereo and the buffer has four channels with the key in the last two (-20.0 and -21.4 dB). Mono source, and mono main, not tried | **Bus disabled** until a sidechain is chosen; the buffer then holds the two main channels only (2584 blocks) | **Realigns at the next play start, not during playback.** A change while playing leaves the null broken until stop and start; the host does not restart the plugin by itself | Generic view of eight slots, each a chooser over the parameters; names shown, choices as text, **no units**, continuous values with seven decimals | **Restored exactly**: one `getStateInformation` per save, one `setStateInformation` on opening (6913 bytes, after the first `prepareToPlay`); the sidechain routing comes back with the project | n/a |  |
 | Go.dot, VST3, Windows | n/a |  |  |  |  |  |  |
 | Go.dot, LV2, Windows | n/a |  |  |  |  |  |  |
 | REAPER, VST3, macOS |  |  |  |  |  |  | n/a |
@@ -382,5 +382,70 @@ New lines of the log, the play and stop patterns left out:
 13:56:44.223  releaseResources #32
 13:56:45.233  sidechain seen as: bus enabled, exact zeros
 13:56:49.551  getStateInformation x1 (total 6); fingerprint D72C0CAF
+```
+
+### Samplitude, VST3, Windows 11, 2026-11-17 14:01, session 2 (project reopened)
+
+Samplitude closed, the corrected probe installed, the project reopened. A new instance, on the
+probe build that keeps the main input's highest peak and says whether process calls are running.
+
+- **Row 5, answered: the state comes back exactly.** On opening: `prepareToPlay`, then
+  `setStateInformation` with 6913 bytes, on the message thread, 100 ms later.
+  - The fingerprint reads `BEF24EA3`, 244 off default, where the save read `D72C0CAF`, 251. **That
+    difference is the probe's, not the host's.** Scramble had set toggles to values such as 0.58,
+    which a JUCE toggle holds as given until it is saved as "on"; the fingerprint hashed the 0.58.
+    Run without a host (`likyu_hostprobe_snapshot <folder> --roundtrip`), the same scramble, save
+    and load give `D72C0CAF` then `BEF24EA3` with 6913 bytes, and every real value equal. So
+    Samplitude returned what it was given.
+  - The fingerprint now hashes each value as it survives a save, and reads `BEF24EA3` before and
+    after.
+- **Row 1, more.** On the screenshot the *Side chain input* menu has both *Side chain in* and
+  *Track 3* ticked: a switch and a source. The routing is stored in the project. On opening, the
+  bus is still disabled at the first `prepareToPlay`; it is enabled at the first play
+  (`numChannelsChanged` to `in [Stereo | Stereo]`, then `prepareToPlay` #2), and signal arrives
+  from the first block: -19.9 and -18.7 dB at the highest. **Between opening and the first play
+  the plugin sees a disabled bus although a sidechain is routed**: an editor that warns "sidechain
+  absent" would warn wrongly there until play is pressed.
+- The main input reads up to 0.0 dB, the sidechain about 20 dB under: they are different signals,
+  and the sidechain does not share memory with the main input.
+- The play pattern on a fresh instance: `releaseResources`, layout, `prepareToPlay`, process,
+  `reset`.
+
+```text
+Host       Magix Samplitude (Sam_x64.exe) - VST3 - Windows 11
+Prepared   48000 Hz, block 2000 - prepareToPlay x2, releaseResources x1, reset x1
+Blocks     928 - sizes 2000 to 2000, last 2000 - zero-length 0 - float 928, double 0 - bypassed 0
+Transport  playing - process calls: running
+Main bus   Stereo (L R) - LFE: none reported - peak -4.2 dB, highest ever 0.0 dB
+Sidechain  Stereo (L R) - process buffer 4 channels, buses add up to 4
+  SEEN AS  BUS ENABLED, SIGNAL - now -22.5 dB, -25.0 dB
+           highest ever -19.9 dB, -18.7 dB
+Latency    0 samples (lookahead 0 ms) - changed 0 times - prepareToPlay calls since the last change: 2
+State      fingerprint BEF24EA3 - 244 of 284 off default - get x2, set x1
+Pointers   most down at once 0 - kinds seen: none yet
+Layout     in [Stereo (L R) | Stereo (L R)] out [Stereo (L R)]
+Layouts    3 distinct layouts asked about
+
+14:00:23.256  constructed as VST3 in Magix Samplitude (Sam_x64.exe), Windows 11
+14:00:23.256  default layout: in [Stereo (L R) | disabled] out [Stereo (L R)]
+14:00:23.258  host asks: in [Stereo (L R) | Stereo (L R)] out [Stereo (L R)]  -> yes
+14:00:23.258  host asks: in [Stereo (L R) | disabled] out [disabled]  -> no
+14:00:23.258  numChannelsChanged: in [Stereo (L R) | Stereo (L R)] out [Stereo (L R)]
+14:00:23.258  processorLayoutsChanged: in [Stereo (L R) | Stereo (L R)] out [Stereo (L R)]
+14:00:23.258  host asks: in [Stereo (L R) | disabled] out [Stereo (L R)]  -> yes
+14:00:23.258  numChannelsChanged: in [Stereo (L R) | disabled] out [Stereo (L R)]
+14:00:23.258  processorLayoutsChanged: in [Stereo (L R) | disabled] out [Stereo (L R)]
+14:00:23.258  prepareToPlay #1: 48000 Hz, block 2000, float, realtime, latency 0; in [Stereo (L R) | disabled] out [Stereo (L R)]
+14:00:23.359  setStateInformation #1: 6913 bytes; fingerprint now BEF24EA3, 244 parameters off default
+14:00:25.978  getStateInformation x2 (total 2); fingerprint BEF24EA3
+14:00:29.715  releaseResources #1
+14:00:29.715  numChannelsChanged: in [Stereo (L R) | Stereo (L R)] out [Stereo (L R)]
+14:00:29.715  processorLayoutsChanged: in [Stereo (L R) | Stereo (L R)] out [Stereo (L R)]
+14:00:29.715  prepareToPlay #2: 48000 Hz, block 2000, float, realtime, latency 0; in [Stereo (L R) | Stereo (L R)] out [Stereo (L R)]
+14:00:29.896  process calls: started
+14:00:29.896  process buffer: 4 channels; the enabled buses add up to 4
+14:00:29.896  sidechain seen as: bus enabled, signal
+14:00:29.896  reset x1 (total 1)
+14:00:29.896  transport: playing
 ```
 
