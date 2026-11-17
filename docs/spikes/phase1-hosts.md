@@ -3,7 +3,7 @@
 Started 2026-11-17. Devplan Phase 1. Code: `spikes/hostprobe/`, still in the tree because the
 matrix is open; it is deleted when the matrix is filled.
 
-**Status: Samplitude is measured; REAPER VST3 is mostly measured and has two findings that touch the PRD (part 7); nothing else yet.** The probe is built and validated, the procedure is written,
+**Status: Samplitude is measured; REAPER VST3 and Bitwig are mostly measured; findings so far in part 7; Live, Go.dot, LV2, macOS and Linux not begun.** The probe is built and validated, the procedure is written,
 and the validators' rows are filled for Windows. Every host row below is empty and waits for the
 author at the hosts. Part 4 says what JUCE's wrappers do as read from their source: it tells what
 to expect and is not a measurement.
@@ -120,7 +120,7 @@ to that host.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | REAPER, VST3, Windows | **Not by REAPER's usual way.** With the track at four channels and a send to 3/4, REAPER makes the plugin's **main bus four channels wide** and the send lands in main channels 3 and 4; the sidechain, enabled after them as channels 5 and 6, stays at exact zeros (part 8). **By dragging the key track's routing onto the plugin's window, the sidechain is fed** (14:55, signal while playing); the layout REAPER then uses is not yet on file | **Two states seen.** As inserted: bus disabled, two channels. Later: **bus enabled, exact zeros**, with nothing reaching it | **Realigns at every setting, also on the fly**, with a slip of sound at the change (the author); no `prepareToPlay` after a change | Not yet | Partial: scrambled (`BEF24EA3`) and saved; not reopened | **A four-channel track is given as "L R C Lfe", so an LFE is reported on channel 4** of a track that has none. Mono, 5.1 and wide tracks not yet; on loading REAPER asks for 64 channels and is told yes | **As Samplitude**: the first finger only |
 | REAPER, LV2, Windows |  |  |  |  |  |  |  |
-| Bitwig, VST3, Windows |  |  |  |  |  | n/a |  |
+| Bitwig, VST3, Windows | **Yes**: a source chosen on the device enables the bus as stereo; four channels, signal on both sidechain channels (-10.1 dB), zeros when the source is silent | **Bus disabled** until a source is chosen; two channels | **Realigns on the fly**, a short burst at the change (the author). Bitwig **restarts the plugin** for every change: `releaseResources` and `prepareToPlay`, twice, within 40 ms | Not yet | State given back at construction (6913 bytes, `BEF24EA3`); whether from a saved project is to be confirmed | n/a | Not yet |
 | Live 12, VST3, Windows |  |  |  |  |  | n/a |  |
 | Samplitude, VST3, Windows | **Yes.** *Side chain input* menu in the plug-in window; on choosing, the host enables the bus as stereo and the buffer has four channels with the key in the last two (-20.0 and -21.4 dB). Mono main does not exist in this host; a mono source not tried | **Bus disabled** until a sidechain is chosen; the buffer then holds the two main channels only (2584 blocks) | **Realigns at the next play start, not during playback.** A change while playing leaves the null broken until stop and start; the host does not restart the plugin by itself | Generic view of eight slots, each a chooser over the parameters; names shown, choices as text, **no units**, continuous values with seven decimals | **Restored exactly**: one `getStateInformation` per save, one `setStateInformation` on opening (6913 bytes, after the first `prepareToPlay`); the sidechain routing comes back with the project | n/a: no mono tracks | **One touch pointer; pinch unreliable**: the first finger arrives as touch #0; only the first finger down is ever delivered, and no other until every finger is lifted; pinch events came once (809 of them) and not at all on later tries |
 | Go.dot, VST3, Windows | n/a |  |  |  |  |  |  |
@@ -172,8 +172,11 @@ decided here. To be completed when the matrix is.
 4. **Samplitude**, by contrast, keeps the bus disabled until a sidechain is chosen, and the
    fallback applies there as written; but between opening a project and the first play it shows
    a disabled bus although a sidechain is routed.
-5. **Latency:** REAPER realigns on the fly, with a slip of sound at the change; Samplitude only
-   at the next play start. Neither restarts the plugin for it.
+5. **Latency:** REAPER and Bitwig realign on the fly, with a slip of sound at the change;
+   Samplitude only at the next play start. Bitwig restarts the plugin (`prepareToPlay`) for every
+   change, REAPER and Samplitude do not. So the product cannot count on a `prepareToPlay` after a
+   lookahead change, nor on its absence: the change of delay must be clean by itself (devplan
+   Phase 4).
 6. **Touch:** both deliver the first finger only. Pinch came once in Samplitude and not again.
 7. **Samplitude's generic view shows no units** and seven decimals: the plugin should supply its
    own value text (Phase 2).
@@ -774,4 +777,83 @@ probe that accepts any main width, not the fixed-stereo control.
 - **Not in the fragment:** the status lines. Whether the main bus is two or four channels wide
   here, how many channels the buffer has, and the levels, need a saved report. That decides
   whether finding 1 of part 7 is a matter of which REAPER gesture is used, or stands.
+
+### Bitwig Studio, VST3, Windows 11, 2026-11-17 18:09, session 1
+
+The author: polarity inverted with a third-party plugin on the second track; the null "works
+like in Reaper. Only a short burst of sound gets through when changing"; the sidechain set up
+from track 2. The probe is the current build.
+
+- **Bitwig runs the plugin in a process of its own** (`BitwigPluginHost-X64-AVX2.exe`). 48 kHz,
+  **blocks of 480**, float. Three layouts asked about, the same three as Samplitude.
+- **Row 2.** As inserted: bus disabled, two channels in the buffer, through the whole of the
+  lookahead test.
+- **Row 1.** At 18:08:21 the author chooses a sidechain source: the bus becomes stereo, the
+  plugin is prepared twice, the buffer has four channels. The sidechain then reads signal,
+  -10.1 dB at the highest and **the same on both channels** (a mono source, or one sent alike to
+  both), and exact zeros in the stretches where the source is silent: three passages from one to
+  the other in forty seconds. So here too an enabled bus at exact zeros is an ordinary state, a
+  pause in the key.
+- **Row 3, answered.** Eleven changes during playback. For each, within 30 to 40 ms of the
+  button, Bitwig releases the plugin and prepares it twice with the new latency; the null holds
+  again after a short burst. Bitwig is the first host here that answers the latency-changed
+  notification by restarting the plugin.
+- **Bitwig stops calling the plugin about two seconds after the transport stops** (`reset`, then
+  no more blocks) and starts again with it or when the editor is used.
+- **Row 5, in part.** `setStateInformation` came first of all, 9 ms after construction and before
+  any layout question or `prepareToPlay`: 6913 bytes, fingerprint `BEF24EA3`, the scramble's. So
+  this instance was given a state saved earlier (a project reopened, or the plugin process
+  restarted by Bitwig): which, the author is to say. Either way the values came back whole.
+- **Row 7, not yet:** no pointer reached the pad in this session.
+
+The log, the eleven lookahead changes reduced to the first:
+
+```text
+15:07:43.531  constructed as VST3 in Bitwig Studio (BitwigPluginHost-X64-AVX2.exe), Windows 11
+15:07:43.531  default layout: in [Stereo (L R) | disabled] out [Stereo (L R)]
+15:07:43.540  setStateInformation #1: 6913 bytes; fingerprint now BEF24EA3, 244 parameters off default
+15:07:43.540  host asks: in [Stereo (L R) | Stereo (L R)] out [Stereo (L R)]  -> yes
+15:07:43.540  host asks: in [Stereo (L R) | disabled] out [disabled]  -> no
+15:07:43.540  numChannelsChanged: in [Stereo (L R) | Stereo (L R)] out [Stereo (L R)]
+15:07:43.540  host asks: in [Stereo (L R) | disabled] out [Stereo (L R)]  -> yes
+15:07:43.540  numChannelsChanged: in [Stereo (L R) | disabled] out [Stereo (L R)]
+15:07:43.540  prepareToPlay #1: 48000 Hz, block 480, float, realtime, latency 0; in [Stereo (L R) | disabled] out [Stereo (L R)]
+15:07:43.632  process calls: started
+15:07:43.632  process buffer: 2 channels; the enabled buses add up to 2
+15:07:43.632  sidechain seen as: bus disabled
+15:07:43.632  getStateInformation x1 (total 1); fingerprint BEF24EA3
+15:07:43.632  transport: stopped
+15:07:45.648  reset x1 (total 1)
+15:07:45.951  process calls: stopped
+15:07:46.557  process calls: started
+15:07:46.557  transport: playing
+15:07:56.939  transport: stopped
+15:07:58.960  reset x1 (total 2)
+15:07:59.263  process calls: stopped
+18:02:16.170  process calls: started
+18:02:18.721  scrambled from the probe editor: fingerprint BEF24EA3
+18:02:19.103  getStateInformation x1 (total 2); fingerprint BEF24EA3
+18:05:25.446  transport: playing
+18:05:32.363  lookahead choice 1 (0.25 ms) set from the probe editor
+18:05:32.392  releaseResources #1
+18:05:32.392  prepareToPlay #2: 48000 Hz, block 480, float, realtime, latency 12; in [Stereo (L R) | disabled] out [Stereo (L R)]
+18:05:32.392  releaseResources #2
+18:05:32.392  prepareToPlay #3: 48000 Hz, block 480, float, realtime, latency 12; in [Stereo (L R) | disabled] out [Stereo (L R)]
+18:05:32.401  latency reported to the host: 0 -> 12 samples, transport playing
+18:05:32.401  reset x1 (total 3)
+   (ten more changes, each with the same four lines after it, to 18:07:34)
+18:08:21.824  releaseResources #23
+18:08:21.824  numChannelsChanged: in [Stereo (L R) | Stereo (L R)] out [Stereo (L R)]
+18:08:21.824  prepareToPlay #24: 48000 Hz, block 480, float, realtime, latency 0; in [Stereo (L R) | Stereo (L R)] out [Stereo (L R)]
+18:08:21.824  releaseResources #24
+18:08:21.824  prepareToPlay #25: 48000 Hz, block 480, float, realtime, latency 0; in [Stereo (L R) | Stereo (L R)] out [Stereo (L R)]
+18:08:21.843  process buffer: 4 channels; the enabled buses add up to 4
+18:08:21.843  sidechain seen as: bus enabled, exact zeros
+18:08:21.843  reset x1 (total 14)
+18:08:26.478  sidechain seen as: bus enabled, signal
+18:08:35.745  sidechain seen as: bus enabled, exact zeros
+18:08:43.911  sidechain seen as: bus enabled, signal
+18:08:57.808  sidechain seen as: bus enabled, exact zeros
+18:08:58.615  sidechain seen as: bus enabled, signal
+```
 
