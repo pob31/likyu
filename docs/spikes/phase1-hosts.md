@@ -3,7 +3,7 @@
 Started 2026-11-17. Devplan Phase 1. Code: `spikes/hostprobe/`, still in the tree because the
 matrix is open; it is deleted when the matrix is filled.
 
-**Status: one partial session, Samplitude at load (part 8); no row is complete.** The probe is built and validated, the procedure is written,
+**Status: Samplitude has its "nothing routed" cell (part 8); nothing else is complete.** The probe is built and validated, the procedure is written,
 and the validators' rows are filled for Windows. Every host row below is empty and waits for the
 author at the hosts. Part 4 says what JUCE's wrappers do as read from their source: it tells what
 to expect and is not a measurement.
@@ -122,7 +122,7 @@ to that host.
 | REAPER, LV2, Windows |  |  |  |  |  |  |  |
 | Bitwig, VST3, Windows |  |  |  |  |  | n/a |  |
 | Live 12, VST3, Windows |  |  |  |  |  | n/a |  |
-| Samplitude, VST3, Windows |  | Partial, 2026-11-17: at load the host leaves the sidechain bus inactive and the plugin has it **disabled**. No block had been processed when the report was saved, so what the buffer holds is not yet seen (part 8) |  | n/a |  | n/a |  |
+| Samplitude, VST3, Windows |  | **Bus disabled**; the buffer holds the two main channels only, playing, 743 blocks (2026-11-17, part 8) | Partial: two changes while playing were followed by no `prepareToPlay`; whether the host realigns is not known without the null test | n/a | Not yet: scrambled, not saved and reloaded |  n/a |  |
 | Go.dot, VST3, Windows | n/a |  |  |  |  |  |  |
 | Go.dot, LV2, Windows | n/a |  |  |  |  |  |  |
 | REAPER, VST3, macOS |  |  |  |  |  |  | n/a |
@@ -192,4 +192,87 @@ Layouts    3 distinct layouts asked about
 13:44:24.798  processorLayoutsChanged: in [Stereo (L R) | disabled] out [Stereo (L R)]
 13:44:24.798  prepareToPlay #1: 48000 Hz, block 2000, float, realtime, latency 0; in [Stereo (L R) | disabled] out [Stereo (L R)]
 13:44:27.406  getStateInformation x2 (total 2); fingerprint 1CC8BDCE
+```
+
+### Samplitude, VST3, Windows 11, 2026-11-17 13:46, session 1 continued (played, nothing routed)
+
+The same instance, after about thirty seconds of noise and music, three lookahead changes and
+two presses of Scramble. Saved nine seconds after the transport stopped.
+
+**Measured.**
+
+- **Row 2: the sidechain bus stays disabled and the process buffer has two channels**, the main
+  pair, in all 743 blocks. Samplitude never activated the bus by itself.
+- **Samplitude calls the plugin only while it plays.** 743 blocks of 2000 samples are 31.0 s, and
+  the four stretches between a `prepareToPlay` and the next `releaseResources` add up to about
+  30 s. On stop it calls `releaseResources`; on play, `prepareToPlay`, `releaseResources`,
+  `prepareToPlay` again, then `reset`. Nothing runs in between. Consequence for later phases: in
+  this host a meter or a tracker sees nothing while stopped, and every play starts from
+  `prepareToPlay`.
+- **The block is always 2000 samples** at 48 kHz, float.
+- **Row 3, in part.** The first change (0 to 12 samples) came while the plugin was released; the
+  `prepareToPlay` pair 350 ms later has the shape of a play start, not of an answer to the
+  change. The next two (12 to 48, 48 to 144) came during playback and no `prepareToPlay`
+  followed either. So Samplitude does not restart the plugin on a latency change while playing.
+  Whether it re-reads the latency and realigns, then or at the next play, needs the null test of
+  step D: the probe cannot hear it.
+- **Row 5, not yet.** Scramble gave `38B0C07A` both times, as it should; the project was not
+  saved and reopened. `getStateInformation` was not called again after loading.
+
+**Not shown by this report, through the probe's fault.** *Main bus peak exact zero* and
+*Transport playing* are what the probe last saw, nine seconds after the last block: it kept no
+highest-ever peak for the main input and did not say that process calls had stopped. Both are
+added to the probe after this session (*highest ever* on the main bus line, *process calls:
+running / none now* on the transport line, and "no process calls at the time" in the latency
+log). The latency lines below say "transport playing" for the first change, when the plugin was
+in fact released.
+
+```text
+Host       Magix Samplitude (Sam_x64.exe) - VST3 - Windows 11
+Prepared   48000 Hz, block 2000 - prepareToPlay x8, releaseResources x8, reset x8
+Blocks     743 - sizes 2000 to 2000, last 2000 - zero-length 0 - float 743, double 0 - bypassed 0
+Transport  playing
+Main bus   Stereo (L R) - LFE: none reported - peak exact zero
+Sidechain  disabled - process buffer 2 channels, buses add up to 2
+  SEEN AS  BUS DISABLED - now exact zero, exact zero
+           highest ever exact zero, exact zero
+Latency    144 samples (lookahead 3 ms) - changed 3 times - prepareToPlay calls since the last change: 0
+State      fingerprint 38B0C07A - 252 of 284 off default - get x2, set x0
+Pointers   most down at once 0 - kinds seen: none yet
+Layout     in [Stereo (L R) | disabled] out [Stereo (L R)]
+Layouts    3 distinct layouts asked about
+
+(the first eleven lines are those of the report above)
+13:46:08.669  releaseResources #1
+13:46:08.669  prepareToPlay #2: 48000 Hz, block 2000, float, realtime, latency 0; in [Stereo (L R) | disabled] out [Stereo (L R)]
+13:46:08.889  process buffer: 2 channels; the enabled buses add up to 2
+13:46:08.889  sidechain seen as: bus disabled
+13:46:08.889  reset x1 (total 1)
+13:46:08.889  transport: playing
+13:46:19.382  releaseResources #2
+13:46:19.440  prepareToPlay #3: 48000 Hz, block 2000, float, realtime, latency 0; in [Stereo (L R) | disabled] out [Stereo (L R)]
+13:46:19.440  releaseResources #3
+13:46:19.440  prepareToPlay #4: 48000 Hz, block 2000, float, realtime, latency 0; in [Stereo (L R) | disabled] out [Stereo (L R)]
+13:46:19.543  reset x2 (total 3)
+13:46:20.743  releaseResources #4
+13:46:20.786  prepareToPlay #5: 48000 Hz, block 2000, float, realtime, latency 0; in [Stereo (L R) | disabled] out [Stereo (L R)]
+13:46:20.786  releaseResources #5
+13:46:20.786  prepareToPlay #6: 48000 Hz, block 2000, float, realtime, latency 0; in [Stereo (L R) | disabled] out [Stereo (L R)]
+13:46:20.900  reset x2 (total 5)
+13:46:27.951  releaseResources #6
+13:46:27.968  reset x1 (total 6)
+13:46:31.901  lookahead choice 1 (0.25 ms) set from the probe editor
+13:46:31.911  latency reported to the host: 0 -> 12 samples, transport playing
+13:46:32.265  prepareToPlay #7: 48000 Hz, block 2000, float, realtime, latency 12; in [Stereo (L R) | disabled] out [Stereo (L R)]
+13:46:32.265  releaseResources #7
+13:46:32.265  prepareToPlay #8: 48000 Hz, block 2000, float, realtime, latency 12; in [Stereo (L R) | disabled] out [Stereo (L R)]
+13:46:32.374  reset x1 (total 7)
+13:46:33.230  lookahead choice 2 (1 ms) set from the probe editor
+13:46:33.280  latency reported to the host: 12 -> 48 samples, transport playing
+13:46:33.891  lookahead choice 3 (3 ms) set from the probe editor
+13:46:33.986  latency reported to the host: 48 -> 144 samples, transport playing
+13:46:34.813  scrambled from the probe editor: fingerprint 38B0C07A
+13:46:39.530  scrambled from the probe editor: fingerprint 38B0C07A
+13:46:43.992  releaseResources #8
+13:46:44.043  reset x1 (total 8)
 ```

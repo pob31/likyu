@@ -360,6 +360,18 @@ namespace likyu::probe
 
         ticksSinceSidechainSignal = sidechainSignal ? 0 : juce::jmin (ticksSinceSidechainSignal + 1, 1000);
 
+        /*  Is the host calling process at all? A host that stops calling when
+            its transport stops leaves the last play head answer standing. */
+        const auto blocksNow = audio.blocks.load (relaxed);
+        ticksSinceBlock = blocksNow != seenBlocks ? 0 : juce::jmin (ticksSinceBlock + 1, 1000);
+        seenBlocks = blocksNow;
+
+        if (const auto running = ticksSinceBlock < 3; running != processing)
+        {
+            processing = running;
+            log (running ? "process calls: started" : "process calls: stopped");
+        }
+
         if (const auto latency = getLatencySamples(); latency != seenLatency)
         {
             if (seenLatency >= 0)
@@ -367,7 +379,9 @@ namespace likyu::probe
                 ++latencyChanges;
                 prepareCallsAtLatencyChange = prepareCalls.load (relaxed);
                 log ("latency reported to the host: " + juce::String (seenLatency) + " -> " + juce::String (latency)
-                     + " samples, transport " + (audio.playing.load (relaxed) ? "playing" : "not playing"));
+                     + " samples, " + (! processing                  ? "no process calls at the time"
+                                       : audio.playing.load (relaxed) ? "transport playing"
+                                                                      : "transport not playing"));
             }
 
             seenLatency = latency;
@@ -599,11 +613,14 @@ namespace likyu::probe
                    + " - bypassed " + juce::String (audio.bypassedBlocks.load (relaxed)));
 
         lines.add ("Transport  " + juce::String (! audio.playHeadPresent.load (relaxed) ? "no play head seen"
-                                                 : audio.playing.load (relaxed)         ? "playing"
-                                                                                        : "stopped"));
+                                                 : ! processing                         ? "last seen " + juce::String (audio.playing.load (relaxed) ? "playing" : "stopped")
+                                                 : audio.playing.load (relaxed)         ? juce::String ("playing")
+                                                                                        : juce::String ("stopped"))
+                   + " - process calls: " + (processing ? "running" : "none now"));
 
         const auto mainSet = getChannelLayoutOfBus (true, 0);
-        lines.add ("Main bus   " + setText (mainSet) + " - LFE: " + lfeText (mainSet) + " - peak " + peakText (shownMainPeak));
+        lines.add ("Main bus   " + setText (mainSet) + " - LFE: " + lfeText (mainSet) + " - peak " + peakText (shownMainPeak)
+                   + ", highest ever " + peakText (audio.mainPeakEver.load (relaxed)));
 
         lines.add ("Sidechain  " + setText (getBusCount (true) > 1 ? getChannelLayoutOfBus (true, 1) : juce::AudioChannelSet())
                    + " - process buffer " + juce::String (audio.bufferChannels.load (relaxed)) + " channels, buses add up to "

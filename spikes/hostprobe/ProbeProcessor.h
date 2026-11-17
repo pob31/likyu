@@ -191,6 +191,9 @@ namespace likyu::probe
         int seenPlaying = -1;
         std::uint64_t seenBypassedBlocks = 0;
         bool bypassedRunning = false;
+        std::uint64_t seenBlocks = 0;
+        int ticksSinceBlock = 1000;                     // 1000: never
+        bool processing = false;
         mutable int layoutQuestions = 0;                // guarded by logLock
         SidechainView seenSidechain = SidechainView::noAudioYet;
         int ticksSinceSidechainSignal = 1000;
