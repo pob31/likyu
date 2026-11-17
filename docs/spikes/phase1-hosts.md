@@ -122,7 +122,7 @@ to that host.
 | REAPER, LV2, Windows |  |  |  |  |  |  |  |
 | Bitwig, VST3, Windows |  |  |  |  |  | n/a |  |
 | Live 12, VST3, Windows |  |  |  |  |  | n/a |  |
-| Samplitude, VST3, Windows |  | **Bus disabled**; the buffer holds the two main channels only, playing, 743 blocks (2026-11-17, part 8) | Partial: two changes while playing were followed by no `prepareToPlay`; whether the host realigns is not known without the null test | n/a | Not yet: scrambled, not saved and reloaded |  n/a |  |
+| Samplitude, VST3, Windows | Partial: the plug-in window has a **Side chain input** menu listing the other tracks; none chosen yet | **Bus disabled**; the buffer holds the two main channels only, playing, 2584 blocks (2026-11-17, part 8) | Partial: two changes while playing were followed by no `prepareToPlay`; whether the host realigns is not known without the null test | Generic view of eight slots, each a chooser over the parameters; names shown, choices as text, **no units**, continuous values with seven decimals (part 8) | Partial: saving the project calls `getStateInformation` once; reload not yet done | n/a |  |
 | Go.dot, VST3, Windows | n/a |  |  |  |  |  |  |
 | Go.dot, LV2, Windows | n/a |  |  |  |  |  |  |
 | REAPER, VST3, macOS |  |  |  |  |  |  | n/a |
@@ -297,4 +297,31 @@ throughout. The author's notes on what was done in them are not in yet.
   note.
 
 The log's new lines are fourteen repetitions of the pattern above and are not copied here.
+
+### Samplitude Suite 2026.5 (build 26215), VST3, 2026-11-17, from a screenshot and the author's notes
+
+The author: the seven plays above were plays and stops, then moves of the faders of Likyu's
+generic view (Likyu, not the probe, in the next slot of the same track); then the project was
+saved. Seen on the screenshot:
+
+- **Row 1: Samplitude does route a sidechain to a VST3.** The plug-in window's menu bar has
+  *Side chain input*, with *Side chain in*, *Side chain solo*, *Side chain filter…* and then the
+  project's other tracks (Track 2, 3, 4). It is offered on Likyu and on the probe alike. Nothing
+  was chosen yet, so what the plugin then sees is still to measure.
+- **Row 4: the generic view.** A list of eight slots; each slot is a chooser over the plugin's
+  parameters, numbered in table order ("01: Bypass", "02: Output Gain", "03: Lookahead",
+  "04: Link", "05: Band 1 On", "06: Band 1 Type", "07: Band 1 Frequency", "09: Band 1 Gain"),
+  with a slider, the value as text and an *Auto.* tick box.
+  - Choices and toggles read as their text: "1 ms", "Unlinked", "On", "Bell".
+  - Continuous values read as bare numbers with seven decimals and **no unit**:
+    "-0.9600010", "863.0382690", "21.9000015". The unit the plugin gives as the parameter's label
+    is not shown. For Phase 2: the plugin should give each parameter its own value-to-text
+    (decimals and unit), since at least this host shows that string and nothing else.
+  - `lookahead` has an *Auto.* box like the others; whether ticking it does anything for a
+    parameter declared not automatable was not tried.
+- **Row 5, in part:** the probe's count went from "get x2" to "get x3" with the save. One call
+  per save. The fingerprint at the save is `38B0C07A`; the reload is to come.
+- The probe's editor draws correctly in Samplitude's plug-in window, on a scaled display.
+
+The project is `D:\Desktop6-11-17.VIP` on the author's machine.
 
