@@ -3,7 +3,7 @@
 Started 2026-11-17. Devplan Phase 1. Code: `spikes/hostprobe/`, still in the tree because the
 matrix is open; it is deleted when the matrix is filled.
 
-**Status: Samplitude is measured except for touch and the mono cases (part 8); no other host yet.** The probe is built and validated, the procedure is written,
+**Status: Samplitude is measured (part 8); no other host yet.** The probe is built and validated, the procedure is written,
 and the validators' rows are filled for Windows. Every host row below is empty and waits for the
 author at the hosts. Part 4 says what JUCE's wrappers do as read from their source: it tells what
 to expect and is not a measurement.
@@ -122,7 +122,7 @@ to that host.
 | REAPER, LV2, Windows |  |  |  |  |  |  |  |
 | Bitwig, VST3, Windows |  |  |  |  |  | n/a |  |
 | Live 12, VST3, Windows |  |  |  |  |  | n/a |  |
-| Samplitude, VST3, Windows | **Yes.** *Side chain input* menu in the plug-in window; on choosing, the host enables the bus as stereo and the buffer has four channels with the key in the last two (-20.0 and -21.4 dB). Mono source, and mono main, not tried | **Bus disabled** until a sidechain is chosen; the buffer then holds the two main channels only (2584 blocks) | **Realigns at the next play start, not during playback.** A change while playing leaves the null broken until stop and start; the host does not restart the plugin by itself | Generic view of eight slots, each a chooser over the parameters; names shown, choices as text, **no units**, continuous values with seven decimals | **Restored exactly**: one `getStateInformation` per save, one `setStateInformation` on opening (6913 bytes, after the first `prepareToPlay`); the sidechain routing comes back with the project | n/a |  |
+| Samplitude, VST3, Windows | **Yes.** *Side chain input* menu in the plug-in window; on choosing, the host enables the bus as stereo and the buffer has four channels with the key in the last two (-20.0 and -21.4 dB). Mono main does not exist in this host; a mono source not tried | **Bus disabled** until a sidechain is chosen; the buffer then holds the two main channels only (2584 blocks) | **Realigns at the next play start, not during playback.** A change while playing leaves the null broken until stop and start; the host does not restart the plugin by itself | Generic view of eight slots, each a chooser over the parameters; names shown, choices as text, **no units**, continuous values with seven decimals | **Restored exactly**: one `getStateInformation` per save, one `setStateInformation` on opening (6913 bytes, after the first `prepareToPlay`); the sidechain routing comes back with the project | n/a: no mono tracks | **One touch only**: the first finger is drawn, a second is not (the author, by eye) |
 | Go.dot, VST3, Windows | n/a |  |  |  |  |  |  |
 | Go.dot, LV2, Windows | n/a |  |  |  |  |  |  |
 | REAPER, VST3, macOS |  |  |  |  |  |  | n/a |
@@ -448,4 +448,18 @@ Layouts    3 distinct layouts asked about
 14:00:29.896  reset x1 (total 1)
 14:00:29.896  transport: playing
 ```
+
+### Samplitude, VST3, Windows 11, 2026-11-17, the author's notes on touch and mono
+
+- **Row 7.** "Not sure I see multitouch gestures in the window in Samplitude. I see touch #1 and
+  then for the second finger I can see sometimes a grey dot under it." So one touch reaches the
+  plugin's editor and is drawn; a second finger is not delivered as a second pointer. The grey dot
+  is not the probe's: the pad draws coloured discs with a label, so it is the system's own touch
+  mark. No report was saved for this, so the *Pointers* line (how many at once, and whether the
+  first finger came as a touch or as a mouse) is not on file; a saved report would settle the
+  second point.
+- **Mono.** "I'm not sure Samplitude has mono tracks. You can import mono files, but the only way
+  to have mono is to collapse the width of the panner to mono. Only export can be mono." So the
+  plugin is always given a stereo main bus here, and "stereo into a mono main" does not exist in
+  this host. A mono file as the sidechain source remains possible and was not tried.
 
