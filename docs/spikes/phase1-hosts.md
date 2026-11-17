@@ -3,7 +3,7 @@
 Started 2026-11-17. Devplan Phase 1. Code: `spikes/hostprobe/`, still in the tree because the
 matrix is open; it is deleted when the matrix is filled.
 
-**Status: the four Windows hosts are measured in VST3, with gaps listed in their lines; findings so far in part 7; Go.dot, LV2, macOS and Linux not begun.** The probe is built and validated, the procedure is written,
+**Status, end of 2026-11-17: the four Windows hosts are measured in VST3, with the gaps listed in part 6; findings in part 7, two of them waiting on the author; Go.dot, LV2, macOS and Linux not begun.** The probe is built and validated, the procedure is written,
 and the validators' rows are filled for Windows. Every host row below is empty and waits for the
 author at the hosts. Part 4 says what JUCE's wrappers do as read from their source: it tells what
 to expect and is not a measurement.
@@ -118,9 +118,9 @@ to that host.
 
 | Host, format, system | 1 fed | 2 nothing routed | 3 lookahead | 4 parameters | 5 state | 6 layouts | 7 touch |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| REAPER, VST3, Windows | **Not by REAPER's usual way.** With the track at four channels and a send to 3/4, REAPER makes the plugin's **main bus four channels wide** and the send lands in main channels 3 and 4; the sidechain, enabled after them as channels 5 and 6, stays at exact zeros (part 8). **By dragging the key track's routing onto the plugin's window, the sidechain is fed** (14:55, signal while playing); the layout REAPER then uses is not yet on file | **Two states seen.** As inserted: bus disabled, two channels. Later: **bus enabled, exact zeros**, with nothing reaching it | **Realigns at every setting, also on the fly**, with a slip of sound at the change (the author); no `prepareToPlay` after a change | Not yet | Partial: scrambled (`BEF24EA3`) and saved; not reopened | **A four-channel track is given as "L R C Lfe", so an LFE is reported on channel 4** of a track that has none. Mono, 5.1 and wide tracks not yet; on loading REAPER asks for 64 channels and is told yes | Without the request: the first finger only. With it: not yet tried |
+| REAPER, VST3, Windows | **Not by REAPER's usual way.** With the track at four channels and a send to 3/4, REAPER makes the plugin's **main bus four channels wide** and the send lands in main channels 3 and 4; the sidechain, enabled after them as channels 5 and 6, stays at exact zeros (part 8). **By dragging the key track's routing onto the plugin's window, the sidechain is fed** (14:55, signal while playing); the layout REAPER then uses is not yet on file | **Two states seen.** As inserted: bus disabled, two channels. Later: **bus enabled, exact zeros**, with nothing reaching it | **Realigns at every setting, also on the fly**, with a slip of sound at the change (the author); no `prepareToPlay` after a change | Not yet | Partial: scrambled (`BEF24EA3`) and saved; not reopened | **A four-channel track is given as "L R C Lfe", so an LFE is reported on channel 4** of a track that has none. Mono, 5.1 and wide tracks not yet; on loading REAPER asks for 64 channels and is told yes | **Several fingers, once the editor asks for multitouch** (the author, 2026-11-17). Without the request: the first finger only |
 | REAPER, LV2, Windows |  |  |  |  |  |  |  |
-| Bitwig, VST3, Windows | **Yes**: a source chosen on the device enables the bus as stereo; four channels, signal on both sidechain channels (-10.1 dB), zeros when the source is silent | **Bus disabled** until a source is chosen; two channels | **Realigns on the fly**, a short burst at the change (the author). Bitwig **restarts the plugin** for every change: `releaseResources` and `prepareToPlay`, twice, within 40 ms | Not yet | State given back at construction (6913 bytes, `BEF24EA3`) in a fresh project: passed from an earlier instance to a new one, whole. Save and reopen not yet done | n/a | Without the request: the first finger only. With it: not yet tried |
+| Bitwig, VST3, Windows | **Yes**: a source chosen on the device enables the bus as stereo; four channels, signal on both sidechain channels (-10.1 dB), zeros when the source is silent | **Bus disabled** until a source is chosen; two channels | **Realigns on the fly**, a short burst at the change (the author). Bitwig **restarts the plugin** for every change: `releaseResources` and `prepareToPlay`, twice, within 40 ms | Not yet | State given back at construction (6913 bytes, `BEF24EA3`) in a fresh project: passed from an earlier instance to a new one, whole. Save and reopen not yet done | n/a | **Several fingers, once the editor asks for multitouch** (the author, 2026-11-17). Without the request: the first finger only |
 | Live 12, VST3, Windows | **Yes**: a source chosen on the device enables the bus as stereo; four channels, signal on both (-0.2 dB) | **Bus disabled** as inserted. **After a source has been chosen and removed again the bus stays enabled, at exact zeros** | **Realigns on the fly**, a small slip at the change (the author). Live restarts the plugin once for every change | **None shown until configured.** With *Configure* on, one press of Scramble in the probe brings all the parameters into Live's panel (the author). The clip's envelope chooser then lists them by name in table order, **one flat list of some 280 entries**, no groups, no search; `lookahead` and `link` are rightly absent, `bypass` is Live's own "Device On". Units not seen | Saved and reloaded: `setStateInformation` once, after the first `prepareToPlay`; the values were the defaults, so the round trip is shown but not tested | n/a | **Several fingers, once the editor asks for multitouch** (the author, 2026-11-17). Without the request: one at a time |
 | Samplitude, VST3, Windows | **Yes.** *Side chain input* menu in the plug-in window; on choosing, the host enables the bus as stereo and the buffer has four channels with the key in the last two (-20.0 and -21.4 dB). Mono main does not exist in this host; a mono source not tried | **Bus disabled** until a sidechain is chosen; the buffer then holds the two main channels only (2584 blocks) | **Realigns at the next play start, not during playback.** A change while playing leaves the null broken until stop and start; the host does not restart the plugin by itself | Generic view of eight slots, each a chooser over the parameters; names shown, choices as text, **no units**, continuous values with seven decimals | **Restored exactly**: one `getStateInformation` per save, one `setStateInformation` on opening (6913 bytes, after the first `prepareToPlay`); the sidechain routing comes back with the project | n/a: no mono tracks | **Several fingers, once the editor asks for multitouch** (the author, 2026-11-17). Without the request: the first finger only |
 | Go.dot, VST3, Windows | n/a |  |  |  |  |  |  |
@@ -136,14 +136,26 @@ to that host.
 
 Go.dot's sidechain is not benched (row 1): it feeds that bus silence until devplan Phase 9.
 
-## 6. Empty cells, and who can fill them
+## 6. What is still empty, and who can fill it
 
-- **Every host line**: the author, at the Windows machine for the first seven, at the Mac mini and
-  the NUC (or over a remote desktop) for the rest. An agent cannot: each needs a host's window.
-- **The Go.dot lines** also need a Go.dot build that hosts the three formats.
+On Windows, VST3, small things left in hosts already measured (the author, a few minutes each):
+
+- **REAPER:** a saved report from the instance whose sidechain works after the drag onto the
+  plugin's window (which layout does REAPER use then?); the project reopened after Scramble; mono,
+  5.1 and wide tracks; the fixed-stereo control on a four-channel track with a send to 3/4.
+- **Bitwig and Live:** save and reopen with scrambled values (Live's reload was made with the
+  defaults; Bitwig's state passed between two instances of a fresh project).
+- **Live:** *Sidechain On* with no source; what *Input/Sidechain Mix* does to the key.
+- **Samplitude:** *Side chain in* ticked with no track chosen; a mono file as the source.
+- **Units** in the hosts' own parameter views, seen in Samplitude only (none shown).
+
+Not begun:
+
+- **LV2 in REAPER on Windows** (the bundles are installed in `%APPDATA%\LV2`).
+- **Go.dot**, which needs a build that hosts the three formats.
+- **macOS and Linux**: the author at the Mac mini and the NUC, or over a remote desktop. An agent
+  cannot: each needs a host's window. Row 7 on Linux needs a touch screen there.
 - **The farm's validators**: an agent, as soon as `ssh macmini` and `ssh nuc` answer.
-- **Row 7 on Linux** needs a touch screen on the NUC; if there is none, the cells stay empty and
-  say so.
 
 ## 7. Findings
 
@@ -197,8 +209,8 @@ decided here. To be completed when the matrix is.
    system's pinch. That is why pinch events were seen once in Samplitude. For Phase 6: the
    editor asks for multitouch, and computes its own pinch from two touches on a node. The probe
    now asks for it, and in a window of its own four fingers draw four discs (the author,
-   2026-11-17). With the request, **Samplitude and Live let several fingers through to the
-   plugin's editor**; REAPER and Bitwig are still to try.
+   2026-11-17). With the request, **all four hosts let several fingers through to the
+   plugin's editor** (the author, 2026-11-17), and no pinch event comes any more.
 7. **Samplitude's generic view shows no units** and seven decimals: the plugin should supply its
    own value text (Phase 2).
 
@@ -1053,4 +1065,9 @@ Four discs, "#0 touch" to "#3 touch", and the pad's last line still "no wheel or
 - The discs are drawn at their largest size, which the pad gives to a pressure of 1 or more: a
   pressure is reported with each touch on this screen. Its range was not looked at.
 - Which window this was (a host's or the one without a host) is not on the screenshot.
+
+### REAPER and Bitwig, VST3, Windows 11, 2026-11-17: multitouch asked for
+
+The author: "Reaper and Bitwig too. All four are now showing multitouch response." Row 7 is
+answered for the four Windows hosts.
 
