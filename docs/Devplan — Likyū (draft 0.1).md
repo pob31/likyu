@@ -209,6 +209,25 @@ the second row; any host that cannot do what the PRD assumes has a line in the P
 **Needs from the author:** an hour per host at the Windows machine; access to the Mac mini and
 the NUC; a Go.dot build that hosts the three formats.
 
+**Record, 2026-11-17: the probe is built, the matrix is open.** Handoff:
+[`docs/handoffs/2026-11-17-phase1-probe.md`](handoffs/2026-11-17-phase1-probe.md); report, with
+the procedure for each row: [`docs/spikes/phase1-hosts.md`](spikes/phase1-hosts.md).
+
+- *Done.* `spikes/hostprobe/`: the Phase 0 processor with an observer derived from it and an
+  editor, as a plugin of its own ("Likyu Probe", plugin code `Lkyp`). It shows and exports what
+  each row of the matrix asks: the sidechain as the plugin sees it, layouts, latency changes and
+  what the host does after them, a fingerprint of the 284 values, the pointers that reach the
+  editor. pluginval at strictness 10 passes on it and on the product, on Windows. Both are
+  installed on the Windows machine.
+- *Changed outside `spikes/`:* the build names its paths from `PROJECT_SOURCE_DIR`, so the probe's
+  project can add the repository as a subdirectory; `LikyuProcessor` is not `final` while the
+  probe exists.
+- *Not done:* no host row is measured. They need the author at the hosts. The farm did not answer
+  over SSH on the day, so `scripts/farm-check.sh` has still never run there and the probe is not
+  installed on the Mac mini or the NUC.
+- *Done-when, not met:* the report exists as a procedure and an empty matrix; the fallback rule is
+  neither confirmed nor amended.
+
 ---
 
 ## Phase 2 — Static EQ · M
