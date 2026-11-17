@@ -187,11 +187,17 @@ decided here. To be completed when the matrix is.
    for every change, REAPER and Samplitude do not. So the product cannot count on a `prepareToPlay` after a
    lookahead change, nor on its absence: the change of delay must be clean by itself (devplan
    Phase 4).
-6. **Touch:** Samplitude, REAPER, Bitwig and Live all deliver the first finger only. Pinch came once in
-   Samplitude and not again. Bitwig is built for touch screens and runs the plugin in another
-   process, so three hosts alike points away from the hosts and at JUCE at this pin, or at
-   Windows, for a plugin's window. The control is `likyu_hostprobe_touch`, the same editor in a
-   window of its own with no host: its result is to be added here.
+6. **Touch: the one-finger limit was ours.** Samplitude, REAPER, Bitwig and Live all delivered
+   the first finger only, and so did the probe's editor in a window of its own with no host
+   (2026-11-17 18:33). The cause is in JUCE 9, by design: "Multi-touch is now disabled on Windows
+   by default" (`ThirdParty/JUCE/BREAKING_CHANGES.md`). A plugin's editor must override
+   `usesWindowsMultiTouch()` and return true; a window calls `setUsingWindowsMultiTouch (true)`.
+   The two modes exclude each other: with multitouch on, the window receives every finger and
+   **no pinch gesture** (`mouseMagnify` is never called); with it off, one finger and the
+   system's pinch. That is why pinch events were seen once in Samplitude. For Phase 6: the
+   editor asks for multitouch, and computes its own pinch from two touches on a node. The probe
+   now asks for it; every touch cell of the matrix above was measured without it and is to be
+   measured again.
 7. **Samplitude's generic view shows no units** and seven decimals: the plugin should supply its
    own value text (Phase 2).
 
@@ -957,4 +963,15 @@ sound when changing on the fly. Sidechain, then unassigned the track."
 18:22:57.874  getStateInformation x1 (total 3); fingerprint 1CC8BDCE
 18:23:03.117  sidechain seen as: bus enabled, exact zeros
 ```
+
+### No host, Windows 11, 2026-11-17 18:33: the control for touch
+
+`LikyuProbeNoHost.exe`, the probe's editor in a JUCE window of its own. "Most down at once 1 -
+kinds seen: touch": the same one finger as in the four hosts. So no host was the cause.
+
+The cause, found in JUCE's notes at the pin and in its Windows code
+(`juce_Windowing_windows.cpp`, `usesMultitouch = false`, and the window registered for touch only
+when it is true): multitouch is off by default on Windows since JUCE 9, because a window
+registered for touch no longer gets the system's gestures. See finding 6. The probe's editor and
+this window now ask for multitouch.
 

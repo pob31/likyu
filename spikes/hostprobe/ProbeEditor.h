@@ -74,6 +74,11 @@ namespace likyu::probe
         void paint (juce::Graphics&) override;
         void resized() override;
 
+        /** JUCE 9 leaves multitouch off on Windows unless an editor asks for it
+            (BREAKING_CHANGES.md): with it on, the window gets every finger and
+            no longer the system's pinch gesture. */
+        bool usesWindowsMultiTouch() const override                 { return true; }
+
         /** What the timer does, at once: for Snapshot.cpp, which runs no message loop. */
         void refreshNow()                                       { timerCallback(); }
 

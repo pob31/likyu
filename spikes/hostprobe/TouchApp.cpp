@@ -35,6 +35,7 @@ namespace
             : juce::DocumentWindow ("Likyu Probe, no host", juce::Colours::black, juce::DocumentWindow::allButtons)
         {
             setUsingNativeTitleBar (true);
+            setUsingWindowsMultiTouch (true);
             setContentOwned (processor.createEditor(), true);
             setResizable (true, false);
             centreWithSize (getWidth(), getHeight());
