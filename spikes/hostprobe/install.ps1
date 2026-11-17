@@ -39,6 +39,7 @@ $build = Join-Path $root 'build\hostprobe'
 
 $bundles = @(
     @{ Source = 'likyu_hostprobe_artefacts\Release\VST3\LikyuProbe.vst3';                          Destination = $Vst3Dir },
+    @{ Source = 'likyu_hostprobe_fixed_artefacts\Release\VST3\LikyuProbe-fixed.vst3';              Destination = $Vst3Dir },
     @{ Source = 'likyu\src\shims\juce\likyu_plugin_artefacts\Release\VST3\Likyu.vst3';             Destination = $Vst3Dir },
     @{ Source = 'likyu_hostprobe_artefacts\Release\LV2\LikyuProbe.lv2';                            Destination = $Lv2Dir },
     @{ Source = 'likyu_hostprobe_lv2_mono_artefacts\Release\LV2\LikyuProbe-mono.lv2';              Destination = $Lv2Dir },
@@ -68,7 +69,7 @@ if (-not $SkipBuild) {
     cmake -S (Join-Path $root 'spikes\hostprobe') -B $build
     if ($LASTEXITCODE -ne 0) { throw 'configure failed' }
 
-    cmake --build $build --config Release --parallel --target likyu_hostprobe_All likyu_hostprobe_lv2_mono_All likyu_plugin_All likyu_plugin_lv2_mono_All
+    cmake --build $build --config Release --parallel --target likyu_hostprobe_All likyu_hostprobe_fixed_All likyu_hostprobe_lv2_mono_All likyu_plugin_All likyu_plugin_lv2_mono_All
     if ($LASTEXITCODE -ne 0) { throw 'build failed' }
 }
 

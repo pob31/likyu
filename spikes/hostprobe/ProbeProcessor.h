@@ -98,7 +98,11 @@ namespace likyu::probe
         explicit ProbeProcessor (int defaultChannels);
         ~ProbeProcessor() override;
 
+       #if LIKYU_PROBE_FIXED_MAIN
+        const juce::String getName() const override             { return "Likyu Probe fixed stereo"; }
+       #else
         const juce::String getName() const override             { return "Likyu Probe"; }
+       #endif
         bool hasEditor() const override                         { return true; }
         juce::AudioProcessorEditor* createEditor() override;
 

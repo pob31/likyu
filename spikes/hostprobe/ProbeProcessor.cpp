@@ -152,7 +152,13 @@ namespace likyu::probe
     //==========================================================================
     bool ProbeProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
     {
+       #if LIKYU_PROBE_FIXED_MAIN
+        // The control variant: the product's rules, and a main bus that is stereo or nothing.
+        const auto supported = LikyuProcessor::isBusesLayoutSupported (layouts)
+                               && layouts.getMainInputChannelSet() == juce::AudioChannelSet::stereo();
+       #else
         const auto supported = LikyuProcessor::isBusesLayoutSupported (layouts);
+       #endif
         const auto text = layoutText (layouts) + (supported ? "  -> yes" : "  -> no");
 
         {

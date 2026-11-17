@@ -61,7 +61,7 @@ function(likyu_add_probe target product plugin_name bundle_id lv2_uri default_ch
     juce_add_plugin(${target}
         COMPANY_NAME                "Pix et Bel"
         PLUGIN_MANUFACTURER_CODE    "PxBl"
-        PLUGIN_CODE                 "Lkyp"
+        PLUGIN_CODE                 "${LIKYU_PROBE_CODE}"
         BUNDLE_ID                   "${bundle_id}"
         PRODUCT_NAME                "${product}"
         PLUGIN_NAME                 "${plugin_name}"
@@ -106,6 +106,7 @@ function(likyu_add_probe target product plugin_name bundle_id lv2_uri default_ch
             juce::juce_recommended_config_flags)
 endfunction()
 
+set(LIKYU_PROBE_CODE "Lkyp")
 likyu_add_probe(likyu_hostprobe
     "LikyuProbe" "Likyu Probe"
     "io.github.pob31.likyu.probe"
@@ -132,6 +133,19 @@ target_link_libraries(likyu_hostprobe_snapshot
         likyu::juce_config
         likyu::warnings
         juce::juce_recommended_config_flags)
+
+# The same probe refusing every main layout but stereo: the control for one question. REAPER
+# gives a four-channel track's channels 3/4 to the main bus of a plugin that accepts any
+# width (docs/spikes/phase1-hosts.md); does it give them to the sidechain of one that does not?
+set(LIKYU_PROBE_FORMATS_FIXED VST3)
+set(LIKYU_PROBE_CODE "Lkyq")
+likyu_add_probe(likyu_hostprobe_fixed
+    "LikyuProbe-fixed" "Likyu Probe fixed stereo"
+    "io.github.pob31.likyu.probe.fixed"
+    "https://pixetbel.org/lv2/likyu-probe/fixed"
+    2 LIKYU_PROBE_FORMATS_FIXED)
+target_compile_definitions(likyu_hostprobe_fixed PRIVATE LIKYU_PROBE_FIXED_MAIN=1)
+set(LIKYU_PROBE_CODE "Lkyp")
 
 set(LIKYU_PROBE_FORMATS_MONO LV2)
 likyu_add_probe(likyu_hostprobe_lv2_mono
