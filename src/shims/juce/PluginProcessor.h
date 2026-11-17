@@ -47,9 +47,13 @@
 
 namespace likyu
 {
-    class LikyuProcessor final : public juce::AudioProcessor,
-                                 private juce::AudioProcessorParameter::Listener,
-                                 private juce::AsyncUpdater
+    /*  Not `final` while the Phase 1 host probe exists: it derives from this
+        class to watch what a host does to the real processor
+        (spikes/hostprobe/, which is not part of this build). `final` comes
+        back when that spike is deleted. */
+    class LikyuProcessor : public juce::AudioProcessor,
+                           private juce::AudioProcessorParameter::Listener,
+                           private juce::AsyncUpdater
     {
     public:
         /** The widest main bus the plugin accepts (PRD, non-goals). */
