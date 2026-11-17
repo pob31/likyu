@@ -120,7 +120,7 @@ to that host.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | REAPER, VST3, Windows | **Not by REAPER's usual way.** With the track at four channels and a send to 3/4, REAPER makes the plugin's **main bus four channels wide** and the send lands in main channels 3 and 4; the sidechain, enabled after them as channels 5 and 6, stays at exact zeros (part 8). **By dragging the key track's routing onto the plugin's window, the sidechain is fed** (14:55, signal while playing); the layout REAPER then uses is not yet on file | **Two states seen.** As inserted: bus disabled, two channels. Later: **bus enabled, exact zeros**, with nothing reaching it | **Realigns at every setting, also on the fly**, with a slip of sound at the change (the author); no `prepareToPlay` after a change | Not yet | Partial: scrambled (`BEF24EA3`) and saved; not reopened | **A four-channel track is given as "L R C Lfe", so an LFE is reported on channel 4** of a track that has none. Mono, 5.1 and wide tracks not yet; on loading REAPER asks for 64 channels and is told yes | **As Samplitude**: the first finger only |
 | REAPER, LV2, Windows |  |  |  |  |  |  |  |
-| Bitwig, VST3, Windows | **Yes**: a source chosen on the device enables the bus as stereo; four channels, signal on both sidechain channels (-10.1 dB), zeros when the source is silent | **Bus disabled** until a source is chosen; two channels | **Realigns on the fly**, a short burst at the change (the author). Bitwig **restarts the plugin** for every change: `releaseResources` and `prepareToPlay`, twice, within 40 ms | Not yet | State given back at construction (6913 bytes, `BEF24EA3`); whether from a saved project is to be confirmed | n/a | Not yet |
+| Bitwig, VST3, Windows | **Yes**: a source chosen on the device enables the bus as stereo; four channels, signal on both sidechain channels (-10.1 dB), zeros when the source is silent | **Bus disabled** until a source is chosen; two channels | **Realigns on the fly**, a short burst at the change (the author). Bitwig **restarts the plugin** for every change: `releaseResources` and `prepareToPlay`, twice, within 40 ms | Not yet | State given back at construction (6913 bytes, `BEF24EA3`) in a fresh project: passed from an earlier instance to a new one, whole. Save and reopen not yet done | n/a | **As the others**: the first finger only (the author) |
 | Live 12, VST3, Windows |  |  |  |  |  | n/a |  |
 | Samplitude, VST3, Windows | **Yes.** *Side chain input* menu in the plug-in window; on choosing, the host enables the bus as stereo and the buffer has four channels with the key in the last two (-20.0 and -21.4 dB). Mono main does not exist in this host; a mono source not tried | **Bus disabled** until a sidechain is chosen; the buffer then holds the two main channels only (2584 blocks) | **Realigns at the next play start, not during playback.** A change while playing leaves the null broken until stop and start; the host does not restart the plugin by itself | Generic view of eight slots, each a chooser over the parameters; names shown, choices as text, **no units**, continuous values with seven decimals | **Restored exactly**: one `getStateInformation` per save, one `setStateInformation` on opening (6913 bytes, after the first `prepareToPlay`); the sidechain routing comes back with the project | n/a: no mono tracks | **One touch pointer; pinch unreliable**: the first finger arrives as touch #0; only the first finger down is ever delivered, and no other until every finger is lifted; pinch events came once (809 of them) and not at all on later tries |
 | Go.dot, VST3, Windows | n/a |  |  |  |  |  |  |
@@ -177,7 +177,11 @@ decided here. To be completed when the matrix is.
    change, REAPER and Samplitude do not. So the product cannot count on a `prepareToPlay` after a
    lookahead change, nor on its absence: the change of delay must be clean by itself (devplan
    Phase 4).
-6. **Touch:** both deliver the first finger only. Pinch came once in Samplitude and not again.
+6. **Touch:** Samplitude, REAPER and Bitwig all deliver the first finger only. Pinch came once in
+   Samplitude and not again. Bitwig is built for touch screens and runs the plugin in another
+   process, so three hosts alike points away from the hosts and at JUCE at this pin, or at
+   Windows, for a plugin's window. The control is `likyu_hostprobe_touch`, the same editor in a
+   window of its own with no host: its result is to be added here.
 7. **Samplitude's generic view shows no units** and seven decimals: the plugin should supply its
    own value text (Phase 2).
 
@@ -856,4 +860,14 @@ The log, the eleven lookahead changes reduced to the first:
 18:08:57.808  sidechain seen as: bus enabled, exact zeros
 18:08:58.615  sidechain seen as: bus enabled, signal
 ```
+
+### Bitwig Studio, VST3, Windows 11, 2026-11-17, the author's answers
+
+- "Fresh project." So the state Bitwig handed the plugin at construction did not come from a
+  project reopened. The log begins with that construction, and the fingerprint handed over is the
+  scramble's, three hours before the Scramble the log records: there was an earlier instance,
+  scrambled, whose log is gone, and Bitwig made this one in its place and passed the state on
+  (what it does when a device is moved, duplicated, or its plugin process restarted). The values
+  came across whole. A save and reopen is still to do for the row.
+- "Same touch behaviour as the other apps": the first finger only.
 

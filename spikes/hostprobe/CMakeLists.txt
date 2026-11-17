@@ -134,6 +134,34 @@ target_link_libraries(likyu_hostprobe_snapshot
         likyu::warnings
         juce::juce_recommended_config_flags)
 
+# The probe's editor in a window of its own, no host: the control for the touch row (TouchApp.cpp).
+juce_add_gui_app(likyu_hostprobe_touch
+    PRODUCT_NAME "LikyuProbeNoHost"
+    COMPANY_NAME "Pix et Bel"
+    BUNDLE_ID    "io.github.pob31.likyu.probe.nohost"
+    VERSION      "${PROJECT_VERSION}")
+
+target_sources(likyu_hostprobe_touch PRIVATE
+    TouchApp.cpp
+    ProbeProcessor.h
+    ProbeProcessor.cpp
+    ProbeEditor.h
+    ProbeEditor.cpp
+    "${LIKYU_ROOT}/src/shims/juce/PluginProcessor.h"
+    "${LIKYU_ROOT}/src/shims/juce/PluginProcessor.cpp"
+    $<TARGET_OBJECTS:likyu_core>)
+
+target_include_directories(likyu_hostprobe_touch PRIVATE "${LIKYU_ROOT}/src/shims/juce")
+
+target_link_libraries(likyu_hostprobe_touch
+    PRIVATE
+        likyu::core
+        likyu::dsp
+        juce::juce_audio_processors
+        likyu::juce_config
+        likyu::warnings
+        juce::juce_recommended_config_flags)
+
 # The same probe refusing every main layout but stereo: the control for one question. REAPER
 # gives a four-channel track's channels 3/4 to the main bus of a plugin that accepts any
 # width (docs/spikes/phase1-hosts.md); does it give them to the sidechain of one that does not?
