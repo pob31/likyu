@@ -53,7 +53,7 @@ namespace likyu::probe
 
         g.setFont (monospaced (13.0f));
         g.setColour (juce::Colours::lightgrey);
-        g.drawText ("Pointer pad: press with several fingers; wheel or pinch over it",
+        g.drawText ("Pointer pad: several fingers, wheel, pinch",
                     getLocalBounds().reduced (6).removeFromTop (lineHeight), juce::Justification::centredLeft);
         g.drawText (lastGesture, getLocalBounds().reduced (6).removeFromBottom (lineHeight), juce::Justification::centredLeft);
 
@@ -111,6 +111,7 @@ namespace likyu::probe
             const auto ms = dsp::lookaheadMilliseconds[i];
             button.setButtonText (i == 0 ? juce::String ("Lookahead off") : juce::String (ms) + " ms");
             button.setClickingTogglesState (false);
+            button.setColour (juce::TextButton::buttonOnColourId, juce::Colours::darkorange);
             button.onClick = [this, i] { processor.setLookaheadChoice (static_cast<int> (i)); };
             addAndMakeVisible (button);
         }

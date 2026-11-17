@@ -17,13 +17,16 @@ latency.
 
 ```text
 Windows          spikes\hostprobe\install.ps1
-macOS, Linux     spikes/hostprobe/install.sh
+macOS, Linux     bash spikes/hostprobe/install.sh
 ```
 
 Both build the probe and the product in Release under `build/hostprobe/` and copy the bundles to
 the per-user plugin folders; `-Uninstall` and `--uninstall` remove them. By hand:
 `cmake -S spikes/hostprobe -B build/hostprobe`, then
 `cmake --build build/hostprobe --config Release`.
+
+`likyu_hostprobe_snapshot <absolute folder>`, a third target, runs the probe without a host and
+writes its report and a picture of its editor there.
 
 This project is not built by the root `CMakeLists.txt` and not by CI. It is deleted when the
 report is complete; `LikyuProcessor` then becomes `final` again (`src/shims/juce/PluginProcessor.h`).

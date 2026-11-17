@@ -112,6 +112,27 @@ likyu_add_probe(likyu_hostprobe
     "https://pixetbel.org/lv2/likyu-probe/stereo"
     2 LIKYU_PROBE_FORMATS)
 
+# The probe without a host: writes its report and a picture of its editor (Snapshot.cpp).
+add_executable(likyu_hostprobe_snapshot
+    Snapshot.cpp
+    ProbeProcessor.h
+    ProbeProcessor.cpp
+    ProbeEditor.h
+    ProbeEditor.cpp
+    "${LIKYU_ROOT}/src/shims/juce/PluginProcessor.h"
+    "${LIKYU_ROOT}/src/shims/juce/PluginProcessor.cpp")
+
+target_include_directories(likyu_hostprobe_snapshot PRIVATE "${LIKYU_ROOT}/src/shims/juce")
+
+target_link_libraries(likyu_hostprobe_snapshot
+    PRIVATE
+        likyu::core
+        likyu::dsp
+        juce::juce_audio_processors
+        likyu::juce_config
+        likyu::warnings
+        juce::juce_recommended_config_flags)
+
 set(LIKYU_PROBE_FORMATS_MONO LV2)
 likyu_add_probe(likyu_hostprobe_lv2_mono
     "LikyuProbe-mono" "Likyu Probe mono"

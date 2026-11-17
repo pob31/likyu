@@ -73,6 +73,9 @@ namespace likyu::probe
         void paint (juce::Graphics&) override;
         void resized() override;
 
+        /** What the timer does, at once: for Snapshot.cpp, which runs no message loop. */
+        void refreshNow()                                       { timerCallback(); }
+
     private:
         void timerCallback() override;
         void saveReport();

@@ -147,6 +147,9 @@ namespace likyu::probe
         int lookaheadChoice() const;
         void setLookaheadChoice (int choice);
 
+        /** What the timer does, at once: for Snapshot.cpp, which runs no message loop. */
+        void refreshNow()                                       { timerCallback(); }
+
         /** Told by the touch pad. */
         void noteTouches (int simultaneous, juce::MouseInputSource::InputSourceType type);
 
