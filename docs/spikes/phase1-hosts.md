@@ -3,7 +3,7 @@
 Started 2026-11-17. Devplan Phase 1. Code: `spikes/hostprobe/`, still in the tree because the
 matrix is open; it is deleted when the matrix is filled.
 
-**Status: Samplitude is measured (part 8); REAPER has its touch cell; nothing else yet.** The probe is built and validated, the procedure is written,
+**Status: Samplitude is measured (part 8); REAPER VST3 is begun; nothing else yet.** The probe is built and validated, the procedure is written,
 and the validators' rows are filled for Windows. Every host row below is empty and waits for the
 author at the hosts. Part 4 says what JUCE's wrappers do as read from their source: it tells what
 to expect and is not a measurement.
@@ -118,7 +118,7 @@ to that host.
 
 | Host, format, system | 1 fed | 2 nothing routed | 3 lookahead | 4 parameters | 5 state | 6 layouts | 7 touch |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| REAPER, VST3, Windows |  |  |  |  |  |  | **As Samplitude**: the first finger only (the author, 2026-11-17; format not stated, no report saved) |
+| REAPER, VST3, Windows | Not yet: nothing sent to the sidechain | **Two states seen.** As inserted: bus disabled, two channels. Later in the session: **bus enabled, four channels, exact zeros**, with nothing routed (part 8) | Partial: no `prepareToPlay` and no `releaseResources` after any of five changes; the null test not yet reported | Not yet | Partial: project saved with the defaults; not scrambled, not reopened | Not yet; on loading REAPER asks for 64 channels (7th order Ambisonics) and is told yes | **As Samplitude**: the first finger only; the report reads "most down at once 1, mouse and touch" |
 | REAPER, LV2, Windows |  |  |  |  |  |  |  |
 | Bitwig, VST3, Windows |  |  |  |  |  | n/a |  |
 | Live 12, VST3, Windows |  |  |  |  |  | n/a |  |
@@ -522,4 +522,119 @@ do not. Two hosts by two makers behaving alike points at what they share, which 
 host embeds a plugin's window and how JUCE at this pin receives touches inside it, rather than at
 either host. Not established here; Bitwig, which is built for touch screens, is the host that can
 tell the two apart.
+
+### REAPER, VST3, Windows 11, 2026-11-17 14:33, session 1 (nothing routed)
+
+Project `D:\Desktop\test Likyu1.rpp`: the probe on a two-channel track, three other tracks, no
+send between them. The session ran at 48 kHz.
+
+**Measured.**
+
+- **Row 2, and the finding of the day: REAPER can show the plugin an enabled sidechain bus with
+  nothing in it.** As inserted (14:23:41) the bus is disabled and the buffer has two channels. At
+  14:27:44 REAPER releases the plugin, enables the bus as stereo and prepares it again; from then
+  on the buffer has four channels and the sidechain reads **exact zeros**, in every block, with
+  no send to the track and the track still at two channels in the saved project. What the author
+  did at that moment is to be noted (opening the plug-in pin connector, a routing window, the
+  track's channel count put up and back). Whatever it was, a sidechain that nobody feeds is here
+  enabled and silent, the case the PRD's rule treats as a key: a Sidechain band would be keyed by
+  silence and would **not** fall back to Self.
+- **How REAPER sets the plugin up.** It first asks for 64 channels in and out (7th order
+  Ambisonics), is told yes, and applies it for an instant; then stereo with the sidechain
+  enabled, one `prepareToPlay`; then stereo with the sidechain disabled, a second. Nine layouts
+  asked about in all. **Double precision**, blocks of 128.
+- **REAPER calls the plugin while stopped**, unlike Samplitude, and stops calling after about
+  ten seconds without signal (14:23:44 to 14:23:56, and again later), starting again when
+  something plays. `reset` at each start.
+- **Row 3, in part.** Five latency changes, four with the transport stopped and one while
+  playing. None was followed by `prepareToPlay` or `releaseResources`: REAPER does not restart
+  the plugin for a latency change. Whether it realigns needs the null test, not yet reported.
+- **Row 5, in part.** `getStateInformation` seven times, the fingerprint that of the defaults
+  (`1CC8BDCE`): the project was saved without Scramble, and not reopened.
+- **Row 7.** "Most down at once 1 - kinds seen: mouse, touch": a finger arrives as a touch, one
+  at a time, as the author said.
+- The main input reached -2.7 dB.
+
+**The probe, again.** The 64-channel layouts were logged with all their speaker names, eight
+lines of them filling the log; a layout of more than eight channels is now logged by name and
+size.
+
+The log, the Ambisonics lines shortened by hand and the `processorLayoutsChanged` lines, which
+repeat the line above them, left out:
+
+```text
+14:23:41.613  constructed as VST3 in Reaper (REAPER.exe), Windows 11
+14:23:41.613  default layout: in [Stereo (L R) | disabled] out [Stereo (L R)]
+14:23:41.613  host asks: in [7th Order Ambisonics | 7th Order Ambisonics] out [7th Order Ambisonics]  -> no
+14:23:41.613  host asks: in [Stereo (L R) | disabled] out [Stereo (L R)]  -> yes
+14:23:41.613  host asks: in [Stereo (L R) | 7th Order Ambisonics] out [Stereo (L R)]  -> no
+14:23:41.613  host asks: in [Stereo (L R) | Stereo (L R)] out [Stereo (L R)]  -> yes
+14:23:41.613  host asks: in [7th Order Ambisonics | Stereo (L R)] out [Stereo (L R)]  -> no
+14:23:41.614  host asks: in [7th Order Ambisonics | Stereo (L R)] out [7th Order Ambisonics]  -> yes
+14:23:41.614  host asks: in [7th Order Ambisonics | disabled] out [7th Order Ambisonics]  -> yes
+14:23:41.614  numChannelsChanged: in [7th Order Ambisonics | disabled] out [7th Order Ambisonics]
+14:23:41.614  numChannelsChanged: in [Stereo (L R) | disabled] out [Stereo (L R)]
+14:23:41.615  host asks: in [Stereo (L R) | disabled] out [disabled]  -> no
+14:23:41.615  numChannelsChanged: in [Stereo (L R) | Stereo (L R)] out [Stereo (L R)]
+14:23:41.615  prepareToPlay #1: 48000 Hz, block 128, double, realtime, latency 0; in [Stereo (L R) | Stereo (L R)] out [Stereo (L R)]
+14:23:41.616  releaseResources #1
+14:23:41.616  host asks: in [disabled | disabled] out [disabled]  -> no
+14:23:41.616  numChannelsChanged: in [Stereo (L R) | disabled] out [Stereo (L R)]
+14:23:41.616  prepareToPlay #2: 48000 Hz, block 128, double, realtime, latency 0; in [Stereo (L R) | disabled] out [Stereo (L R)]
+14:23:44.285  process calls: started
+14:23:44.285  process buffer: 2 channels; the enabled buses add up to 2
+14:23:44.285  sidechain seen as: bus disabled
+14:23:44.285  reset x1 (total 1)
+14:23:44.285  getStateInformation x3 (total 3); fingerprint 1CC8BDCE
+14:23:44.285  transport: stopped
+14:23:47.723  a touch reached the editor
+14:23:56.562  process calls: stopped
+14:24:54.959  process calls: started
+14:24:54.959  reset x1 (total 2)
+14:25:04.165  process calls: stopped
+14:25:25.633  process calls: started
+14:25:25.633  reset x1 (total 3)
+14:26:06.460  getStateInformation x1 (total 4); fingerprint 1CC8BDCE
+14:27:44.010  releaseResources #2
+14:27:44.010  numChannelsChanged: in [Stereo (L R) | Stereo (L R)] out [Stereo (L R)]
+14:27:44.010  prepareToPlay #3: 48000 Hz, block 128, double, realtime, latency 0; in [Stereo (L R) | Stereo (L R)] out [Stereo (L R)]
+14:27:44.058  process buffer: 4 channels; the enabled buses add up to 4
+14:27:44.058  sidechain seen as: bus enabled, exact zeros
+14:27:44.058  reset x1 (total 4)
+14:28:03.862  getStateInformation x1 (total 5); fingerprint 1CC8BDCE
+14:28:16.864  getStateInformation x1 (total 6); fingerprint 1CC8BDCE
+14:29:30.518  reset x1 (total 5)
+14:29:30.518  transport: playing
+14:29:33.039  transport: stopped
+14:29:37.259  lookahead choice 1 (0.25 ms) set from the probe editor
+14:29:37.280  latency reported to the host: 0 -> 12 samples, transport not playing
+14:29:37.789  reset x1 (total 6)
+14:29:37.888  transport: playing
+14:29:39.504  transport: stopped
+14:29:40.720  lookahead choice 2 (1 ms) set from the probe editor
+14:29:40.819  latency reported to the host: 12 -> 48 samples, transport not playing
+14:29:41.120  reset x1 (total 7)
+14:29:41.120  transport: playing
+14:29:42.531  transport: stopped
+14:29:44.572  lookahead choice 3 (3 ms) set from the probe editor
+14:29:44.653  latency reported to the host: 48 -> 144 samples, transport not playing
+14:29:45.463  reset x1 (total 8)
+14:29:45.463  transport: playing
+14:29:47.257  lookahead choice 2 (1 ms) set from the probe editor
+14:29:47.284  latency reported to the host: 144 -> 48 samples, transport playing
+14:29:49.002  transport: stopped
+14:29:50.081  lookahead choice 2 (1 ms) set from the probe editor
+14:29:51.615  lookahead choice 0 (0 ms) set from the probe editor
+14:29:51.629  latency reported to the host: 48 -> 0 samples, transport not playing
+14:29:57.218  process calls: stopped
+14:32:21.890  process calls: started
+14:32:21.890  reset x1 (total 9)
+14:32:27.128  process calls: stopped
+14:32:32.024  reset x1 (total 10)
+14:32:32.119  process calls: started
+14:33:12.412  getStateInformation x1 (total 7); fingerprint 1CC8BDCE
+14:33:15.053  process calls: stopped
+14:33:40.300  process calls: started
+14:33:40.300  reset x1 (total 11)
+```
 

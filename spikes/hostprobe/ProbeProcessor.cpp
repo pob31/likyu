@@ -44,6 +44,10 @@ namespace likyu::probe
             if (set.isDisabled())
                 return "disabled";
 
+            // A 64-channel layout's speaker list fills the log; its name and size say enough.
+            if (set.size() > 8)
+                return set.getDescription() + " (" + juce::String (set.size()) + " channels)";
+
             return set.getDescription() + " (" + set.getSpeakerArrangementAsString() + ")";
         }
 
