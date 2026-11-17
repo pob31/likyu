@@ -159,60 +159,78 @@ Not begun:
 
 ## 7. Findings
 
-Provisional, from two hosts on Windows, VST3 only. Each is for the author to decide on; none is
-decided here. To be completed when the matrix is.
+From four hosts on Windows, VST3 only, 2026-11-17. Provisional until the other formats and
+systems are in. Each says what was measured and what it bears on; **none is a decision**, and
+the two marked so wait for the author.
 
-1. **In REAPER the usual sidechain routing feeds the main bus, not the sidechain** (2026-11-17).
-   The plugin accepts any main layout up to 64 channels with output equal to input (PRD,
-   non-goals). REAPER offers the track's whole width to the main bus first: on a four-channel
-   track it asks for a four-channel main bus, is told yes, and only then adds the sidechain as
-   channels 5 and 6. A send to track channels 3/4, which is how a REAPER user keys a compressor,
-   therefore arrives as main channels 3 and 4 and is processed as audio; the sidechain reads
-   zeros. A plugin with a fixed stereo main bus does not meet this, because REAPER then has
-   nowhere to put channels 3/4 but the sidechain. **Qualified the same day:** dragging the key
-   track's routing onto the plugin's window does feed the sidechain of the plugin as it is, so
-   REAPER has a way that works; what differs from the hand-made send (the pin mapping, the width
-   of the main bus) awaits a full report. This sets the PRD's "any layout, chosen by the host" against its reference
-   use case in REAPER.
-2. **REAPER names a four-channel track "L R C Lfe"**, so the host "reports an LFE" on channel 4
-   of a track that is two stereo pairs or a quad. The PRD's default (a channel reported as LFE is
-   left out of the link) would leave that channel out wrongly.
-3. **Row 2 across the four VST3 hosts on Windows.** All four insert the plugin with the
-   sidechain bus **disabled** and a buffer of the main channels only: the PRD's fallback to Self
-   applies to a plugin nobody has routed anything to. But "disabled" is not the same as "nothing
-   routed":
+1. **The sidechain fallback covers the first insertion and little else.** All four hosts insert
+   the plugin with the sidechain bus **disabled** and a buffer of the main channels only, so the
+   PRD's fallback to Self applies to a plugin nobody has routed anything to. But "disabled" is
+   not the same as "nothing routed":
    - Live keeps the bus enabled, at exact zeros, after a source has been chosen and removed.
    - REAPER showed the bus enabled at exact zeros with no send at all, and feeds it zeros
      whenever it is stopped.
    - Bitwig and Live feed exact zeros while the chosen source is silent.
    - Samplitude shows a disabled bus between opening a project and the first play although a
      sidechain is routed.
-   So the fallback covers the first insertion and little else, and the prediction of part 4
-   (only AU and LV2 lack a disabled state) was too kind to VST3. In every host an enabled bus at
-   exact zeros is an ordinary state. The PRD already treats it as a key; whether the editor
-   should say "sidechain silent" there is a question for Phase 6.
-4. **Samplitude**, by contrast, keeps the bus disabled until a sidechain is chosen, and the
-   fallback applies there as written; but between opening a project and the first play it shows
-   a disabled bus although a sidechain is routed.
-5. **Latency:** REAPER, Bitwig and Live realign on the fly, with a slip of sound at the change;
+
+   In every host an enabled bus at exact zeros is an ordinary state. The PRD already treats it as
+   a key, so the rule stands on this evidence; what the editor says in that state ("sidechain
+   silent"?) and in Samplitude's gap is a question for Phase 6. The prediction of part 4, that
+   only AU and LV2 lack a disabled state, was too kind to VST3.
+2. **For the author: in REAPER a hand-made send to channels 3/4 feeds the main bus, not the
+   sidechain.** The plugin accepts any main layout up to 64 channels with output equal to input
+   (PRD, non-goals). On a four-channel track REAPER asks for a four-channel main bus, is told
+   yes, and adds the sidechain after it as channels 5 and 6; the send arrives as main channels 3
+   and 4 and is processed as audio, and the sidechain reads zeros. Dragging the key track's
+   routing onto the plugin's window does feed the sidechain, so REAPER has a way that works; what
+   it does differently is not yet on file, nor is the fixed-stereo control's result. Until then:
+   the PRD's "any layout, chosen by the host" and its reference use case pull against each other
+   in REAPER, at least for a user who routes by hand.
+3. **For the author: REAPER names a four-channel track "L R C Lfe".** The host thus "reports an
+   LFE" on channel 4 of a track that is two stereo pairs or a quad, and the PRD's default (a
+   channel reported as LFE is left out of the link) would leave that channel out wrongly.
+4. **Latency.** REAPER, Bitwig and Live realign on the fly, with a slip of sound at the change;
    Samplitude only at the next play start. Bitwig and Live restart the plugin (`prepareToPlay`)
-   for every change, REAPER and Samplitude do not. So the product cannot count on a `prepareToPlay` after a
-   lookahead change, nor on its absence: the change of delay must be clean by itself (devplan
-   Phase 4).
-6. **Touch: the one-finger limit was ours.** Samplitude, REAPER, Bitwig and Live all delivered
-   the first finger only, and so did the probe's editor in a window of its own with no host
-   (2026-11-17 18:33). The cause is in JUCE 9, by design: "Multi-touch is now disabled on Windows
-   by default" (`ThirdParty/JUCE/BREAKING_CHANGES.md`). A plugin's editor must override
-   `usesWindowsMultiTouch()` and return true; a window calls `setUsingWindowsMultiTouch (true)`.
-   The two modes exclude each other: with multitouch on, the window receives every finger and
-   **no pinch gesture** (`mouseMagnify` is never called); with it off, one finger and the
-   system's pinch. That is why pinch events were seen once in Samplitude. For Phase 6: the
-   editor asks for multitouch, and computes its own pinch from two touches on a node. The probe
-   now asks for it, and in a window of its own four fingers draw four discs (the author,
-   2026-11-17). With the request, **all four hosts let several fingers through to the
-   plugin's editor** (the author, 2026-11-17), and no pinch event comes any more.
-7. **Samplitude's generic view shows no units** and seven decimals: the plugin should supply its
-   own value text (Phase 2).
+   for every change; REAPER and Samplitude do not. So the product can count neither on a
+   `prepareToPlay` after a lookahead change nor on its absence: the change of delay must be clean
+   by itself (devplan Phase 4). Part of the slip heard today is ours, the delay jumping between
+   two blocks.
+5. **Touch: the one-finger limit was ours.** JUCE 9 leaves multitouch off on Windows unless the
+   editor asks ("Multi-touch is now disabled on Windows by default",
+   `ThirdParty/JUCE/BREAKING_CHANGES.md`): a plugin's editor overrides `usesWindowsMultiTouch()`.
+   Without the request, all four hosts and a window with no host delivered the first finger only,
+   and the system's pinch now and then. With it, **all four hosts pass several fingers to the
+   editor**, four at once seen, and no pinch event comes any more: the two exclude each other.
+   For Phase 6: the editor asks for multitouch and computes its own pinch from two touches on a
+   node. The PRD's multitouch paragraph stands as written.
+6. **Parameters in the hosts' own views.**
+   - Samplitude shows names, choices as text, continuous values as bare numbers with seven
+     decimals and **no unit**: the plugin should give each parameter its own value text
+     (Phase 2).
+   - Live lists **no parameter until the plugin is configured**, and adds one when it sees it
+     move from the plugin's side. Likyu has no editor before Phase 6, so by itself it gives a
+     Live user nothing to move; the probe's Scramble brought all of them in at once. Once in,
+     they are one flat list of some 280 names in table order, four screens long, with no groups
+     and no search; `lookahead` and `link` are rightly absent. Live's closed chooser cuts a name
+     after about nineteen characters.
+   - Live adds three controls of its own to a plugin with a sidechain input, one of them
+     "Input/Sidechain Mix": the key a band reads in Live may be a blend made by the host.
+7. **How the hosts run the plugin.** For the tests of Phases 2 to 5 to cover:
+
+   | Host | Blocks at 48 kHz | Precision | While stopped | On play |
+   | --- | --- | --- | --- | --- |
+   | Samplitude | 2000 | float | not called at all; `releaseResources` on stop | `prepareToPlay` twice, `reset` |
+   | REAPER | 128 | **double** | called, then not after about ten seconds of silence | `reset` |
+   | Bitwig | 480 | float | not called after about two seconds | none seen |
+   | Live | 128, 256 | float | called | none seen |
+
+   REAPER also asks, on loading, for a 64-channel main bus (7th order Ambisonics), is told yes,
+   and applies it for an instant before settling on stereo.
+8. **State.** Samplitude gave back a scrambled state exactly. Live gave back a state of defaults;
+   Bitwig passed a scrambled state between two instances. `setStateInformation` arrives just
+   after the first `prepareToPlay` in Samplitude and Live, and before any layout or
+   `prepareToPlay` in Bitwig: the product must take a state at either moment.
 
 ## 8. Reports, as saved
 

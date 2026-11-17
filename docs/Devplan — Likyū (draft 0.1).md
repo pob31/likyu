@@ -228,6 +228,22 @@ the procedure for each row: [`docs/spikes/phase1-hosts.md`](spikes/phase1-hosts.
 - *Done-when, not met:* the report exists as a procedure and an empty matrix; the fallback rule is
   neither confirmed nor amended.
 
+**Record, 2026-11-17, evening: the four Windows hosts are measured in VST3.** Handoff:
+[`docs/handoffs/2026-11-17-phase1-windows-vst3.md`](handoffs/2026-11-17-phase1-windows-vst3.md).
+
+- *Done.* Samplitude, REAPER, Bitwig and Live, by the author with the probe: sidechain fed,
+  nothing routed, lookahead and the null test, touch; state and parameters in part. The findings
+  are part 7 of the report.
+- *The fallback rule stands on this evidence*, and covers less than it seems to: every host
+  inserts the plugin with the bus disabled, and every host also shows an enabled bus at exact
+  zeros in ordinary use.
+- *Two findings wait for the author* (PRD, Open decisions): REAPER gives a track's extra channels
+  to the main bus of a plugin that accepts any width; REAPER names a four-channel track
+  "L R C Lfe".
+- *Found on the way:* JUCE 9 leaves multitouch off on Windows unless the editor asks. With the
+  request all four hosts pass several fingers.
+- *Not done:* LV2, Go.dot, macOS, Linux, the farm's validators. Done-when is still not met.
+
 ---
 
 ## Phase 2 — Static EQ · M
