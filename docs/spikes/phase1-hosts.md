@@ -137,7 +137,7 @@ to that host.
 | REAPER, AU, macOS | **Not run on any four-channel track tried (three)**: 0 blocks every time. The track is silent behind a bypassed plugin and passes its input untouched with the AU alone (the author: "now works"). REAPER's second `AudioUnitInitialize` fails, and every render after it is refused by Apple's AU base class with -10867, `kAudioUnitErr_Uninitialized`: 77,321 times in the system log, all from the probe, none reaching our code. Reproduced outside REAPER: an input and an output of **unequal widths** make the initialise fail exactly so, and REAPER's pin map shows it gives four in and two out (finding 9). **On a two-channel track the AU runs** (16:10: 1150 blocks, signal) |  |  | **Likyu shows all its parameters, and REAPER's automation list has them all** (the author). Generic view: a label, then a slider with the value at its end or a dropdown; **no units** |  |  | n/a |
 | REAPER, LV2, macOS |  |  |  |  |  |  | n/a |
 | Live, VST3, macOS | **Yes**: a source chosen on the device enables the bus as stereo; four channels, signal on both (-12.6 and -13.8 dB), exact zeros while the source is silent | **Bus disabled** as inserted, two channels | **Realigns on the fly**; the null passes as in REAPER (the author). Live **restarts the plugin** for each of eight changes (`releaseResources`, `prepareToPlay` with the new latency), as on Windows | Scramble brings the parameters into Live's automation (the author), as on Windows | **Restored exactly**: saved after Scramble, the set reopened gives `setStateInformation` (7008 bytes) just after the first `prepareToPlay`, `BEF24EA3`, 244 off default; the sidechain routing comes back with it, enabled a second after loading | n/a | n/a |
-| Live, AU, macOS | **Yes**: a source chosen on the device feeds the AU's sidechain, signal -12.6 and -13.8 dB. The AU runs: 1885 blocks, float, 44.1 kHz, 512 | **Enabled, exact zeros** from the first block, through some eight seconds of playback before the source: in AU the bus is never disabled (part 4, now measured). **Source removed again: enabled, exact zeros** while playing (16:50:35) |  |  | **Restored exactly**: scrambled, saved, reopened; `setStateInformation` (7008 bytes) just after the first `prepareToPlay`, `BEF24EA3`, 244 off default | n/a | n/a |
+| Live, AU, macOS | **Yes**: a source chosen on the device feeds the AU's sidechain, signal -12.6 and -13.8 dB. The AU runs: 1885 blocks, float, 44.1 kHz, 512 | **Enabled, exact zeros** from the first block, through some eight seconds of playback before the source: in AU the bus is never disabled (part 4, now measured). **Source removed again: enabled, exact zeros** while playing (16:50:35) | **Realigns on the fly**, a small chunk at the change, then the null again (the author). **No restart**: three changes during playback, latency reported within 25 to 70 ms, no `prepareToPlay` after any, where Live in VST3 restarts the plugin each time |  | **Restored exactly**: scrambled, saved, reopened; `setStateInformation` (7008 bytes) just after the first `prepareToPlay`, `BEF24EA3`, 244 off default | n/a | n/a |
 | Bitwig, VST3, macOS |  |  |  |  |  | n/a | n/a |
 | Go.dot, AU, macOS | n/a |  |  |  |  |  | n/a |
 | REAPER, VST3, Linux |  |  |  |  |  |  |  |
@@ -224,7 +224,8 @@ the two marked so wait for the author.
    three stereo pairs would be named 5.1 as well. Inferred from the project format, not measured.
 4. **Latency.** REAPER, Bitwig and Live realign on the fly, with a slip of sound at the change;
    Samplitude only at the next play start. Bitwig and Live restart the plugin (`prepareToPlay`)
-   for every change; REAPER and Samplitude do not. So the product can count neither on a
+   for every change in VST3; REAPER and Samplitude do not, nor does Live in AU (macOS,
+   2026-11-18), the same host restarting the VST3 and not the AU. So the product can count neither on a
    `prepareToPlay` after a lookahead change nor on its absence: the change of delay must be clean
    by itself (devplan Phase 4). Part of the slip heard today is ours, the delay jumping between
    two blocks.
@@ -1538,4 +1539,11 @@ The report of 16:54:44: the set scrambled, saved and reopened. A new instance; o
 default: restored exactly, as in VST3. The author also notes that Live's sidechain chooser shows
 a level meter beside each source, which is Live's own and helps tell a silent source from a
 missing one.
+
+The report of 16:56:31, the same instance: lookahead 0.25, 1 and 3 ms during playback; the
+latency reaches Live 23 to 72 ms after each button (11, 44, 132 samples at 44.1 kHz) and no
+`prepareToPlay` or `releaseResources` follows. The author: "The null test at the various
+lookahead buffers is okay. As usual a small audio chunk gets through before things are nulling
+each other again." The same Live restarts the VST3 at every change (16:38:49): whether a host
+restarts the plugin depends on the format as well as the host.
 
