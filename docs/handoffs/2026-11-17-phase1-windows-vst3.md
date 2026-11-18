@@ -62,7 +62,8 @@ Nothing here blocks it. What the bench adds to its brief:
 - **`prepareToPlay` is called often**: twice at every play in Samplitude, once or twice at every
   lookahead change in Live and Bitwig. It must be cheap and must not click.
 - **Value text.** Samplitude shows a parameter's value as the plugin's default text: seven
-  decimals, no unit. Give each parameter its own text when the table grows a formatter.
+  decimals, no unit; REAPER's generic view of the AU shows no unit either (2026-11-18). Give
+  each parameter its own text, unit included, when the table grows a formatter.
 - **Parameter names** are cut after about nineteen characters in Live's chooser. They are not
   frozen before the end of Phase 5.
 - **A toggle holds the value a host gave it** (0.58) until it is saved as "on". The probe's
