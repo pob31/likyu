@@ -133,8 +133,8 @@ to that host.
 | Samplitude, VST3, Windows | **Yes.** *Side chain input* menu in the plug-in window; on choosing, the host enables the bus as stereo and the buffer has four channels with the key in the last two (-20.0 and -21.4 dB). Mono main does not exist in this host; a mono source not tried | **Bus disabled** until a sidechain is chosen; the buffer then holds the two main channels only (2584 blocks) | **Realigns at the next play start, not during playback.** A change while playing leaves the null broken until stop and start; the host does not restart the plugin by itself | Generic view of eight slots, each a chooser over the parameters; names shown, choices as text, **no units**, continuous values with seven decimals | **Restored exactly**: one `getStateInformation` per save, one `setStateInformation` on opening (6913 bytes, after the first `prepareToPlay`); the sidechain routing comes back with the project | n/a: no mono tracks | **Several fingers, once the editor asks for multitouch** (the author, 2026-11-17). Without the request: the first finger only |
 | Go.dot, VST3, Windows | n/a |  |  |  |  |  |  |
 | Go.dot, LV2, Windows | n/a |  |  |  |  |  |  |
-| REAPER, VST3, macOS | **Yes, on a four-channel track**: main bus four wide (L R C Lfe), sidechain enabled after it as channels 5 and 6, signal on both (-3.7 dB) while playing, exact zeros when stopped. Routed as on Windows, a send to 3/4, then **the pin connector re-wired by hand**: sidechain inputs fed from track channels 3/4, main inputs 3/4 from nothing (read from the project file; finding 2) | **Bus disabled** as inserted, two channels | **Realigns on the fly**, a small sliver at the change, no restart needed (the author). Ten changes while playing: latency reported within 10 to 70 ms each time, no `prepareToPlay` after any | Not yet | Not yet: nothing scrambled | **A four-channel track is given as "L R C Lfe", LFE on channel 4**, as on Windows; on loading REAPER asks for 64 channels and is told yes, as on Windows | n/a; the author: "doesn't work out of the box" |
-| REAPER, AU, macOS |  |  |  |  |  |  | n/a |
+| REAPER, VST3, macOS | **Yes, on a four-channel track**: main bus four wide (L R C Lfe), sidechain enabled after it as channels 5 and 6, signal on both (-3.7 dB) while playing, exact zeros when stopped. Routed as on Windows, a send to 3/4, then **the pin connector re-wired by hand**: sidechain inputs fed from track channels 3/4, main inputs 3/4 from nothing (read from the project file; finding 2) | **Bus disabled** as inserted, two channels | **Realigns on the fly**, a small sliver at the change, no restart needed (the author). Ten changes while playing: latency reported within 10 to 70 ms each time, no `prepareToPlay` after any | Not yet in VST3 (in AU, see the next line) | **Restored exactly**: the project reopened at 15:27 gives `BEF24EA3`, 244 off default, the same code Scramble gives on Windows; `setStateInformation` (7008 bytes) just after the first `prepareToPlay`; the four-channel layout and the enabled sidechain come back with it | **A four-channel track is given as "L R C Lfe", LFE on channel 4**, as on Windows; on loading REAPER asks for 64 channels and is told yes, as on Windows | n/a; the author: "doesn't work out of the box" |
+| REAPER, AU, macOS | **No sound at all on a four-channel track** (an AmbiX file): REAPER prepares the plugin (float, 512) and resets it at every play start, but **never calls its render**: no block in five minutes and several plays. Cause not yet known; on a stereo track not yet tried |  |  | **Likyu shows all its parameters, and REAPER's automation list has them all** (the author) |  |  | n/a |
 | REAPER, LV2, macOS |  |  |  |  |  |  | n/a |
 | Live, AU, macOS |  |  |  |  |  | n/a | n/a |
 | Bitwig, VST3, macOS |  |  |  |  |  | n/a | n/a |
@@ -1218,4 +1218,74 @@ Log:
 15:23:48.010  transport: playing
 15:23:52.078  transport: stopped
 15:23:53.092  sidechain seen as: bus enabled, exact zeros
+```
+
+### REAPER, VST3 and AU, macOS 15.8.3 (Mac mini), 2026-11-18 15:27 to 15:35, session 1 continued
+
+Four reports and the project as saved at 15:35 (`~/Desktop/test Likyu1.RPP`), read over SSH. The
+author: "Normal Likyu shows all parameters so do the automation curves list. The probe on a 4
+channel track lets no sound through. Mono in probe fixed stereo is okay on a stereo track with
+mono file." The project then holds five tracks: the VST3 probe on the four-channel track with
+the send to 3/4 (as before); **the AU Likyu** on the stereo track that is the send's source; a
+plain stereo track; **the AU probe on a new four-channel track** holding a four-channel AmbiX
+file; **the fixed-stereo control (VST3)** on a stereo track holding a mono file.
+
+- **Row 5, VST3 (15:27:11):** the project reopened after a Scramble. `setStateInformation` of
+  7008 bytes just after the first `prepareToPlay`, fingerprint `BEF24EA3`, 244 off default: the
+  same code as Scramble gives on Windows, so restored exactly. (The chunk was 6913 bytes on
+  Windows; why it differs is not looked into. The fingerprint hashes the values, and matches.) REAPER
+  then applies the four-channel main and the enabled sidechain before the first block.
+- **Row 4, AU:** on Likyu itself, "shows all parameters", and REAPER's automation list has them
+  all (the author). Units not yet noted.
+- **Row 1, AU: no render at all on a four-channel track (15:30:54 and 15:35:46).** Constructed
+  at 15:30:14 and prepared twice (float, 512, `in [Stereo | Stereo] out [Stereo]`), reset four
+  times at each play start (28 by 15:35), but **0 blocks**: REAPER never called the plugin's
+  render. JUCE's AU wrapper calls `processBlock` on every `Render`
+  (`juce_audio_plugin_client_AU_1.mm`, lines 1485 to 1549), so the call did not reach the
+  wrapper. The author hears no sound through the track. REAPER's saved pin map for it is
+  ordinary: six inputs, 1 to 4 from track channels 1 to 4, 5 and 6 from none; two outputs.
+  Not known yet: whether the four-channel track is the cause (the AU on a stereo track would
+  tell), and whether the product's AU on the stereo track renders (no probe there to say).
+  The 3509 "host asks" lines of 15:30:14 are JUCE's own wrapper listing channel configurations
+  at construction, within one millisecond, not REAPER.
+- **The fixed-stereo control (15:33:26 to 15:35:43)** on a stereo track with a mono file:
+  stereo main, sidechain disabled, signal (-21.7 dB), as the author heard. Its layout answers
+  show the build is the control: `[Mono | Mono] out [Mono]` refused, `[Stereo | Mono] out
+  [Stereo]` accepted. **Not yet the measurement it is for**: on a four-channel track with a send
+  to 3/4 (finding 2).
+
+The AU report of 15:35:46, status lines:
+
+```text
+Host       Reaper (REAPER) - AU - Mac OSX 15.8.3
+Prepared   48000 Hz, block 512 - prepareToPlay x2, releaseResources x1, reset x28
+Blocks     0 - zero-length 0 - float 0, double 0 - bypassed 0
+Transport  no play head seen - process calls: none now
+Main bus   Stereo (L R) - LFE: none reported - peak exact zero, highest ever exact zero
+Sidechain  Stereo (L R) - process buffer 0 channels, buses add up to 0
+  SEEN AS  NO AUDIO PROCESSED YET - now exact zero, exact zero
+           highest ever exact zero, exact zero
+Latency    0 samples (lookahead 0 ms) - changed 0 times - prepareToPlay calls since the last change: 2
+State      fingerprint 1CC8BDCE - 0 of 284 off default - get x4, set x0
+Pointers   most down at once 0 - kinds seen: none yet
+Layout     in [Stereo (L R) | Stereo (L R)] out [Stereo (L R)]
+Layouts    3509 distinct layouts asked about
+```
+
+Its log after construction:
+
+```text
+15:30:14.675  prepareToPlay #1: 48000 Hz, block 512, float, realtime, latency 0; in [Stereo (L R) | Stereo (L R)] out [Stereo (L R)]
+15:30:14.676  releaseResources #1
+15:30:14.740  getStateInformation x2 (total 2); fingerprint 1CC8BDCE
+15:30:20.516  prepareToPlay #2: 48000 Hz, block 512, float, realtime, latency 0; in [Stereo (L R) | Stereo (L R)] out [Stereo (L R)]
+15:30:20.543  reset x4 (total 4)
+15:30:24.910  reset x4 (total 8)
+15:30:44.120  reset x4 (total 12)
+15:30:52.950  getStateInformation x1 (total 3); fingerprint 1CC8BDCE
+15:31:33.780  reset x4 (total 16)
+15:31:52.774  reset x4 (total 20)
+15:32:51.266  reset x4 (total 24)
+15:33:05.152  reset x4 (total 28)
+15:35:41.417  getStateInformation x1 (total 4); fingerprint 1CC8BDCE
 ```
