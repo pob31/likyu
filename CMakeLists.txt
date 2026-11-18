@@ -44,8 +44,15 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Hidden by default, as juce_add_plugin sets for the plugins: the static libraries that
-# go into a plugin must agree with it.
+# go into a plugin must agree with it. Objective-C++ too: on macOS JUCE builds most of its
+# modules from .mm files, and juce_add_plugin hides C and C++ only, so without these a
+# plugin exports some 6800 JUCE symbols. A host built on JUCE (Go.dot) exports the same
+# names, dyld merges their weak definitions, and the plugin then runs on part of the host's
+# JUCE: the probe's editor aborted in Label::setText in Go.dot's editing helper (Phase 1).
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
+set(CMAKE_OBJCXX_VISIBILITY_PRESET hidden)
+set(CMAKE_OBJC_VISIBILITY_PRESET hidden)
+set(CMAKE_C_VISIBILITY_PRESET hidden)
 set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
 
 # The DLL runtime on every config, set before any third-party target exists so that JUCE,
