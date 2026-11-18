@@ -115,6 +115,13 @@ if command -v lv2ls >/dev/null; then
   echo "$LISTED"
   echo "$LISTED" | grep -qx "https://pixetbel.org/lv2/likyu/stereo" || { echo "!! stereo LV2 not listed"; exit 1; }
   echo "$LISTED" | grep -qx "https://pixetbel.org/lv2/likyu/mono" || { echo "!! mono LV2 not listed"; exit 1; }
+  # Information only, as in CI: its errors are in what JUCE's wrapper writes (devplan,
+  # Phase 0 record). The gate is lilv, above.
+  if command -v lv2_validate >/dev/null; then
+    for b in Likyu Likyu-mono; do
+      lv2_validate "$STAGE/$b.lv2"/*.ttl 2>&1 | tail -1 | sed "s/^/lv2_validate $b (information): /"
+    done
+  fi
 else
   echo "(lv2ls not installed: apt install lilv-utils)"
 fi
