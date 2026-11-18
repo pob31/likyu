@@ -137,7 +137,7 @@ to that host.
 | REAPER, AU, macOS | **Not run on any four-channel track tried (three)**: 0 blocks every time. The track is silent behind a bypassed plugin and passes its input untouched with the AU alone (the author: "now works"). REAPER's second `AudioUnitInitialize` fails, and every render after it is refused by Apple's AU base class with -10867, `kAudioUnitErr_Uninitialized`: 77,321 times in the system log, all from the probe, none reaching our code. Reproduced outside REAPER: an input and an output of **unequal widths** make the initialise fail exactly so, and REAPER's pin map shows it gives four in and two out (finding 9). **On a two-channel track the AU runs** (16:10: 1150 blocks, signal) |  |  | **Likyu shows all its parameters, and REAPER's automation list has them all** (the author). Generic view: a label, then a slider with the value at its end or a dropdown; **no units** |  |  | n/a |
 | REAPER, LV2, macOS |  |  |  |  |  |  | n/a |
 | Live, VST3, macOS | **Yes**: a source chosen on the device enables the bus as stereo; four channels, signal on both (-12.6 and -13.8 dB), exact zeros while the source is silent | **Bus disabled** as inserted, two channels | **Realigns on the fly**; the null passes as in REAPER (the author). Live **restarts the plugin** for each of eight changes (`releaseResources`, `prepareToPlay` with the new latency), as on Windows | Scramble brings the parameters into Live's automation (the author), as on Windows | **Restored exactly**: saved after Scramble, the set reopened gives `setStateInformation` (7008 bytes) just after the first `prepareToPlay`, `BEF24EA3`, 244 off default; the sidechain routing comes back with it, enabled a second after loading | n/a | n/a |
-| Live, AU, macOS | **Yes**: a source chosen on the device feeds the AU's sidechain, signal -12.6 and -13.8 dB. The AU runs: 1885 blocks, float, 44.1 kHz, 512 | **Enabled, exact zeros** from the first block, through some eight seconds of playback before the source: in AU the bus is never disabled (part 4, now measured) |  |  |  | n/a | n/a |
+| Live, AU, macOS | **Yes**: a source chosen on the device feeds the AU's sidechain, signal -12.6 and -13.8 dB. The AU runs: 1885 blocks, float, 44.1 kHz, 512 | **Enabled, exact zeros** from the first block, through some eight seconds of playback before the source: in AU the bus is never disabled (part 4, now measured). **Source removed again: enabled, exact zeros** while playing (16:50:35) |  |  |  | n/a | n/a |
 | Bitwig, VST3, macOS |  |  |  |  |  | n/a | n/a |
 | Go.dot, AU, macOS | n/a |  |  |  |  |  | n/a |
 | REAPER, VST3, Linux |  |  |  |  |  |  |  |
@@ -1528,4 +1528,8 @@ Pointers   most down at once 0 - kinds seen: none yet
 Layout     in [Stereo (L R) | Stereo (L R)] out [Stereo (L R)]
 Layouts    3512 distinct layouts asked about
 ```
+
+The report of 16:51:46, the same instance: the source removed on the device at 16:50:35, the
+sidechain reads **enabled, exact zeros** again while playing (main input still at signal). As
+with Live in VST3 on Windows, a removed source leaves the bus enabled and silent.
 
