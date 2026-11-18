@@ -84,9 +84,25 @@ if [ "$OS" = Darwin ]; then
   rm -rf "$HOME/Library/Audio/Plug-Ins/Components/Likyu.component"
   cp -R "$ART/AU/Likyu.component" "$HOME/Library/Audio/Plug-Ins/Components/"
   killall -9 AudioComponentRegistrar 2>/dev/null
-  auval -v aufx Lkyu PxBl > ../farm-likyu-auval.log 2>&1
-  RC=$?
-  tail -6 ../farm-likyu-auval.log
+  LOG="$(cd .. && pwd)/farm-likyu-auval.log"
+  rm -f "$LOG"
+  if [ -n "${SSH_CONNECTION:-}" ]; then
+    # Over SSH auval talks to another registrar than the logged-in session's and does not
+    # find the component (OSCQuery plugin, Phase 1). Run it in the session, through a
+    # .command file that Terminal opens, and wait for its last line.
+    CMD="$(cd .. && pwd)/farm-likyu-auval.command"
+    printf '#!/bin/bash\nauval -v aufx Lkyu PxBl > "%s" 2>&1\necho "auval exit=$?" >> "%s"\n' "$LOG" "$LOG" > "$CMD"
+    chmod +x "$CMD"
+    open "$CMD" || { echo "!! no logged-in session to run auval in"; exit 1; }
+    for _ in $(seq 1 120); do grep -q '^auval exit=' "$LOG" 2>/dev/null && break; sleep 2; done
+    RC=$(sed -n 's/^auval exit=//p' "$LOG")
+    RC=${RC:-1}
+  else
+    auval -v aufx Lkyu PxBl > "$LOG" 2>&1
+    RC=$?
+  fi
+  grep -c "did not retain default value" "$LOG" | sed 's/^/default-value warnings: /'
+  grep -v '^auval exit=' "$LOG" | tail -6
   echo "auval exit=$RC"
   exit $RC
 fi
