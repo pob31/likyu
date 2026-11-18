@@ -1547,3 +1547,8 @@ lookahead buffers is okay. As usual a small audio chunk gets through before thin
 each other again." The same Live restarts the VST3 at every change (16:38:49): whether a host
 restarts the plugin depends on the format as well as the host.
 
+The report of 16:58:52, Live in VST3 again, a new instance, the null test repeated by the author:
+three changes during playback (0.25, 1, 3 ms), each followed within 3 to 25 ms by
+`releaseResources` and a `prepareToPlay` carrying the new latency. The restart in VST3 and its
+absence in AU are both reproduced.
+
