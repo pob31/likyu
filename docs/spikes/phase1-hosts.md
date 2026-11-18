@@ -5,7 +5,7 @@ matrix is open; it is deleted when the matrix is filled.
 
 **Status, 2026-11-18 morning: the four Windows hosts are measured in VST3, with the gaps listed in
 part 6; findings in part 7, two of them waiting on the author. The validators pass on all three
-systems, an LV2 validator excepted, which the NUC lacks (part 3), and the probe is installed on
+systems, `lv2_validate` reporting only JUCE's own errors as it has since Phase 0 (part 3), and the probe is installed on
 the Mac mini and the NUC, ready for the author's sessions there. Go.dot, LV2 in a host, and every macOS and Linux host row are not begun.** Part 4
 says what JUCE's wrappers do as read from their source: it tells what to expect and is not a
 measurement.
@@ -86,9 +86,9 @@ Then **Save report**, and go to the next format or host.
 | `scripts/farm-check.sh`: Debug build, ctest under C and fr_FR, Release plugins, pluginval at strictness 10 on the VST3 | Mac mini, macOS 15.8.3, arm64, 2026-11-18, `745aff2` | Pass. No warning in our code |
 | `auval -v aufx Lkyu PxBl` | Mac mini, in the logged-in session | **AU VALIDATION SUCCEEDED**, with 18 warnings "Parameter did not retain default value when set", all on logarithmic parameters whose default does not survive the float mapping: the sixteen attacks (5 ms on 0.05 to 200), band 4's frequency (500 Hz, read back 499.99997) and band 2's high frequency (160 Hz). Over SSH the component is not found, as the OSCQuery plugin found (that session talks to another registrar), so the script's first run failed there; it now runs auval in the logged-in session when called over SSH, and passes |
 | `scripts/farm-check.sh`, as above | NUC, Ubuntu 24.04.5, GCC 13, the same day and commit | Pass. One warning in our code, `-Wfloat-equal` in `tests/plugin/ProcessorTests.cpp`, corrected in `2e0b465` |
-| pluginval with its GUI tests | NUC, on the logged-in Wayland session's Xwayland (`DISPLAY=:0`) | Pass. The script skips the GUI tests there: no `DISPLAY` over SSH and no `xvfb-run` |
-| Both LV2 bundles read by lilv | NUC | **Pass**, both listed and `lilv_plugin_verify` true; stereo: two main in, two sidechain in, two out; mono: one, one, one; a latency port on each. The NUC has `liblilv` but not `lv2ls`, so the script printed "not installed" and checked nothing: read instead through the library from Python |
-| An LV2 validator (`lv2lint` or `lv2_validate`) | NUC | **Empty.** `lv2lint` is not packaged on Ubuntu 24.04; `lv2_validate` is (`lv2-dev`, with `sordi`), not installed, and installing needs the author's password |
+| pluginval with its GUI tests | NUC | Pass: first by hand on the logged-in session's Xwayland (`DISPLAY=:0`), then by the script under `xvfb-run` once the author installed `xvfb` |
+| Both LV2 bundles read by lilv | NUC | **Pass**, both listed and `lilv_plugin_verify` true; stereo: two main in, two sidechain in, two out; mono: one, one, one; a latency port on each. Read first through `liblilv` from Python, then by the script's `lv2ls` once the author installed `lilv-utils` |
+| `lv2_validate` on both bundles | NUC, at `4c75c3a`, the author having installed `lv2-dev` and `sordi` | **112 errors on each, all in what JUCE's wrapper writes**, as in CI since Phase 0: 108 `lv2:portProperty` on `lv2:Parameter` entries (choices and toggles), which the schema keeps for ports; `doap:maintainer` and `doap:release` on the plugin; and two on `…:Program`, the wrapper's state key for the current program (`juce_audio_plugin_client_LV2.cpp`, line 93), undefined and unlabelled. The probe's bundles give the same. Information only, as the Phase 0 record decided; the LV2 gate is lilv, which passes. `lv2lint` is not packaged on Ubuntu 24.04 |
 | The probe: pluginval at strictness 10 on `LikyuProbe.vst3`, auval on `aufx Lkyp PxBl`, lilv on both probe LV2 bundles | Mac mini and NUC, as installed by `spikes/hostprobe/install.sh` | Pass. auval gives the same 18 warnings as the product |
 
 The probe's LV2 manifests, read after the build: the same audio ports as the product's (stereo:
@@ -164,11 +164,6 @@ Not begun:
   cannot: each needs a host's window. Row 7 on Linux needs a touch screen there. The probe, its
   mono LV2, the fixed-stereo control and the product are installed in the user's plugin folders
   on both machines since 2026-11-18 (`spikes/hostprobe/install.sh`, built from `745aff2`).
-- **`lilv-utils` and `xvfb` on the NUC**, so that `scripts/farm-check.sh` checks everything by
-  itself there: one `sudo apt install` by the author.
-- **An LV2 validator**, which row 8 and the PRD's acceptance table ask for ("`lv2lint` or
-  equivalent"). `lv2lint` is not packaged on Ubuntu 24.04; `lv2_validate` is, in `lv2-dev`, with
-  `sord_validate` from `sordi`. With those installed by the author, an agent runs it.
 
 ## 7. Findings
 

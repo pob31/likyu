@@ -244,8 +244,8 @@ the procedure for each row: [`docs/spikes/phase1-hosts.md`](spikes/phase1-hosts.
   request all four hosts pass several fingers.
 - *Not done:* LV2, Go.dot, macOS, Linux, the farm's validators. Done-when is still not met.
 - *Added 2026-11-18, morning:* the farm answered. `scripts/farm-check.sh` passes on the Mac mini
-  and the NUC, auval and lilv included; no LV2 validator is installed on the NUC yet. The probe
-  is installed on both for the author's sessions there.
+  and the NUC, auval and lilv included; `lv2_validate` reports only what JUCE's wrapper writes,
+  as in CI. The probe is installed on both for the author's sessions there.
 
 ---
 

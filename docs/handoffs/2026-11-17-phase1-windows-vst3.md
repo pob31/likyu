@@ -94,12 +94,10 @@ Those of the two earlier handoffs hold. Added today:
   the script run again. Close the hosts first.
 - **On the farm** (2026-11-18): auval over SSH cannot see a component the logged-in session has
   registered; `farm-check.sh` now runs it in the session through a `.command` file, which leaves
-  a Terminal window open on the Mac. The NUC has neither `xvfb-run` nor `lv2ls`: the script
-  skips pluginval's GUI tests and the LV2 listing and still exits 0. Run the GUI tests by hand
-  with `DISPLAY=:0 XAUTHORITY=/run/user/1000/.mutter-Xwaylandauth.*` while the author is logged
-  in; list the LV2 through `liblilv` (installed) from Python's `ctypes`, or ask the author for
-  `sudo apt install lilv-utils xvfb lv2-dev sordi`. The last two give `lv2_validate`, the LV2
-  validator row 8 still lacks; `lv2lint` is not packaged on Ubuntu 24.04.
+  a Terminal window open on the Mac. On the NUC the author installed `lilv-utils xvfb lv2-dev
+  sordi` on 2026-11-18, so the script there runs pluginval's GUI tests, lists both LV2 and prints
+  `lv2_validate`'s count as information (112 errors, all JUCE's, as in CI). If a check there is
+  ever skipped again, the script still exits 0: read its output, not its exit code.
 - **A Python patch passed through a Git Bash heredoc lost its backslashes again**, as the Phase 0
   handoff warned. Write the script to a file with the editor, then run it.
 - **The author's hosts are not his daily ones** (his words). Routing a sidechain took a tutorial
