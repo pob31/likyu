@@ -134,7 +134,7 @@ to that host.
 | Go.dot, VST3, Windows | n/a |  |  |  |  |  |  |
 | Go.dot, LV2, Windows | n/a |  |  |  |  |  |  |
 | REAPER, VST3, macOS | **Yes, on a four-channel track**: main bus four wide (L R C Lfe), sidechain enabled after it as channels 5 and 6, signal on both (-3.7 dB) while playing, exact zeros when stopped. Routed as on Windows, a send to 3/4, then **the pin connector re-wired by hand**: sidechain inputs fed from track channels 3/4, main inputs 3/4 from nothing (read from the project file; finding 2) | **Bus disabled** as inserted, two channels | **Realigns on the fly**, a small sliver at the change, no restart needed (the author). Ten changes while playing: latency reported within 10 to 70 ms each time, no `prepareToPlay` after any | Not yet in VST3 (in AU, see the next line) | **Restored exactly**: the project reopened at 15:27 gives `BEF24EA3`, 244 off default, the same code Scramble gives on Windows; `setStateInformation` (7008 bytes) just after the first `prepareToPlay`; the four-channel layout and the enabled sidechain come back with it | **A four-channel track is given as "L R C Lfe", LFE on channel 4**, as on Windows; on loading REAPER asks for 64 channels and is told yes, as on Windows | n/a; the author: "doesn't work out of the box" |
-| REAPER, AU, macOS | **Not run on any four-channel track tried (three)**: 0 blocks every time. The track is silent behind a bypassed plugin and passes its input untouched with the AU alone (the author: "now works"). REAPER's second `AudioUnitInitialize` fails, and every render after it is refused by Apple's AU base class with -10867, `kAudioUnitErr_Uninitialized`: 77,321 times in the system log, all from the probe, none reaching our code. Reproduced outside REAPER: an input and an output of **unequal widths** make the initialise fail exactly so (finding 9). On a stereo track not yet tried |  |  | **Likyu shows all its parameters, and REAPER's automation list has them all** (the author) |  |  | n/a |
+| REAPER, AU, macOS | **Not run on any four-channel track tried (three)**: 0 blocks every time. The track is silent behind a bypassed plugin and passes its input untouched with the AU alone (the author: "now works"). REAPER's second `AudioUnitInitialize` fails, and every render after it is refused by Apple's AU base class with -10867, `kAudioUnitErr_Uninitialized`: 77,321 times in the system log, all from the probe, none reaching our code. Reproduced outside REAPER: an input and an output of **unequal widths** make the initialise fail exactly so, and REAPER's pin map shows it gives four in and two out (finding 9). **On a two-channel track the AU runs** (16:10: 1150 blocks, signal) |  |  | **Likyu shows all its parameters, and REAPER's automation list has them all** (the author) |  |  | n/a |
 | REAPER, LV2, macOS |  |  |  |  |  |  | n/a |
 | Live, AU, macOS |  |  |  |  |  | n/a | n/a |
 | Bitwig, VST3, macOS |  |  |  |  |  | n/a | n/a |
@@ -258,12 +258,14 @@ the two marked so wait for the author.
    2026-11-18. In a minimal host (part 8) the same failure follows from one cause only: an input
    and an output of different widths. The wrapper accepts each width as it is set, and the
    initialise then refuses the pair with -10868 (`kAudioUnitErr_FormatNotSupported`), because
-   the plugin requires output equal to input (PRD, non-goals). Equal widths, 1, 2 or 4, work. So
-   REAPER most likely gives the AU the track's width on one side only: inferred from the error,
-   not seen, and which side is not known.
+   the plugin requires output equal to input (PRD, non-goals). Equal widths, 1, 2 or 4, work. **REAPER widens the input and not the output:** its saved pin map for the AU on each
+   four-channel track has six inputs (main four, sidechain two) and two outputs, the pair the
+   minimal host shows failing. With track 1 set back to two channels (16:10), the map has four
+   inputs and two outputs, the initialise succeeds and the AU runs: 1150 blocks, signal at
+   -20.9 dB, and the error rate falls by one instance's worth.
    The AU advertises `{-1, -1}` in `SupportedNumChannels`, which Apple defines as any width with
    input equal to output. It is the same rule as finding 2 meeting REAPER in another format, and
-   it bears on the same open decision. A stereo track is expected to work and is not yet tried.
+   it bears on the same open decision.
 
 ## 8. Reports, as saved
 
@@ -1351,4 +1353,23 @@ has the -10867 render errors going on without a gap, 5,000 to 11,000 a minute fr
 16:01. So the AU is still not run; what changed is what REAPER does with the track around it.
 The Phase 0 plugin passes its input through, so sound is no sign that it runs: only the probe's
 block count is.
+
+### REAPER, AU, macOS 15.8.3 (Mac mini), 2026-11-18 16:03 to 16:11: the AU runs on two channels
+
+The author: "Removing the sidechain seems to fix things." In the project saved at 16:10, track 1
+(*ambiance_voixPapa*) has no send and **two channels instead of four**; its AU probe's pin map
+has four inputs (main 1 and 2 from track 1 and 2, sidechain from none) and two outputs.
+
+- **The report of 16:10:35**, from that instance (constructed 15:58:08.505): after 32 minutes of
+  resets and no block, a third `prepareToPlay` at 16:10:23, the first initialise that holds;
+  process calls start at once, a buffer of four channels (main and sidechain), the sidechain
+  enabled at exact zeros; 1150 blocks in float, the main input's highest peak -20.9 dB.
+- **The error rate** in the macOS log, at about 94 refused renders a second for each failing
+  instance (48000 / 512): one instance's worth from 16:00 to 16:02 (track 1's chain bypassed,
+  the red FX button the author saw), two from 16:03 to 16:09 (track 1 on again, still four
+  channels), one again from 16:10. The one left is the AU on the four-channel AmbiX track that is
+  still active.
+- **Before the change:** the 15:30 and 15:50 projects' pin maps for the AU on a four-channel
+  track: six inputs, two outputs. The width, not the send, is what matters: from 16:03 to 16:09
+  track 1 had no send and four channels, and the AU failed.
 

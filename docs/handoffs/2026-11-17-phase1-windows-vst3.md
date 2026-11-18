@@ -42,8 +42,10 @@ Both are in the PRD's *Open decisions* since today. Neither is the implementer's
   and `0xfeed5eee`, an input count, then one 64-bit mask of track channels per input, then the
   same for outputs.
   **And in AU on macOS** (2026-11-18, finding 9): the AU is silent on a four-channel track.
-  REAPER's second initialise fails as it does in a minimal host only with unequal input and
-  output widths; every render after it returns -10867, before our code. The macOS log shows
+  REAPER gives it four inputs and two outputs (its pin map), the second initialise fails on the
+  unequal pair, as it does in a minimal host, and every render after it returns -10867, before
+  our code. On a two-channel track it runs. By ear a failed Likyu passes its input untouched:
+  only the probe's block count tells. The macOS log shows
   it: `/usr/bin/log show --predicate 'process == "REAPER" AND messageType == error'` (`log`
   alone is a zsh builtin there).
 - **REAPER and the LFE.** A four-channel track arrives as "L R C Lfe".
