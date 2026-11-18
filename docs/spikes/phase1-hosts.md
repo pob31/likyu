@@ -134,7 +134,7 @@ to that host.
 | Go.dot, VST3, Windows | n/a |  |  |  |  |  |  |
 | Go.dot, LV2, Windows | n/a |  |  |  |  |  |  |
 | REAPER, VST3, macOS | **Yes, on a four-channel track**: main bus four wide (L R C Lfe), sidechain enabled after it as channels 5 and 6, signal on both (-3.7 dB) while playing, exact zeros when stopped. Routed as on Windows, a send to 3/4, then **the pin connector re-wired by hand**: sidechain inputs fed from track channels 3/4, main inputs 3/4 from nothing (read from the project file; finding 2) | **Bus disabled** as inserted, two channels | **Realigns on the fly**, a small sliver at the change, no restart needed (the author). Ten changes while playing: latency reported within 10 to 70 ms each time, no `prepareToPlay` after any | Not yet in VST3 (in AU, see the next line) | **Restored exactly**: the project reopened at 15:27 gives `BEF24EA3`, 244 off default, the same code Scramble gives on Windows; `setStateInformation` (7008 bytes) just after the first `prepareToPlay`; the four-channel layout and the enabled sidechain come back with it | **A four-channel track is given as "L R C Lfe", LFE on channel 4**, as on Windows; on loading REAPER asks for 64 channels and is told yes, as on Windows | n/a; the author: "doesn't work out of the box" |
-| REAPER, AU, macOS | **Silence on every four-channel track tried (three).** REAPER's second `AudioUnitInitialize` fails, and every render after it is refused by Apple's AU base class with -10867, `kAudioUnitErr_Uninitialized`: 77,321 times in the system log, all from the probe, none reaching our code. Reproduced outside REAPER: an input and an output of **unequal widths** make the initialise fail exactly so (finding 9). On a stereo track not yet tried |  |  | **Likyu shows all its parameters, and REAPER's automation list has them all** (the author) |  |  | n/a |
+| REAPER, AU, macOS | **Not run on any four-channel track tried (three)**: 0 blocks every time. The track is silent behind a bypassed plugin and passes its input untouched with the AU alone (the author: "now works"). REAPER's second `AudioUnitInitialize` fails, and every render after it is refused by Apple's AU base class with -10867, `kAudioUnitErr_Uninitialized`: 77,321 times in the system log, all from the probe, none reaching our code. Reproduced outside REAPER: an input and an output of **unequal widths** make the initialise fail exactly so (finding 9). On a stereo track not yet tried |  |  | **Likyu shows all its parameters, and REAPER's automation list has them all** (the author) |  |  | n/a |
 | REAPER, LV2, macOS |  |  |  |  |  |  | n/a |
 | Live, AU, macOS |  |  |  |  |  | n/a | n/a |
 | Bitwig, VST3, macOS |  |  |  |  |  | n/a | n/a |
@@ -252,8 +252,9 @@ the two marked so wait for the author.
 9. **For the author: in REAPER on macOS the AU is silent on a four-channel track.** REAPER
    initialises the AU, uninitialises it, and its second initialise fails; it then calls render
    on a unit that is not initialised, and Apple's AU base class answers each call with -10867
-   (`kAudioUnitErr_Uninitialized`) before our code runs. The track gives silence and REAPER says
-   nothing. The macOS log holds 77,321 such errors from the probe between 15:30 and 15:53 on
+   (`kAudioUnitErr_Uninitialized`) before our code runs. REAPER says nothing, and what the track gives depends on the chain:
+   silence behind a bypassed plugin, the input untouched when the AU is alone, so by ear a
+   failed Likyu cannot be told from a working one. The macOS log holds 77,321 such errors from the probe between 15:30 and 15:53 on
    2026-11-18. In a minimal host (part 8) the same failure follows from one cause only: an input
    and an output of different widths. The wrapper accepts each width as it is set, and the
    initialise then refuses the pair with -10868 (`kAudioUnitErr_FormatNotSupported`), because
@@ -1339,3 +1340,15 @@ parameters.)
 
   Each `AudioUnitSetProperty` of a width returns 0 even when the pair will not initialise.
   The product's AU behaves as the probe's.
+
+### REAPER, AU, macOS 15.8.3 (Mac mini), 2026-11-18 15:58 to 16:01: "now works", by ear only
+
+The author: "Removing the VST with its sidechain and only having the AU with or without the
+sidechain now works." Track 1 (*ambiance_voixPapa*, four channels, the send to 3/4) now holds a
+new AU probe alone (constructed 15:58:08, state of 5560 bytes given back at once). The report of
+16:01:37: **0 blocks**, the same initialise, uninitialise and `Reset` as before. The macOS log
+has the -10867 render errors going on without a gap, 5,000 to 11,000 a minute from 15:58 to
+16:01. So the AU is still not run; what changed is what REAPER does with the track around it.
+The Phase 0 plugin passes its input through, so sound is no sign that it runs: only the probe's
+block count is.
+
