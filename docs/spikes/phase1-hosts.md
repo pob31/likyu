@@ -136,6 +136,7 @@ to that host.
 | REAPER, VST3, macOS | **Yes, on a four-channel track**: main bus four wide (L R C Lfe), sidechain enabled after it as channels 5 and 6, signal on both (-3.7 dB) while playing, exact zeros when stopped. Routed as on Windows, a send to 3/4, then **the pin connector re-wired by hand**: sidechain inputs fed from track channels 3/4, main inputs 3/4 from nothing (read from the project file; finding 2) | **Bus disabled** as inserted, two channels | **Realigns on the fly**, a small sliver at the change, no restart needed (the author). Ten changes while playing: latency reported within 10 to 70 ms each time, no `prepareToPlay` after any | Not yet in VST3 (in AU, see the next line) | **Restored exactly**: the project reopened at 15:27 gives `BEF24EA3`, 244 off default, the same code Scramble gives on Windows; `setStateInformation` (7008 bytes) just after the first `prepareToPlay`; the four-channel layout and the enabled sidechain come back with it | **A four-channel track is given as "L R C Lfe", LFE on channel 4**, as on Windows; on loading REAPER asks for 64 channels and is told yes, as on Windows. **No mono track:** a mono clip, or a mono master, leaves the plugin's main bus stereo (the author); a REAPER track has two channels at least. **A six-channel track is "5.1 Surround (L R C Lfe Ls Rs)", LFE on channel 4**, a 5.1 main with the sidechain disabled. Wide not yet | n/a; the author: "doesn't work out of the box" |
 | REAPER, AU, macOS | **Not run on any four-channel track tried (three)**: 0 blocks every time. The track is silent behind a bypassed plugin and passes its input untouched with the AU alone (the author: "now works"). REAPER's second `AudioUnitInitialize` fails, and every render after it is refused by Apple's AU base class with -10867, `kAudioUnitErr_Uninitialized`: 77,321 times in the system log, all from the probe, none reaching our code. Reproduced outside REAPER: an input and an output of **unequal widths** make the initialise fail exactly so, and REAPER's pin map shows it gives four in and two out (finding 9). **On a two-channel track the AU runs** (16:10: 1150 blocks, signal) |  |  | **Likyu shows all its parameters, and REAPER's automation list has them all** (the author). Generic view: a label, then a slider with the value at its end or a dropdown; **no units** |  |  | n/a |
 | REAPER, LV2, macOS |  |  |  |  |  |  | n/a |
+| Live, VST3, macOS | **Yes**: a source chosen on the device enables the bus as stereo; four channels, signal on both (-12.6 and -13.8 dB), exact zeros while the source is silent | **Bus disabled** as inserted, two channels | **Realigns on the fly**; the null passes as in REAPER (the author). Live **restarts the plugin** for each of eight changes (`releaseResources`, `prepareToPlay` with the new latency), as on Windows | Scramble brings the parameters into Live's automation (the author), as on Windows | **Restored exactly**: saved after Scramble, the set reopened gives `setStateInformation` (7008 bytes) just after the first `prepareToPlay`, `BEF24EA3`, 244 off default; the sidechain routing comes back with it, enabled a second after loading | n/a | n/a |
 | Live, AU, macOS |  |  |  |  |  | n/a | n/a |
 | Bitwig, VST3, macOS |  |  |  |  |  | n/a | n/a |
 | Go.dot, AU, macOS | n/a |  |  |  |  |  | n/a |
@@ -152,7 +153,8 @@ On Windows, VST3, small things left in hosts already measured (the author, a few
   layout and pin map of a working sidechain, and the fixed-stereo control's result, are on file
   from the Mac since 2026-11-18: finding 2.)
 - **Bitwig and Live:** save and reopen with scrambled values (Live's reload was made with the
-  defaults; Bitwig's state passed between two instances of a fresh project).
+  defaults; Bitwig's state passed between two instances of a fresh project). Live in VST3 on the
+  Mac restores a scrambled state exactly (2026-11-18), which makes a fault on Windows unlikely.
 - **Live:** *Sidechain On* with no source; what *Input/Sidechain Mix* does to the key.
 - **Samplitude:** *Side chain in* ticked with no track chosen; a mono file as the source.
 - **Units** in the hosts' own parameter views: none shown in Samplitude (VST3, Windows) nor in
@@ -1453,5 +1455,46 @@ State      fingerprint 1CC8BDCE - 0 of 284 off default - get x3, set x0
 Pointers   most down at once 0 - kinds seen: none yet
 Layout     in [5.1 Surround (L R C Lfe Ls Rs) | disabled] out [5.1 Surround (L R C Lfe Ls Rs)]
 Layouts    15 distinct layouts asked about
+```
+
+### Ableton Live 12, VST3, macOS 15.8.3 (Mac mini), 2026-11-18 16:35 to 16:47, session 1
+
+Three reports, read over SSH. The author: "There should be a report for the null test. Passed as
+with Reaper. Then I tried the sidechain. 2nd report. Used scramble to populate the parameters
+for the automations. OK. Saved and reloaded. Saved new report."
+
+- **How Live runs it here:** 44.1 kHz, blocks of 512, float. Called while stopped, as on Windows.
+  Two `prepareToPlay` at insertion, within 60 ms.
+- **Row 2:** bus disabled as inserted, two channels.
+- **Row 3 (16:38:49):** eight changes of lookahead during playback, every choice. Each is
+  followed within 10 to 50 ms by `releaseResources` and a `prepareToPlay` that already carries
+  the new latency (11, 44, 132 samples at 44.1 kHz), then `reset`: Live restarts the plugin at
+  every change, as on Windows. The null passes (the author).
+- **Row 1 (16:44:34):** a source chosen on the device: Live releases the plugin, enables the
+  sidechain as stereo and prepares it again; four channels, exact zeros until play, then signal,
+  highest -12.6 and -13.8 dB.
+- **Row 4:** Scramble at 16:41:42 brings the parameters into Live's automation (the author), as
+  on Windows.
+- **Row 5 (16:47:05):** the set saved after Scramble and reopened. `setStateInformation` of 7008
+  bytes just after the first `prepareToPlay`, `BEF24EA3`, 244 off default: restored exactly. Live
+  prepares three times while loading and enables the sidechain a second later, so the routing
+  comes back with the set. Exact zeros again at 16:47:01 while playing: the source silent there.
+
+The reopened set's report, status lines:
+
+```text
+Host       Ableton Live (Live) - VST3 - Mac OSX 15.8.3
+Prepared   44100 Hz, block 512 - prepareToPlay x4, releaseResources x3, reset x2
+Blocks     2585 - sizes 512 to 512, last 512 - zero-length 0 - float 2585, double 0 - bypassed 0
+Transport  playing - process calls: running
+Main bus   Stereo (L R) - LFE: none reported - peak exact zero, highest ever -1.8 dB
+Sidechain  Stereo (L R) - process buffer 4 channels, buses add up to 4
+  SEEN AS  BUS ENABLED, EXACT ZEROS - now exact zero, exact zero
+           highest ever -12.8 dB, -13.8 dB
+Latency    0 samples (lookahead 0 ms) - changed 0 times - prepareToPlay calls since the last change: 4
+State      fingerprint BEF24EA3 - 244 of 284 off default - get x1, set x1
+Pointers   most down at once 0 - kinds seen: none yet
+Layout     in [Stereo (L R) | Stereo (L R)] out [Stereo (L R)]
+Layouts    3 distinct layouts asked about
 ```
 
