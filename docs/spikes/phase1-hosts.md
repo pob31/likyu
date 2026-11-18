@@ -3,10 +3,12 @@
 Started 2026-11-17. Devplan Phase 1. Code: `spikes/hostprobe/`, still in the tree because the
 matrix is open; it is deleted when the matrix is filled.
 
-**Status, end of 2026-11-17: the four Windows hosts are measured in VST3, with the gaps listed in part 6; findings in part 7, two of them waiting on the author; Go.dot, LV2, macOS and Linux not begun.** The probe is built and validated, the procedure is written,
-and the validators' rows are filled for Windows. Every host row below is empty and waits for the
-author at the hosts. Part 4 says what JUCE's wrappers do as read from their source: it tells what
-to expect and is not a measurement.
+**Status, 2026-11-18 morning: the four Windows hosts are measured in VST3, with the gaps listed in
+part 6; findings in part 7, two of them waiting on the author. The validators pass on all three
+systems, an LV2 validator excepted, which the NUC lacks (part 3), and the probe is installed on
+the Mac mini and the NUC, ready for the author's sessions there. Go.dot, LV2 in a host, and every macOS and Linux host row are not begun.** Part 4
+says what JUCE's wrappers do as read from their source: it tells what to expect and is not a
+measurement.
 
 ## 1. The questions
 
@@ -81,8 +83,13 @@ Then **Save report**, and go to the next format or host.
 | pluginval 1.0.4, strictness 10, VST3, Likyu Probe, editor tests included | the same | Pass |
 | pluginval at strictness 10 on Likyu; `auval`; both LV2 bundles read by lilv | CI on Linux, macOS, Windows | Pass, as recorded in `docs/bench/2026-11-16-phase0.md`; not run again for this phase beyond the CI of its commits |
 | `lv2lint` | CI | Not run: not packaged on the runner (Phase 0) |
-| `scripts/farm-check.sh` | Mac mini | **Empty.** `ssh macmini` timed out on 2026-11-17 |
-| `scripts/farm-check.sh`, and `lv2lint` if the machine has it | NUC | **Empty.** `ssh nuc` timed out on 2026-11-17 |
+| `scripts/farm-check.sh`: Debug build, ctest under C and fr_FR, Release plugins, pluginval at strictness 10 on the VST3 | Mac mini, macOS 15.8.3, arm64, 2026-11-18, `745aff2` | Pass. No warning in our code |
+| `auval -v aufx Lkyu PxBl` | Mac mini, in the logged-in session | **AU VALIDATION SUCCEEDED**, with 18 warnings "Parameter did not retain default value when set", all on logarithmic parameters whose default does not survive the float mapping: the sixteen attacks (5 ms on 0.05 to 200), band 4's frequency (500 Hz, read back 499.99997) and band 2's high frequency (160 Hz). Over SSH the component is not found, as the OSCQuery plugin found (that session talks to another registrar), so the script's first run failed there; it now runs auval in the logged-in session when called over SSH, and passes |
+| `scripts/farm-check.sh`, as above | NUC, Ubuntu 24.04.5, GCC 13, the same day and commit | Pass. One warning in our code, `-Wfloat-equal` in `tests/plugin/ProcessorTests.cpp`, corrected in `2e0b465` |
+| pluginval with its GUI tests | NUC, on the logged-in Wayland session's Xwayland (`DISPLAY=:0`) | Pass. The script skips the GUI tests there: no `DISPLAY` over SSH and no `xvfb-run` |
+| Both LV2 bundles read by lilv | NUC | **Pass**, both listed and `lilv_plugin_verify` true; stereo: two main in, two sidechain in, two out; mono: one, one, one; a latency port on each. The NUC has `liblilv` but not `lv2ls`, so the script printed "not installed" and checked nothing: read instead through the library from Python |
+| An LV2 validator (`lv2lint` or `lv2_validate`) | NUC | **Empty.** `lv2lint` is not packaged on Ubuntu 24.04; `lv2_validate` is (`lv2-dev`, with `sordi`), not installed, and installing needs the author's password |
+| The probe: pluginval at strictness 10 on `LikyuProbe.vst3`, auval on `aufx Lkyp PxBl`, lilv on both probe LV2 bundles | Mac mini and NUC, as installed by `spikes/hostprobe/install.sh` | Pass. auval gives the same 18 warnings as the product |
 
 The probe's LV2 manifests, read after the build: the same audio ports as the product's (stereo:
 two main inputs, two sidechain inputs marked `lv2:connectionOptional`, two outputs; mono: one, one
@@ -154,8 +161,14 @@ Not begun:
 - **LV2 in REAPER on Windows** (the bundles are installed in `%APPDATA%\LV2`).
 - **Go.dot**, which needs a build that hosts the three formats.
 - **macOS and Linux**: the author at the Mac mini and the NUC, or over a remote desktop. An agent
-  cannot: each needs a host's window. Row 7 on Linux needs a touch screen there.
-- **The farm's validators**: an agent, as soon as `ssh macmini` and `ssh nuc` answer.
+  cannot: each needs a host's window. Row 7 on Linux needs a touch screen there. The probe, its
+  mono LV2, the fixed-stereo control and the product are installed in the user's plugin folders
+  on both machines since 2026-11-18 (`spikes/hostprobe/install.sh`, built from `745aff2`).
+- **`lilv-utils` and `xvfb` on the NUC**, so that `scripts/farm-check.sh` checks everything by
+  itself there: one `sudo apt install` by the author.
+- **An LV2 validator**, which row 8 and the PRD's acceptance table ask for ("`lv2lint` or
+  equivalent"). `lv2lint` is not packaged on Ubuntu 24.04; `lv2_validate` is, in `lv2-dev`, with
+  `sord_validate` from `sordi`. With those installed by the author, an agent runs it.
 
 ## 7. Findings
 

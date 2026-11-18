@@ -9,10 +9,12 @@ still describes how the probe is built. Phase 1 is **not** done: one format on o
 - **Measured, by the author with the probe:** Samplitude, REAPER, Bitwig and Live, VST3, Windows
   11. The matrix, the findings (part 7) and every report as saved (part 8) are in
   [`docs/spikes/phase1-hosts.md`](../spikes/phase1-hosts.md). Read part 7 first.
-- **Not begun:** LV2 (REAPER on Windows, then Linux), AU and the rest on the Mac mini, Go.dot,
-  the farm's validators. Part 6 of the report lists them and the small gaps left in the four
-  hosts.
-- **The farm** did not answer over SSH all day. `scripts/farm-check.sh` has still never run.
+- **Not begun:** LV2 in a host (REAPER on Windows, then Linux), AU and the rest on the Mac mini,
+  Go.dot. Part 6 of the report lists them and the small gaps left in the four hosts.
+- **The farm**, added 2026-11-18 morning: both machines answered. `scripts/farm-check.sh` passes
+  on the Mac mini and the NUC, auval and lilv included (part 3 of the report), and CI is green on
+  `745aff2`. The probe, its mono LV2, the fixed-stereo control and the product are installed in
+  the user's plugin folders on both, ready for the author's macOS and Linux sessions.
 
 ## What the measurements say, in five lines
 
@@ -53,6 +55,10 @@ Nothing here blocks it. What the bench adds to its brief:
   frozen before the end of Phase 5.
 - **A toggle holds the value a host gave it** (0.58) until it is saved as "on". The probe's
   fingerprint tripped on it; the state code already saves the settled value.
+- **auval warns on 18 logarithmic defaults** (the sixteen attacks at 5 ms, 500 Hz, 160 Hz): the
+  default does not survive the float mapping, 500 reads back as 499.99997. A warning, not a
+  failure. When the parameter table gets its formatter and ranges, a test that every default
+  maps to itself would settle it.
 
 ## For Phase 4 and Phase 6, so it is not found twice
 
@@ -86,7 +92,14 @@ Those of the two earlier handoffs hold. Added today:
 - **`install.ps1` deletes a bundle before copying it.** When a host has the plugin open the
   delete half-succeeds and leaves the installed bundle incomplete until the host is closed and
   the script run again. Close the hosts first.
-- **`install.sh` does not know the fixed-stereo control**, and has never run.
+- **On the farm** (2026-11-18): auval over SSH cannot see a component the logged-in session has
+  registered; `farm-check.sh` now runs it in the session through a `.command` file, which leaves
+  a Terminal window open on the Mac. The NUC has neither `xvfb-run` nor `lv2ls`: the script
+  skips pluginval's GUI tests and the LV2 listing and still exits 0. Run the GUI tests by hand
+  with `DISPLAY=:0 XAUTHORITY=/run/user/1000/.mutter-Xwaylandauth.*` while the author is logged
+  in; list the LV2 through `liblilv` (installed) from Python's `ctypes`, or ask the author for
+  `sudo apt install lilv-utils xvfb lv2-dev sordi`. The last two give `lv2_validate`, the LV2
+  validator row 8 still lacks; `lv2lint` is not packaged on Ubuntu 24.04.
 - **A Python patch passed through a Git Bash heredoc lost its backslashes again**, as the Phase 0
   handoff warned. Write the script to a file with the editor, then run it.
 - **The author's hosts are not his daily ones** (his words). Routing a sidechain took a tutorial

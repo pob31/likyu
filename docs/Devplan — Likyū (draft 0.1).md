@@ -243,6 +243,9 @@ the procedure for each row: [`docs/spikes/phase1-hosts.md`](spikes/phase1-hosts.
 - *Found on the way:* JUCE 9 leaves multitouch off on Windows unless the editor asks. With the
   request all four hosts pass several fingers.
 - *Not done:* LV2, Go.dot, macOS, Linux, the farm's validators. Done-when is still not met.
+- *Added 2026-11-18, morning:* the farm answered. `scripts/farm-check.sh` passes on the Mac mini
+  and the NUC, auval and lilv included; no LV2 validator is installed on the NUC yet. The probe
+  is installed on both for the author's sessions there.
 
 ---
 
