@@ -26,6 +26,7 @@ ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 BUILD="$ROOT/build/hostprobe"
 PROBE="$BUILD/likyu_hostprobe_artefacts/Release"
 PROBE_MONO="$BUILD/likyu_hostprobe_lv2_mono_artefacts/Release"
+PROBE_FIXED="$BUILD/likyu_hostprobe_fixed_artefacts/Release"
 PRODUCT="$BUILD/likyu/src/shims/juce/likyu_plugin_artefacts/Release"
 PRODUCT_MONO="$BUILD/likyu/src/shims/juce/likyu_plugin_lv2_mono_artefacts/Release"
 
@@ -42,6 +43,7 @@ fi
 # source, destination folder
 BUNDLES=(
   "$PROBE/VST3/LikyuProbe.vst3|$VST3_DIR"
+  "$PROBE_FIXED/VST3/LikyuProbe-fixed.vst3|$VST3_DIR"
   "$PRODUCT/VST3/Likyu.vst3|$VST3_DIR"
   "$PROBE/LV2/LikyuProbe.lv2|$LV2_DIR"
   "$PROBE_MONO/LV2/LikyuProbe-mono.lv2|$LV2_DIR"
@@ -63,7 +65,8 @@ fi
 if [ "${1:-}" != --skip-build ]; then
   cmake -S "$ROOT/spikes/hostprobe" -B "$BUILD" -G "Ninja Multi-Config"
   cmake --build "$BUILD" --config Release \
-    --target likyu_hostprobe_All likyu_hostprobe_lv2_mono_All likyu_plugin_All likyu_plugin_lv2_mono_All
+    --target likyu_hostprobe_All likyu_hostprobe_fixed_All likyu_hostprobe_lv2_mono_All \
+             likyu_plugin_All likyu_plugin_lv2_mono_All
 fi
 
 for entry in "${BUNDLES[@]}"; do
