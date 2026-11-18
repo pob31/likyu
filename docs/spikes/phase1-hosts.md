@@ -148,9 +148,9 @@ Go.dot's sidechain is not benched (row 1): it feeds that bus silence until devpl
 
 On Windows, VST3, small things left in hosts already measured (the author, a few minutes each):
 
-- **REAPER:** the project reopened after Scramble; mono, 5.1 and wide tracks; the fixed-stereo
-  control on a four-channel track with a send to 3/4. (The layout and pin map of a working
-  sidechain are on file since 2026-11-18: finding 2.)
+- **REAPER on Windows:** the project reopened after Scramble; mono, 5.1 and wide tracks. (The
+  layout and pin map of a working sidechain, and the fixed-stereo control's result, are on file
+  from the Mac since 2026-11-18: finding 2.)
 - **Bitwig and Live:** save and reopen with scrambled values (Live's reload was made with the
   defaults; Bitwig's state passed between two instances of a fresh project).
 - **Live:** *Sidechain On* with no source; what *Input/Sidechain Mix* does to the key.
@@ -201,10 +201,13 @@ the two marked so wait for the author.
    connector (on the Mac), inputs 3 and 4 (main C and LFE) are fed from nothing and inputs 5 and
    6 (the sidechain) from track channels 3 and 4 (and 5 and 6, which a four-channel track does
    not have: the default's remainder). So the plugin's acceptance of any width costs a REAPER
-   user one step in the pin connector, every time, that a fixed-stereo plugin does not. The
-   fixed-stereo control's own result is still to measure. Until then: the PRD's "any layout,
-   chosen by the host" and its reference use case pull against each other in REAPER, for a user
-   who routes by hand.
+   user one step in the pin connector, every time, that a fixed-stereo plugin does not.
+   **The fixed-stereo control confirms it** (macOS, 2026-11-18, 16:17): on the same four-channel
+   track with the same send, pin connector untouched, REAPER wires its inputs one to one, the
+   sidechain from track channels 3 and 4, and the sidechain reads the send (-19.3 dB). So the PRD's
+   "any layout, chosen by the host" and its reference use case pull against each other in
+   REAPER, for a user who routes by hand: any width costs the pin-connector step, a fixed stereo
+   main does not. Finding 9 is the same rule in AU.
 3. **For the author: REAPER names a four-channel track "L R C Lfe".** The host thus "reports an
    LFE" on channel 4 of a track that is two stereo pairs or a quad, and the PRD's default (a
    channel reported as LFE is left out of the link) would leave that channel out wrongly.
@@ -1372,4 +1375,39 @@ has four inputs (main 1 and 2 from track 1 and 2, sidechain from none) and two o
 - **Before the change:** the 15:30 and 15:50 projects' pin maps for the AU on a four-channel
   track: six inputs, two outputs. The width, not the send, is what matters: from 16:03 to 16:09
   track 1 had no send and four channels, and the AU failed.
+
+### REAPER, VST3, macOS 15.8.3 (Mac mini), 2026-11-18 16:14 to 16:17: the fixed-stereo control on four channels
+
+*Likyu Probe fixed stereo* alone on track 1 (*ambiance_voixPapa*, four channels, the send from
+*KaradaKara-last-collage* to 3/4, post-fader), the pin connector not touched. The author:
+"Longer play, new report. The beginning is quiet."
+
+- **REAPER's pin map** in the project saved at 16:15: four inputs, fed one to one from track
+  channels 1 to 4, so the sidechain (inputs 3 and 4) from track channels 3 and 4, where the send
+  lands. The same as ReaComp's on Windows.
+- **Layouts:** REAPER asks for three- and four-channel mains (LRS, quadraphonic, first-order
+  Ambisonics), each refused by the control, and settles on `in [Stereo | Stereo] out [Stereo]`:
+  a buffer of four channels.
+- **16:15:33:** exact zeros on the sidechain over a play of 2.4 s. The source track had been
+  muted in the 16:10 save and the send is post-fader; the opening of its file is quiet.
+- **16:17:46:** a longer play from 16:17:30; **sidechain signal from 16:17:35**, highest
+  -19.3 dB on both channels; main input highest -12.5 dB.
+
+Finding 2 has its last measurement.
+
+```text
+Host       Reaper (REAPER) - VST3 - Mac OSX 15.8.3
+Prepared   48000 Hz, block 512 - prepareToPlay x3, releaseResources x2, reset x4
+Blocks     16886 - sizes 512 to 512, last 512 - zero-length 0 - float 0, double 16886 - bypassed 0
+Transport  playing - process calls: running
+Main bus   Stereo (L R) - LFE: none reported - peak -15.4 dB, highest ever -12.5 dB
+Sidechain  Stereo (L R) - process buffer 4 channels, buses add up to 4
+  SEEN AS  BUS ENABLED, SIGNAL - now -56.7 dB, -56.7 dB
+           highest ever -19.3 dB, -19.3 dB
+Latency    0 samples (lookahead 0 ms) - changed 0 times - prepareToPlay calls since the last change: 3
+State      fingerprint 1CC8BDCE - 0 of 284 off default - get x3, set x0
+Pointers   most down at once 0 - kinds seen: none yet
+Layout     in [Stereo (L R) | Stereo (L R)] out [Stereo (L R)]
+Layouts    30 distinct layouts asked about
+```
 

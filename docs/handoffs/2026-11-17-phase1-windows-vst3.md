@@ -36,8 +36,9 @@ Both are in the PRD's *Open decisions* since today. Neither is the implementer's
   a plugin that accepts any width. Since 2026-11-18 the projects' files say why (finding 2):
   REAPER's default pin map is one to one, so a four-channel main pushes the sidechain to inputs
   5/6, and the user must re-wire them to track channels 3/4 in the pin connector; ReaComp, fixed
-  at stereo, needs no such step. One measurement is left: the fixed-stereo control (`Likyu Probe
-  fixed stereo`, installed on all three machines) on a four-channel track with a send to 3/4.
+  at stereo, needs no such step. The fixed-stereo control (`Likyu Probe fixed stereo`) confirmed it on
+  the Mac on 2026-11-18: on a four-channel track with a send to 3/4 it is keyed with no
+  re-wiring. The decision has its measurements.
   Decoding a pin map: the second line of the plugin's block in the `.RPP` is base64; after an ID
   and `0xfeed5eee`, an input count, then one 64-bit mask of track channels per input, then the
   same for outputs.
