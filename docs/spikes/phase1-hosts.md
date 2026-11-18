@@ -137,7 +137,7 @@ to that host.
 | REAPER, AU, macOS | **Not run on any four-channel track tried (three)**: 0 blocks every time. The track is silent behind a bypassed plugin and passes its input untouched with the AU alone (the author: "now works"). REAPER's second `AudioUnitInitialize` fails, and every render after it is refused by Apple's AU base class with -10867, `kAudioUnitErr_Uninitialized`: 77,321 times in the system log, all from the probe, none reaching our code. Reproduced outside REAPER: an input and an output of **unequal widths** make the initialise fail exactly so, and REAPER's pin map shows it gives four in and two out (finding 9). **On a two-channel track the AU runs** (16:10: 1150 blocks, signal) |  |  | **Likyu shows all its parameters, and REAPER's automation list has them all** (the author). Generic view: a label, then a slider with the value at its end or a dropdown; **no units** |  |  | n/a |
 | REAPER, LV2, macOS |  |  |  |  |  |  | n/a |
 | Live, VST3, macOS | **Yes**: a source chosen on the device enables the bus as stereo; four channels, signal on both (-12.6 and -13.8 dB), exact zeros while the source is silent | **Bus disabled** as inserted, two channels | **Realigns on the fly**; the null passes as in REAPER (the author). Live **restarts the plugin** for each of eight changes (`releaseResources`, `prepareToPlay` with the new latency), as on Windows | Scramble brings the parameters into Live's automation (the author), as on Windows | **Restored exactly**: saved after Scramble, the set reopened gives `setStateInformation` (7008 bytes) just after the first `prepareToPlay`, `BEF24EA3`, 244 off default; the sidechain routing comes back with it, enabled a second after loading | n/a | n/a |
-| Live, AU, macOS |  |  |  |  |  | n/a | n/a |
+| Live, AU, macOS | **Yes**: a source chosen on the device feeds the AU's sidechain, signal -12.6 and -13.8 dB. The AU runs: 1885 blocks, float, 44.1 kHz, 512 | **Enabled, exact zeros** from the first block, through some eight seconds of playback before the source: in AU the bus is never disabled (part 4, now measured) |  |  |  | n/a | n/a |
 | Bitwig, VST3, macOS |  |  |  |  |  | n/a | n/a |
 | Go.dot, AU, macOS | n/a |  |  |  |  |  | n/a |
 | REAPER, VST3, Linux |  |  |  |  |  |  |  |
@@ -189,7 +189,10 @@ the two marked so wait for the author.
    In every host an enabled bus at exact zeros is an ordinary state. The PRD already treats it as
    a key, so the rule stands on this evidence; what the editor says in that state ("sidechain
    silent"?) and in Samplitude's gap is a question for Phase 6. The prediction of part 4, that
-   only AU and LV2 lack a disabled state, was too kind to VST3.
+   only AU and LV2 lack a disabled state, was too kind to VST3. **Its AU half is measured**
+   (Live, macOS, 2026-11-18): the AU's sidechain is enabled at exact zeros from the first block,
+   before any source is chosen, so in AU the fallback to Self never happens and a Sidechain band
+   with nothing routed is keyed by silence.
 2. **For the author: in REAPER a hand-made send to channels 3/4 feeds the main bus, not the
    sidechain.** The plugin accepts any main layout up to 64 channels with output equal to input
    (PRD, non-goals). On a four-channel track REAPER asks for a four-channel main bus, is told
@@ -1496,5 +1499,33 @@ State      fingerprint BEF24EA3 - 244 of 284 off default - get x1, set x1
 Pointers   most down at once 0 - kinds seen: none yet
 Layout     in [Stereo (L R) | Stereo (L R)] out [Stereo (L R)]
 Layouts    3 distinct layouts asked about
+```
+
+### Ableton Live 12, AU, macOS 15.8.3 (Mac mini), 2026-11-18 16:50
+
+The author, first: "No AU on Live." Live's plugin database (`Live-plugins-1.db`) then listed 54
+plugins and no AU at all, Apple's included. The author: "It's AU2 only. I have AU3 checked and
+no AU2." JUCE builds an Audio Unit v2; with only v3 enabled in Live's Plug-In Sources, Live
+offers none of ours. Worth a line in the user documentation.
+
+With v2 on, *Likyu Probe* (AU) on a stereo track: one `prepareToPlay` (no initialise and
+uninitialise as in REAPER), process calls at once, a buffer of four channels, **the sidechain
+enabled at exact zeros from the first block** and through playback from 16:50:05 to 16:50:14,
+then signal from 16:50:18 once a source was chosen. 1885 blocks.
+
+```text
+Host       Ableton Live (Live) - AU - Mac OSX 15.8.3
+Prepared   44100 Hz, block 512 - prepareToPlay x1, releaseResources x0, reset x3
+Blocks     1885 - sizes 512 to 512, last 512 - zero-length 0 - float 1885, double 0 - bypassed 0
+Transport  playing - process calls: running
+Main bus   Stereo (L R) - LFE: none reported - peak -25.3 dB, highest ever -1.6 dB
+Sidechain  Stereo (L R) - process buffer 4 channels, buses add up to 4
+  SEEN AS  BUS ENABLED, SIGNAL - now -16.2 dB, -16.5 dB
+           highest ever -12.6 dB, -13.8 dB
+Latency    0 samples (lookahead 0 ms) - changed 0 times - prepareToPlay calls since the last change: 1
+State      fingerprint 1CC8BDCE - 0 of 284 off default - get x1, set x0
+Pointers   most down at once 0 - kinds seen: none yet
+Layout     in [Stereo (L R) | Stereo (L R)] out [Stereo (L R)]
+Layouts    3512 distinct layouts asked about
 ```
 
