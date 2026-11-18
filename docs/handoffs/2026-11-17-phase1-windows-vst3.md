@@ -33,10 +33,14 @@ still describes how the probe is built. Phase 1 is **not** done: one format on o
 Both are in the PRD's *Open decisions* since today. Neither is the implementer's to settle.
 
 - **REAPER and the main bus's width.** A hand-made send to channels 3/4 lands in the main bus of
-  a plugin that accepts any width. Two measurements would size it and are a few minutes each: a
-  saved report from the instance whose sidechain works after the drag onto the plugin's window,
-  and the fixed-stereo control (`Likyu Probe fixed stereo`, installed) on a four-channel track
-  with a send to 3/4.
+  a plugin that accepts any width. Since 2026-11-18 the projects' files say why (finding 2):
+  REAPER's default pin map is one to one, so a four-channel main pushes the sidechain to inputs
+  5/6, and the user must re-wire them to track channels 3/4 in the pin connector; ReaComp, fixed
+  at stereo, needs no such step. One measurement is left: the fixed-stereo control (`Likyu Probe
+  fixed stereo`, installed on all three machines) on a four-channel track with a send to 3/4.
+  Decoding a pin map: the second line of the plugin's block in the `.RPP` is base64; after an ID
+  and `0xfeed5eee`, an input count, then one 64-bit mask of track channels per input, then the
+  same for outputs.
 - **REAPER and the LFE.** A four-channel track arrives as "L R C Lfe".
 
 ## For Phase 2, which can start beside this

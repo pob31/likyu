@@ -126,14 +126,14 @@ to that host.
 
 | Host, format, system | 1 fed | 2 nothing routed | 3 lookahead | 4 parameters | 5 state | 6 layouts | 7 touch |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| REAPER, VST3, Windows | **Not by REAPER's usual way.** With the track at four channels and a send to 3/4, REAPER makes the plugin's **main bus four channels wide** and the send lands in main channels 3 and 4; the sidechain, enabled after them as channels 5 and 6, stays at exact zeros (part 8). **By dragging the key track's routing onto the plugin's window, the sidechain is fed** (14:55, signal while playing); the layout REAPER then uses is not yet on file | **Two states seen.** As inserted: bus disabled, two channels. Later: **bus enabled, exact zeros**, with nothing reaching it | **Realigns at every setting, also on the fly**, with a slip of sound at the change (the author); no `prepareToPlay` after a change | Not yet | Partial: scrambled (`BEF24EA3`) and saved; not reopened | **A four-channel track is given as "L R C Lfe", so an LFE is reported on channel 4** of a track that has none. Mono, 5.1 and wide tracks not yet; on loading REAPER asks for 64 channels and is told yes | **Several fingers, once the editor asks for multitouch** (the author, 2026-11-17). Without the request: the first finger only |
+| REAPER, VST3, Windows | **Not by REAPER's usual way.** With the track at four channels and a send to 3/4, REAPER makes the plugin's **main bus four channels wide** and the send lands in main channels 3 and 4; the sidechain, enabled after them as channels 5 and 6, stays at exact zeros (part 8). **By dragging the key track's routing onto the plugin's window, the sidechain is fed** (14:55, signal while playing). The project file shows what the gesture did: the plugin's pin map re-wired, sidechain inputs fed from track channels 3/4 (finding 2) | **Two states seen.** As inserted: bus disabled, two channels. Later: **bus enabled, exact zeros**, with nothing reaching it | **Realigns at every setting, also on the fly**, with a slip of sound at the change (the author); no `prepareToPlay` after a change | Not yet | Partial: scrambled (`BEF24EA3`) and saved; not reopened | **A four-channel track is given as "L R C Lfe", so an LFE is reported on channel 4** of a track that has none. Mono, 5.1 and wide tracks not yet; on loading REAPER asks for 64 channels and is told yes | **Several fingers, once the editor asks for multitouch** (the author, 2026-11-17). Without the request: the first finger only |
 | REAPER, LV2, Windows |  |  |  |  |  |  |  |
 | Bitwig, VST3, Windows | **Yes**: a source chosen on the device enables the bus as stereo; four channels, signal on both sidechain channels (-10.1 dB), zeros when the source is silent | **Bus disabled** until a source is chosen; two channels | **Realigns on the fly**, a short burst at the change (the author). Bitwig **restarts the plugin** for every change: `releaseResources` and `prepareToPlay`, twice, within 40 ms | Not yet | State given back at construction (6913 bytes, `BEF24EA3`) in a fresh project: passed from an earlier instance to a new one, whole. Save and reopen not yet done | n/a | **Several fingers, once the editor asks for multitouch** (the author, 2026-11-17). Without the request: the first finger only |
 | Live 12, VST3, Windows | **Yes**: a source chosen on the device enables the bus as stereo; four channels, signal on both (-0.2 dB) | **Bus disabled** as inserted. **After a source has been chosen and removed again the bus stays enabled, at exact zeros** | **Realigns on the fly**, a small slip at the change (the author). Live restarts the plugin once for every change | **None shown until configured.** With *Configure* on, one press of Scramble in the probe brings all the parameters into Live's panel (the author). The clip's envelope chooser then lists them by name in table order, **one flat list of some 280 entries**, no groups, no search; `lookahead` and `link` are rightly absent, `bypass` is Live's own "Device On". Units not seen | Saved and reloaded: `setStateInformation` once, after the first `prepareToPlay`; the values were the defaults, so the round trip is shown but not tested | n/a | **Several fingers, once the editor asks for multitouch** (the author, 2026-11-17). Without the request: one at a time |
 | Samplitude, VST3, Windows | **Yes.** *Side chain input* menu in the plug-in window; on choosing, the host enables the bus as stereo and the buffer has four channels with the key in the last two (-20.0 and -21.4 dB). Mono main does not exist in this host; a mono source not tried | **Bus disabled** until a sidechain is chosen; the buffer then holds the two main channels only (2584 blocks) | **Realigns at the next play start, not during playback.** A change while playing leaves the null broken until stop and start; the host does not restart the plugin by itself | Generic view of eight slots, each a chooser over the parameters; names shown, choices as text, **no units**, continuous values with seven decimals | **Restored exactly**: one `getStateInformation` per save, one `setStateInformation` on opening (6913 bytes, after the first `prepareToPlay`); the sidechain routing comes back with the project | n/a: no mono tracks | **Several fingers, once the editor asks for multitouch** (the author, 2026-11-17). Without the request: the first finger only |
 | Go.dot, VST3, Windows | n/a |  |  |  |  |  |  |
 | Go.dot, LV2, Windows | n/a |  |  |  |  |  |  |
-| REAPER, VST3, macOS | **Yes, on a four-channel track**: main bus four wide (L R C Lfe), sidechain enabled after it as channels 5 and 6, signal on both (-3.7 dB) while playing, exact zeros when stopped. How it was routed is not yet on file | **Bus disabled** as inserted, two channels | **Realigns on the fly**, a small sliver at the change, no restart needed (the author). Ten changes while playing: latency reported within 10 to 70 ms each time, no `prepareToPlay` after any | Not yet | Not yet: nothing scrambled | **A four-channel track is given as "L R C Lfe", LFE on channel 4**, as on Windows; on loading REAPER asks for 64 channels and is told yes, as on Windows | n/a; the author: "doesn't work out of the box" |
+| REAPER, VST3, macOS | **Yes, on a four-channel track**: main bus four wide (L R C Lfe), sidechain enabled after it as channels 5 and 6, signal on both (-3.7 dB) while playing, exact zeros when stopped. Routed as on Windows, a send to 3/4, then **the pin connector re-wired by hand**: sidechain inputs fed from track channels 3/4, main inputs 3/4 from nothing (read from the project file; finding 2) | **Bus disabled** as inserted, two channels | **Realigns on the fly**, a small sliver at the change, no restart needed (the author). Ten changes while playing: latency reported within 10 to 70 ms each time, no `prepareToPlay` after any | Not yet | Not yet: nothing scrambled | **A four-channel track is given as "L R C Lfe", LFE on channel 4**, as on Windows; on loading REAPER asks for 64 channels and is told yes, as on Windows | n/a; the author: "doesn't work out of the box" |
 | REAPER, AU, macOS |  |  |  |  |  |  | n/a |
 | REAPER, LV2, macOS |  |  |  |  |  |  | n/a |
 | Live, AU, macOS |  |  |  |  |  | n/a | n/a |
@@ -148,9 +148,9 @@ Go.dot's sidechain is not benched (row 1): it feeds that bus silence until devpl
 
 On Windows, VST3, small things left in hosts already measured (the author, a few minutes each):
 
-- **REAPER:** a saved report from the instance whose sidechain works after the drag onto the
-  plugin's window (which layout does REAPER use then?); the project reopened after Scramble; mono,
-  5.1 and wide tracks; the fixed-stereo control on a four-channel track with a send to 3/4.
+- **REAPER:** the project reopened after Scramble; mono, 5.1 and wide tracks; the fixed-stereo
+  control on a four-channel track with a send to 3/4. (The layout and pin map of a working
+  sidechain are on file since 2026-11-18: finding 2.)
 - **Bitwig and Live:** save and reopen with scrambled values (Live's reload was made with the
   defaults; Bitwig's state passed between two instances of a fresh project).
 - **Live:** *Sidechain On* with no source; what *Input/Sidechain Mix* does to the key.
@@ -192,10 +192,19 @@ the two marked so wait for the author.
    (PRD, non-goals). On a four-channel track REAPER asks for a four-channel main bus, is told
    yes, and adds the sidechain after it as channels 5 and 6; the send arrives as main channels 3
    and 4 and is processed as audio, and the sidechain reads zeros. Dragging the key track's
-   routing onto the plugin's window does feed the sidechain, so REAPER has a way that works; what
-   it does differently is not yet on file, nor is the fixed-stereo control's result. Until then:
-   the PRD's "any layout, chosen by the host" and its reference use case pull against each other
-   in REAPER, at least for a user who routes by hand.
+   routing onto the plugin's window does feed the sidechain, so REAPER has a way that works.
+   **Why, read from the two projects' files (2026-11-18):** REAPER saves each plugin's pin map
+   at the head of its state. Its default is one to one, plugin input *k* fed from track channel
+   *k*. ReaComp, whose main is fixed at stereo, has four inputs, fed from channels 1 to 4, so a
+   send to 3/4 keys it with no further step. The probe, given a four-channel main, has six
+   inputs; in both projects, after the author's gesture (on Windows) and re-wiring in the pin
+   connector (on the Mac), inputs 3 and 4 (main C and LFE) are fed from nothing and inputs 5 and
+   6 (the sidechain) from track channels 3 and 4 (and 5 and 6, which a four-channel track does
+   not have: the default's remainder). So the plugin's acceptance of any width costs a REAPER
+   user one step in the pin connector, every time, that a fixed-stereo plugin does not. The
+   fixed-stereo control's own result is still to measure. Until then: the PRD's "any layout,
+   chosen by the host" and its reference use case pull against each other in REAPER, for a user
+   who routes by hand.
 3. **For the author: REAPER names a four-channel track "L R C Lfe".** The host thus "reports an
    LFE" on channel 4 of a track that is two stereo pairs or a quad, and the PRD's default (a
    channel reported as LFE is left out of the link) would leave that channel out wrongly.
@@ -1122,8 +1131,13 @@ ahead time, but no need to restart."
 - **Row 1: the sidechain fed, beside a four-channel main.** At 15:23:24 REAPER enables the
   sidechain after the four main channels: a buffer of six, the key in 5 and 6, exact zeros until
   play; at 15:23:48 signal, -3.7 dB on both channels, and zeros again on stop. The main input's
-  highest peak is -0.7 dB. **How the author routed it is not yet on file**: if by the drag onto
-  the plugin's window, this is the layout the Windows session could not record (finding 2).
+  highest peak is -0.7 dB. The author: "It might be my doing. I'm not at ease on Reaper. I tried
+  to reproduce the session as setup on Windows." The project, saved at 15:26
+  (`~/Desktop/test Likyu1.RPP`), has the send `AUXRECV 1 0 1 0 0 0 0 0 2 …` (track 2's 1/2 to
+  this track's 3/4, post-fader) and a pin map of six inputs: 1 and 2 from track channels 1 and 2,
+  3 and 4 from none, 5 and 6 from channels 3 and 5, 4 and 6; four outputs, 1 and 2 to track 1 and
+  2. The Windows project of 14:56 has the same map. So this is the layout and map of a working
+  sidechain beside a four-channel main (finding 2).
 - **Row 5:** nothing scrambled yet; the fingerprint is the defaults' (`1CC8BDCE`).
 - **Row 7:** one pointer, of kind mouse. macOS has no touch screen of its own; the row is n/a
   there.
