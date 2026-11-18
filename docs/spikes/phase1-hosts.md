@@ -3,11 +3,11 @@
 Started 2026-11-17. Devplan Phase 1. Code: `spikes/hostprobe/`, still in the tree because the
 matrix is open; it is deleted when the matrix is filled.
 
-**Status, 2026-11-18 morning: the four Windows hosts are measured in VST3, with the gaps listed in
-part 6; findings in part 7, two of them waiting on the author. The validators pass on all three
-systems, `lv2_validate` reporting only JUCE's own errors as it has since Phase 0 (part 3), and the probe is installed on
-the Mac mini and the NUC. REAPER on the Mac is begun (2026-11-18); Go.dot, LV2 in a host, the
-other macOS hosts and Linux are not.** Part 4
+**Status, 2026-11-18 evening: the four Windows hosts are measured in VST3, and the three macOS
+hosts in VST3 and AU (REAPER, Live, Bitwig), with the gaps listed in part 6; findings in part 7.
+One decision waits on the author (REAPER and the main bus's width, findings 2 and 9); the LFE one
+is decided. The validators pass on all three systems, `lv2_validate` reporting only JUCE's own
+errors as it has since Phase 0 (part 3). Go.dot, LV2 in a host, and Linux are not begun.** Part 4
 says what JUCE's wrappers do as read from their source: it tells what to expect and is not a
 measurement.
 
@@ -164,8 +164,10 @@ Not begun:
 
 - **LV2 in REAPER on Windows** (the bundles are installed in `%APPDATA%\LV2`).
 - **Go.dot**, which needs a build that hosts the three formats.
-- **macOS and Linux**: the author at the Mac mini and the NUC, or over a remote desktop. An agent
-  cannot: each needs a host's window. Row 7 on Linux needs a touch screen there. The probe, its
+- **Linux**: the author at the NUC, or over a remote desktop; an agent cannot, it needs a host's
+  window. Row 7 needs a touch screen there. (macOS is measured, 2026-11-18: REAPER in VST3 and
+  AU, Live in VST3 and AU, Bitwig in VST3; REAPER's LV2 there and a wide REAPER track not
+  tried.) The probe, its
   mono LV2, the fixed-stereo control and the product are installed in the user's plugin folders
   on both machines since 2026-11-18 (`spikes/hostprobe/install.sh`, built from `745aff2`).
 
