@@ -49,7 +49,8 @@ Both are in the PRD's *Open decisions* since today. Neither is the implementer's
   only the probe's block count tells. The macOS log shows
   it: `/usr/bin/log show --predicate 'process == "REAPER" AND messageType == error'` (`log`
   alone is a zsh builtin there).
-- **REAPER and the LFE.** A four-channel track arrives as "L R C Lfe".
+- ~~**REAPER and the LFE.**~~ Decided 2026-11-18 by the author: every channel starts in the
+  link, the LFE is left out by hand; the host's LFE is a hint in the editor only (PRD, amended).
 
 ## For Phase 2, which can start beside this
 

@@ -209,7 +209,8 @@ the two marked so wait for the author.
    "any layout, chosen by the host" and its reference use case pull against each other in
    REAPER, for a user who routes by hand: any width costs the pin-connector step, a fixed stereo
    main does not. Finding 9 is the same rule in AU.
-3. **For the author: REAPER names a four-channel track "L R C Lfe".** The host thus "reports an
+3. **Decided by the author, 2026-11-18: every channel starts in the link; the LFE is left out by
+   hand** (PRD, amended). What led there: **REAPER names a four-channel track "L R C Lfe".** The host thus "reports an
    LFE" on channel 4 of a track that is two stereo pairs or a quad, and the PRD's default (a
    channel reported as LFE is left out of the link) would leave that channel out wrongly. A
    six-channel track is "5.1 Surround (L R C Lfe Ls Rs)", LFE on channel 4 (macOS, 2026-11-18),

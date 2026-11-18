@@ -294,7 +294,7 @@ decision). Nothing blocking.
   release on the offset, return to zero. *Rows:* dynamic curve, exact bypass return.
 - **3c. Keys and linking.** One set of detectors per key channel; Linked takes the maximum of the
   levels; Unlinked per channel; the sidechain's maximum; the fallback as Phase 1 left it; channels
-  left out of the link, with LFE read from the host's layout. *Rows:* sidechain fallback, channel
+  left out of the link by hand, all in by default (PRD, amended 2026-11-18). *Rows:* sidechain fallback, channel
   linking, linked maximum, link exclusion.
 - **3d. Out of the audio thread.** The meter snapshot (offset, frequency, confidence per band)
   through a single-writer slot. Listen as a flag on the core, driven by a test and by a temporary
