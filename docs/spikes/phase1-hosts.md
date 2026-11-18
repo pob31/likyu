@@ -138,7 +138,7 @@ to that host.
 | REAPER, LV2, macOS |  |  |  |  |  |  | n/a |
 | Live, VST3, macOS | **Yes**: a source chosen on the device enables the bus as stereo; four channels, signal on both (-12.6 and -13.8 dB), exact zeros while the source is silent | **Bus disabled** as inserted, two channels | **Realigns on the fly**; the null passes as in REAPER (the author). Live **restarts the plugin** for each of eight changes (`releaseResources`, `prepareToPlay` with the new latency), as on Windows | Scramble brings the parameters into Live's automation (the author), as on Windows | **Restored exactly**: saved after Scramble, the set reopened gives `setStateInformation` (7008 bytes) just after the first `prepareToPlay`, `BEF24EA3`, 244 off default; the sidechain routing comes back with it, enabled a second after loading | n/a | n/a |
 | Live, AU, macOS | **Yes**: a source chosen on the device feeds the AU's sidechain, signal -12.6 and -13.8 dB. The AU runs: 1885 blocks, float, 44.1 kHz, 512 | **Enabled, exact zeros** from the first block, through some eight seconds of playback before the source: in AU the bus is never disabled (part 4, now measured). **Source removed again: enabled, exact zeros** while playing (16:50:35) | **Realigns on the fly**, a small chunk at the change, then the null again (the author). **No restart**: three changes during playback, latency reported within 25 to 70 ms, no `prepareToPlay` after any, where Live in VST3 restarts the plugin each time |  | **Restored exactly**: scrambled, saved, reopened; `setStateInformation` (7008 bytes) just after the first `prepareToPlay`, `BEF24EA3`, 244 off default | n/a | n/a |
-| Bitwig, VST3, macOS |  |  |  |  |  | n/a | n/a |
+| Bitwig, VST3, macOS | **Yes**: a source chosen on the device enables the bus as stereo; four channels, signal (-0.1 dB), exact zeros while the source is silent | **Bus disabled** as inserted, two channels | **Realigns on the fly**, the same glitch at the change (the author; null made with a filter plugin for want of a polarity switch, so not perfect). Ten changes during playback, each followed by **two** `releaseResources` and `prepareToPlay` pairs, as on Windows | **282 listed**: all but `lookahead` and `link` (the author) | **Restored exactly**: scrambled, saved, reopened; `setStateInformation` (7008 bytes) **before** any layout or `prepareToPlay`, as on Windows, `BEF24EA3`; the sidechain routing comes back with it | n/a | n/a |
 | Go.dot, AU, macOS | n/a |  |  |  |  |  | n/a |
 | REAPER, VST3, Linux |  |  |  |  |  |  |  |
 | REAPER, LV2, Linux |  |  |  |  |  |  |  |
@@ -257,6 +257,10 @@ the two marked so wait for the author.
    | REAPER | 128 | **double** | called, then not after about ten seconds of silence | `reset` |
    | Bitwig | 480 | float | not called after about two seconds | none seen |
    | Live | 128, 256 | float | called | none seen |
+
+   On the Mac mini (2026-11-18): REAPER blocks of 512 in double, called while stopped for about
+   two minutes; Live 512 in float at 44.1 kHz, called while stopped; Bitwig 512 in float, **still
+   called twelve seconds after stop**, where on Windows it stopped after about two.
 
    REAPER also asks, on loading, for a 64-channel main bus (7th order Ambisonics), is told yes,
    and applies it for an instant before settling on stereo.
@@ -1551,4 +1555,45 @@ The report of 16:58:52, Live in VST3 again, a new instance, the null test repeat
 three changes during playback (0.25, 1, 3 ms), each followed within 3 to 25 ms by
 `releaseResources` and a `prepareToPlay` carrying the new latency. The restart in VST3 and its
 absence in AU are both reproduced.
+
+### Bitwig Studio, VST3, macOS 15.8.3 (Mac mini), 2026-11-18 19:40 to 20:06, session 1
+
+Two reports, read over SSH. The author: "Null is not perfect because I could not find the
+polarity switch. I used a plugin that probably filters a bit on both ends of the spectrum (bx
+cleansweep) but overall it's quite effective. Same glitch when changing lookahead buffer." Then:
+"parameter list is complete: 282. I scrambled and reopened."
+
+- **How Bitwig runs it here:** in its plugin host process (`BitwigPluginHost-ARM64-NEON`), 44.1
+  kHz, blocks of 512, float. Called while stopped (20:05:53 to 20:06:05 at least).
+- **Row 2:** bus disabled as inserted, two channels.
+- **Row 1 (19:58:05):** a source chosen on the device; Bitwig releases and prepares twice and
+  enables the sidechain as stereo; signal from 19:58:08, highest -0.1 dB, exact zeros in the
+  source's gaps.
+- **Row 3 (20:00:14 to 20:00:27):** ten changes, every choice in both directions. Each is
+  followed within 15 to 70 ms by two `releaseResources` and `prepareToPlay` pairs carrying the
+  new latency, then `reset`, as on Windows ("twice, within 40 ms").
+- **Row 4:** 282 parameters in Bitwig's list, the 284 less `lookahead` and `link`, which are not
+  automatable.
+- **Row 5 (20:06:05):** scrambled at 20:03:34, saved, reopened. `setStateInformation` of 7008
+  bytes at construction, before any layout question or `prepareToPlay`; `BEF24EA3`, 244 off
+  default: restored exactly. The sidechain is enabled 0.15 s later, so the routing is restored
+  too. The reopened project runs at 48 kHz where the first ran at 44.1 kHz; why is not known.
+
+The reopened project's report, status lines:
+
+```text
+Host       Bitwig Studio (BitwigPluginHost-ARM64-NEON) - VST3 - Mac OSX 15.8.3
+Prepared   48000 Hz, block 512 - prepareToPlay x3, releaseResources x2, reset x1
+Blocks     8555 - sizes 512 to 512, last 512 - zero-length 0 - float 8555, double 0 - bypassed 0
+Transport  stopped - process calls: running
+Main bus   Stereo (L R) - LFE: none reported - peak exact zero, highest ever -9.3 dB
+Sidechain  Stereo (L R) - process buffer 4 channels, buses add up to 4
+  SEEN AS  BUS ENABLED, EXACT ZEROS - now exact zero, exact zero
+           highest ever -0.1 dB, -0.1 dB
+Latency    0 samples (lookahead 0 ms) - changed 0 times - prepareToPlay calls since the last change: 3
+State      fingerprint BEF24EA3 - 244 of 284 off default - get x2, set x1
+Pointers   most down at once 0 - kinds seen: none yet
+Layout     in [Stereo (L R) | Stereo (L R)] out [Stereo (L R)]
+Layouts    3 distinct layouts asked about
+```
 
