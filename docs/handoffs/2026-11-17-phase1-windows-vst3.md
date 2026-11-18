@@ -103,6 +103,12 @@ Installed on the Windows machine, current as of 18:34: `Likyu.vst3`, `LikyuProbe
 
 Those of the two earlier handoffs hold. Added today:
 
+- **A plugin built here must export no JUCE symbol on macOS** (finding 10, `9021333`). Check
+  with `nm -gU <binary> | c++filt | grep -c juce::`: 0 expected. Without the Objective-C++
+  preset a JUCE host (Go.dot) merges its JUCE with ours and the editor aborts.
+- **Go.dot is on hold** (the author, 2026-11-18) until its plugin system changes; the probe's AU
+  "stops answering" in its plugin process there.
+
 - **`install.ps1` deletes a bundle before copying it.** When a host has the plugin open the
   delete half-succeeds and leaves the installed bundle incomplete until the host is closed and
   the script run again. Close the hosts first.

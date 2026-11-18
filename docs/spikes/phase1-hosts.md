@@ -7,7 +7,8 @@ matrix is open; it is deleted when the matrix is filled.
 hosts in VST3 and AU (REAPER, Live, Bitwig), with the gaps listed in part 6; findings in part 7.
 One decision waits on the author (REAPER and the main bus's width, findings 2 and 9); the LFE one
 is decided. The validators pass on all three systems, `lv2_validate` reporting only JUCE's own
-errors as it has since Phase 0 (part 3). Go.dot, LV2 in a host, and Linux are not begun.** Part 4
+errors as it has since Phase 0 (part 3). LV2 in a host and Linux are not begun; Go.dot is on hold
+by the author's decision (finding 10).** Part 4
 says what JUCE's wrappers do as read from their source: it tells what to expect and is not a
 measurement.
 
@@ -139,7 +140,7 @@ to that host.
 | Live, VST3, macOS | **Yes**: a source chosen on the device enables the bus as stereo; four channels, signal on both (-12.6 and -13.8 dB), exact zeros while the source is silent | **Bus disabled** as inserted, two channels | **Realigns on the fly**; the null passes as in REAPER (the author). Live **restarts the plugin** for each of eight changes (`releaseResources`, `prepareToPlay` with the new latency), as on Windows | Scramble brings the parameters into Live's automation (the author), as on Windows | **Restored exactly**: saved after Scramble, the set reopened gives `setStateInformation` (7008 bytes) just after the first `prepareToPlay`, `BEF24EA3`, 244 off default; the sidechain routing comes back with it, enabled a second after loading | n/a | n/a |
 | Live, AU, macOS | **Yes**: a source chosen on the device feeds the AU's sidechain, signal -12.6 and -13.8 dB. The AU runs: 1885 blocks, float, 44.1 kHz, 512 | **Enabled, exact zeros** from the first block, through some eight seconds of playback before the source: in AU the bus is never disabled (part 4, now measured). **Source removed again: enabled, exact zeros** while playing (16:50:35) | **Realigns on the fly**, a small chunk at the change, then the null again (the author). **No restart**: three changes during playback, latency reported within 25 to 70 ms, no `prepareToPlay` after any, where Live in VST3 restarts the plugin each time |  | **Restored exactly**: scrambled, saved, reopened; `setStateInformation` (7008 bytes) just after the first `prepareToPlay`, `BEF24EA3`, 244 off default | n/a | n/a |
 | Bitwig, VST3, macOS | **Yes**: a source chosen on the device enables the bus as stereo; four channels, signal (-0.1 dB), exact zeros while the source is silent | **Bus disabled** as inserted, two channels | **Realigns on the fly**, the same glitch at the change (the author; null made with a filter plugin for want of a polarity switch, so not perfect). Ten changes during playback, each followed by **two** `releaseResources` and `prepareToPlay` pairs, as on Windows | **282 listed**: all but `lookahead` and `link` (the author) | **Restored exactly**: scrambled, saved, reopened; `setStateInformation` (7008 bytes) **before** any layout or `prepareToPlay`, as on Windows, `BEF24EA3`; the sidechain routing comes back with it | n/a | n/a |
-| Go.dot, AU, macOS | n/a |  |  |  |  |  | n/a |
+| Go.dot, AU, macOS | n/a | **On hold** (the author, 2026-11-18: Go.dot's plugin system is to change first). Seen: Likyu on a stereo item runs and shows its parameters in Go.dot's own view (no scrollbar); the probe "stopped answering: 8 blocks late in a row" in Go.dot's plugin process on a mono and on a stereo item; its window first crashed the editing helper (ours, corrected: finding 10) |  |  |  |  | n/a |
 | REAPER, VST3, Linux |  |  |  |  |  |  |  |
 | REAPER, LV2, Linux |  |  |  |  |  |  |  |
 
@@ -163,7 +164,8 @@ On Windows, VST3, small things left in hosts already measured (the author, a few
 Not begun:
 
 - **LV2 in REAPER on Windows** (the bundles are installed in `%APPDATA%\LV2`).
-- **Go.dot**, which needs a build that hosts the three formats.
+- **Go.dot**: **on hold**, by the author's decision of 2026-11-18, until its plugin system is
+  reworked. What was seen before is in part 8 and finding 10.
 - **Linux**: the author at the NUC, or over a remote desktop; an agent cannot, it needs a host's
   window. Row 7 needs a touch screen there. (macOS is measured, 2026-11-18: REAPER in VST3 and
   AU, Live in VST3 and AU, Bitwig in VST3; REAPER's LV2 there and a wide REAPER track not
@@ -287,6 +289,18 @@ the two marked so wait for the author.
    The AU advertises `{-1, -1}` in `SupportedNumChannels`, which Apple defines as any width with
    input equal to output. It is the same rule as finding 2 meeting REAPER in another format, and
    it bears on the same open decision.
+
+10. **Our plugin exported JUCE on macOS, and a JUCE host merged it with its own.** `juce_add_plugin`
+   hides C and C++ symbols only, and on macOS JUCE builds most of its modules from `.mm` files
+   (Objective-C++), so Likyu and the probe exported some 6800 JUCE symbols, weak ones among them.
+   Go.dot is built on JUCE and exports the same names; `dyld` merges weak definitions across
+   images, and in Go.dot's editing helper the probe's editor aborted in `Label::setText`
+   ("pointer being freed was not allocated"), seven times. REAPER, Live and Bitwig are not JUCE
+   programs, so nothing was merged there. Corrected in `9021333` (Objective-C++, Objective-C and
+   C visibility hidden): no JUCE symbol exported, pluginval and auval pass, no crash since. The
+   product had the same exports and would have met it with its editor in Phase 6. **For the
+   author:** WFS-DIY and the OSCQuery plugin come from the same template and JUCE's CMake has
+   the same gap, so their Mac builds likely export JUCE too.
 
 ## 8. Reports, as saved
 
@@ -1598,4 +1612,25 @@ Pointers   most down at once 0 - kinds seen: none yet
 Layout     in [Stereo (L R) | Stereo (L R)] out [Stereo (L R)]
 Layouts    3 distinct layouts asked about
 ```
+
+### Go.dot, AU, macOS 15.8.3 (Mac mini), 2026-11-18 20:29 to 20:57: on hold
+
+The author: Go.dot shows Likyu's parameters with their values (no scrollbar), but the probe's
+window "could not open: the editing helper left before its plugin was up", AU and VST3.
+
+- **The helper crashed**: seven reports `wfg-2026-11-18-20*.ips` in
+  `~/Library/Logs/DiagnosticReports`, each `SIGABRT` in
+  `ProbeEditor::ProbeEditor` → `Label::setText` → `juce::var::operator=` →
+  "pointer being freed was not allocated", called from Go.dot's
+  `AudioUnitPluginWindowCocoa::createView` in its editing helper. Cause and correction:
+  finding 10. No crash after the corrected probe was installed.
+- **Then, in Go.dot's plugin process** (show log `test Likuy1 wfg-20261118-204737.wfglog`):
+  `plugin.failed "Likyu Probe" (AU): the plugin stopped answering: 8 blocks late in a row on
+  voice 1`, three times within a minute, after which it stays down. On a mono item and, the
+  author found, on a stereo one too. Likyu (AU) on a stereo item runs. Not looked into further.
+- Go.dot chooses an insert's layout by a ladder of widths (`src/wfg/engine/plugin/PluginLoad.cpp`,
+  `chooseLayout`): for a mono voice mono/mono, then mono/stereo, then stereo/stereo, each with
+  the other buses off and then as the plugin had them.
+- The author: "Let's put Go.dot on hold for now. I will make changes to the plugin system I think
+  before we can rely on it."
 
