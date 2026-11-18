@@ -134,7 +134,7 @@ to that host.
 | Go.dot, VST3, Windows | n/a |  |  |  |  |  |  |
 | Go.dot, LV2, Windows | n/a |  |  |  |  |  |  |
 | REAPER, VST3, macOS | **Yes, on a four-channel track**: main bus four wide (L R C Lfe), sidechain enabled after it as channels 5 and 6, signal on both (-3.7 dB) while playing, exact zeros when stopped. Routed as on Windows, a send to 3/4, then **the pin connector re-wired by hand**: sidechain inputs fed from track channels 3/4, main inputs 3/4 from nothing (read from the project file; finding 2) | **Bus disabled** as inserted, two channels | **Realigns on the fly**, a small sliver at the change, no restart needed (the author). Ten changes while playing: latency reported within 10 to 70 ms each time, no `prepareToPlay` after any | Not yet in VST3 (in AU, see the next line) | **Restored exactly**: the project reopened at 15:27 gives `BEF24EA3`, 244 off default, the same code Scramble gives on Windows; `setStateInformation` (7008 bytes) just after the first `prepareToPlay`; the four-channel layout and the enabled sidechain come back with it | **A four-channel track is given as "L R C Lfe", LFE on channel 4**, as on Windows; on loading REAPER asks for 64 channels and is told yes, as on Windows | n/a; the author: "doesn't work out of the box" |
-| REAPER, AU, macOS | **No sound at all on a four-channel track** (an AmbiX file): REAPER prepares the plugin (float, 512) and resets it at every play start, but **never calls its render**: no block in five minutes and several plays. Cause not yet known; on a stereo track not yet tried |  |  | **Likyu shows all its parameters, and REAPER's automation list has them all** (the author) |  |  | n/a |
+| REAPER, AU, macOS | **Silence on every four-channel track tried (three).** REAPER's second `AudioUnitInitialize` fails, and every render after it is refused by Apple's AU base class with -10867, `kAudioUnitErr_Uninitialized`: 77,321 times in the system log, all from the probe, none reaching our code. Reproduced outside REAPER: an input and an output of **unequal widths** make the initialise fail exactly so (finding 9). On a stereo track not yet tried |  |  | **Likyu shows all its parameters, and REAPER's automation list has them all** (the author) |  |  | n/a |
 | REAPER, LV2, macOS |  |  |  |  |  |  | n/a |
 | Live, AU, macOS |  |  |  |  |  | n/a | n/a |
 | Bitwig, VST3, macOS |  |  |  |  |  | n/a | n/a |
@@ -249,6 +249,20 @@ the two marked so wait for the author.
    Bitwig passed a scrambled state between two instances. `setStateInformation` arrives just
    after the first `prepareToPlay` in Samplitude and Live, and before any layout or
    `prepareToPlay` in Bitwig: the product must take a state at either moment.
+9. **For the author: in REAPER on macOS the AU is silent on a four-channel track.** REAPER
+   initialises the AU, uninitialises it, and its second initialise fails; it then calls render
+   on a unit that is not initialised, and Apple's AU base class answers each call with -10867
+   (`kAudioUnitErr_Uninitialized`) before our code runs. The track gives silence and REAPER says
+   nothing. The macOS log holds 77,321 such errors from the probe between 15:30 and 15:53 on
+   2026-11-18. In a minimal host (part 8) the same failure follows from one cause only: an input
+   and an output of different widths. The wrapper accepts each width as it is set, and the
+   initialise then refuses the pair with -10868 (`kAudioUnitErr_FormatNotSupported`), because
+   the plugin requires output equal to input (PRD, non-goals). Equal widths, 1, 2 or 4, work. So
+   REAPER most likely gives the AU the track's width on one side only: inferred from the error,
+   not seen, and which side is not known.
+   The AU advertises `{-1, -1}` in `SupportedNumChannels`, which Apple defines as any width with
+   input equal to output. It is the same rule as finding 2 meeting REAPER in another format, and
+   it bears on the same open decision. A stereo track is expected to work and is not yet tried.
 
 ## 8. Reports, as saved
 
@@ -1289,3 +1303,39 @@ Its log after construction:
 15:33:05.152  reset x4 (total 28)
 15:35:41.417  getStateInformation x1 (total 4); fingerprint 1CC8BDCE
 ```
+
+### REAPER, AU, macOS 15.8.3 (Mac mini), 2026-11-18 15:37 to 15:53: the AU's silence, traced
+
+Two more AU instances, each at 0 blocks: at 15:37 on a copy of the AmbiX track, at 15:50 on
+*ambiance_voixPapa* (four channels) after the VST3 probe, which the author bypassed in turn. The
+author: "I put both on track 1 and disabled in Reaper either one of them to keep only one at a
+time." With the VST3 probe the track nulls; "AU never lets sound through". (Scramble changes
+nothing audible in either: the Phase 0 plugin passes its input through, whatever its
+parameters.)
+
+- **The probe's own log** of each AU instance: `prepareToPlay` (REAPER's first
+  `AudioUnitInitialize`), `releaseResources` within 2 ms (`AudioUnitUninitialize`), then a
+  second `prepareToPlay` together with the first `reset`. That one comes from JUCE's `Reset`,
+  which prepares when it finds itself unprepared (`juce_audio_plugin_client_AU_1.mm`, about line
+  254), not from an initialise. A failed initialise returns before `prepareToPlay`, so the
+  probe cannot log it.
+- **The macOS log** (`log show --predicate 'process == "REAPER" AND messageType == error'`):
+  `(LikyuProbe) from <private>, render err: -10867`, 77,321 times from 15:30:14.661 to 15:53,
+  thousands a minute while REAPER runs, and from no other plugin. The error is written by
+  `AUBase::DoRender` when the unit is not initialised; `Render`, and with it `processBlock`, is
+  never reached.
+- **A minimal AU host** (a C program on the Mac mini, run in the logged-in session: instantiate
+  `aufx Lkyp PxBl` or `aufx Lkyu PxBl`, set stream formats, initialise, render ten blocks of
+  512). With the `LIKYU_PROBE_DUMP` report: the probe counts 10 float blocks, a quadraphonic main
+  and a stereo sidechain at -12 dB, so its counters work in AU.
+
+  | Sequence | Result |
+  | --- | --- |
+  | Main 2 or 4 channels in and out, sidechain 2, connected or not | Initialise 0, renders, output as input |
+  | Initialise at 2, uninitialise, input and output to 4 (either order), initialise | 0, renders |
+  | Initialise at 2, uninitialise, **input alone to 4**, initialise | **-10868**, then every render **-10867**, silence |
+  | The same, **output alone to 4**, or **input alone to 1** | **-10868**, then **-10867** |
+  | Input and output both to 1 | 0, renders |
+
+  Each `AudioUnitSetProperty` of a width returns 0 even when the pair will not initialise.
+  The product's AU behaves as the probe's.

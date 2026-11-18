@@ -41,6 +41,11 @@ Both are in the PRD's *Open decisions* since today. Neither is the implementer's
   Decoding a pin map: the second line of the plugin's block in the `.RPP` is base64; after an ID
   and `0xfeed5eee`, an input count, then one 64-bit mask of track channels per input, then the
   same for outputs.
+  **And in AU on macOS** (2026-11-18, finding 9): the AU is silent on a four-channel track.
+  REAPER's second initialise fails as it does in a minimal host only with unequal input and
+  output widths; every render after it returns -10867, before our code. The macOS log shows
+  it: `/usr/bin/log show --predicate 'process == "REAPER" AND messageType == error'` (`log`
+  alone is a zsh builtin there).
 - **REAPER and the LFE.** A four-channel track arrives as "L R C Lfe".
 
 ## For Phase 2, which can start beside this
