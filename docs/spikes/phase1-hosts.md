@@ -133,7 +133,7 @@ to that host.
 | Samplitude, VST3, Windows | **Yes.** *Side chain input* menu in the plug-in window; on choosing, the host enables the bus as stereo and the buffer has four channels with the key in the last two (-20.0 and -21.4 dB). Mono main does not exist in this host; a mono source not tried | **Bus disabled** until a sidechain is chosen; the buffer then holds the two main channels only (2584 blocks) | **Realigns at the next play start, not during playback.** A change while playing leaves the null broken until stop and start; the host does not restart the plugin by itself | Generic view of eight slots, each a chooser over the parameters; names shown, choices as text, **no units**, continuous values with seven decimals | **Restored exactly**: one `getStateInformation` per save, one `setStateInformation` on opening (6913 bytes, after the first `prepareToPlay`); the sidechain routing comes back with the project | n/a: no mono tracks | **Several fingers, once the editor asks for multitouch** (the author, 2026-11-17). Without the request: the first finger only |
 | Go.dot, VST3, Windows | n/a |  |  |  |  |  |  |
 | Go.dot, LV2, Windows | n/a |  |  |  |  |  |  |
-| REAPER, VST3, macOS | **Yes, on a four-channel track**: main bus four wide (L R C Lfe), sidechain enabled after it as channels 5 and 6, signal on both (-3.7 dB) while playing, exact zeros when stopped. Routed as on Windows, a send to 3/4, then **the pin connector re-wired by hand**: sidechain inputs fed from track channels 3/4, main inputs 3/4 from nothing (read from the project file; finding 2) | **Bus disabled** as inserted, two channels | **Realigns on the fly**, a small sliver at the change, no restart needed (the author). Ten changes while playing: latency reported within 10 to 70 ms each time, no `prepareToPlay` after any | Not yet in VST3 (in AU, see the next line) | **Restored exactly**: the project reopened at 15:27 gives `BEF24EA3`, 244 off default, the same code Scramble gives on Windows; `setStateInformation` (7008 bytes) just after the first `prepareToPlay`; the four-channel layout and the enabled sidechain come back with it | **A four-channel track is given as "L R C Lfe", LFE on channel 4**, as on Windows; on loading REAPER asks for 64 channels and is told yes, as on Windows. **No mono track:** a mono clip, or a mono master, leaves the plugin's main bus stereo (the author); a REAPER track has two channels at least. 5.1 and wide not yet | n/a; the author: "doesn't work out of the box" |
+| REAPER, VST3, macOS | **Yes, on a four-channel track**: main bus four wide (L R C Lfe), sidechain enabled after it as channels 5 and 6, signal on both (-3.7 dB) while playing, exact zeros when stopped. Routed as on Windows, a send to 3/4, then **the pin connector re-wired by hand**: sidechain inputs fed from track channels 3/4, main inputs 3/4 from nothing (read from the project file; finding 2) | **Bus disabled** as inserted, two channels | **Realigns on the fly**, a small sliver at the change, no restart needed (the author). Ten changes while playing: latency reported within 10 to 70 ms each time, no `prepareToPlay` after any | Not yet in VST3 (in AU, see the next line) | **Restored exactly**: the project reopened at 15:27 gives `BEF24EA3`, 244 off default, the same code Scramble gives on Windows; `setStateInformation` (7008 bytes) just after the first `prepareToPlay`; the four-channel layout and the enabled sidechain come back with it | **A four-channel track is given as "L R C Lfe", LFE on channel 4**, as on Windows; on loading REAPER asks for 64 channels and is told yes, as on Windows. **No mono track:** a mono clip, or a mono master, leaves the plugin's main bus stereo (the author); a REAPER track has two channels at least. **A six-channel track is "5.1 Surround (L R C Lfe Ls Rs)", LFE on channel 4**, a 5.1 main with the sidechain disabled. Wide not yet | n/a; the author: "doesn't work out of the box" |
 | REAPER, AU, macOS | **Not run on any four-channel track tried (three)**: 0 blocks every time. The track is silent behind a bypassed plugin and passes its input untouched with the AU alone (the author: "now works"). REAPER's second `AudioUnitInitialize` fails, and every render after it is refused by Apple's AU base class with -10867, `kAudioUnitErr_Uninitialized`: 77,321 times in the system log, all from the probe, none reaching our code. Reproduced outside REAPER: an input and an output of **unequal widths** make the initialise fail exactly so, and REAPER's pin map shows it gives four in and two out (finding 9). **On a two-channel track the AU runs** (16:10: 1150 blocks, signal) |  |  | **Likyu shows all its parameters, and REAPER's automation list has them all** (the author). Generic view: a label, then a slider with the value at its end or a dropdown; **no units** |  |  | n/a |
 | REAPER, LV2, macOS |  |  |  |  |  |  | n/a |
 | Live, AU, macOS |  |  |  |  |  | n/a | n/a |
@@ -211,7 +211,11 @@ the two marked so wait for the author.
    main does not. Finding 9 is the same rule in AU.
 3. **For the author: REAPER names a four-channel track "L R C Lfe".** The host thus "reports an
    LFE" on channel 4 of a track that is two stereo pairs or a quad, and the PRD's default (a
-   channel reported as LFE is left out of the link) would leave that channel out wrongly.
+   channel reported as LFE is left out of the link) would leave that channel out wrongly. A
+   six-channel track is "5.1 Surround (L R C Lfe Ls Rs)", LFE on channel 4 (macOS, 2026-11-18),
+   right for the 5.1 file it held. A REAPER track stores a channel count and nothing of its
+   content (`NCHAN` in the project), so the name follows the count alone: a six-channel track of
+   three stereo pairs would be named 5.1 as well. Inferred from the project format, not measured.
 4. **Latency.** REAPER, Bitwig and Live realign on the fly, with a slip of sound at the change;
    Samplitude only at the next play start. Bitwig and Live restart the plugin (`prepareToPlay`)
    for every change; REAPER and Samplitude do not. So the product can count neither on a
@@ -1424,4 +1428,29 @@ sound goes through. I put a mono audio clip on a track and the sound would still
 No report saved. A REAPER track has two channels at least, so the plugin is never offered a
 mono main in ordinary use; row 6's mono case is n/a in REAPER, as in Samplitude. A 5.1 or wide
 case needs no such file: a track's channel count is set in its routing window.
+
+### REAPER, VST3, macOS 15.8.3 (Mac mini), 2026-11-18 16:25 to 16:27: a six-channel track
+
+Track 7, "FLAC 5.1", six channels, holding a 5.1 FLAC file; *Likyu Probe* (VST3) alone on it.
+REAPER asks for 5.1 on both buses (refused), for a stereo main with a 5.1 sidechain (refused),
+accepts `in [5.1 | Stereo] out [5.1]`, then settles on `in [5.1 | disabled] out [5.1]`: a buffer
+of six. Signal on the main, -6.0 dB. The pin map in the project of 16:28: eight inputs, 1 to 6
+from track channels 1 to 6, 7 and 8 (the sidechain) from channels 7 and 8, which the track does
+not have; six outputs.
+
+```text
+Host       Reaper (REAPER) - VST3 - Mac OSX 15.8.3
+Prepared   48000 Hz, block 512 - prepareToPlay x2, releaseResources x1, reset x3
+Blocks     2745 - sizes 512 to 512, last 512 - zero-length 0 - float 0, double 2745 - bypassed 0
+Transport  stopped - process calls: running
+Main bus   5.1 Surround (L R C Lfe Ls Rs) - LFE: channel 4 - peak exact zero, highest ever -6.0 dB
+Sidechain  disabled - process buffer 6 channels, buses add up to 6
+  SEEN AS  BUS DISABLED - now exact zero, exact zero
+           highest ever exact zero, exact zero
+Latency    0 samples (lookahead 0 ms) - changed 0 times - prepareToPlay calls since the last change: 2
+State      fingerprint 1CC8BDCE - 0 of 284 off default - get x3, set x0
+Pointers   most down at once 0 - kinds seen: none yet
+Layout     in [5.1 Surround (L R C Lfe Ls Rs) | disabled] out [5.1 Surround (L R C Lfe Ls Rs)]
+Layouts    15 distinct layouts asked about
+```
 
