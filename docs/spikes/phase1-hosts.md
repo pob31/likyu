@@ -6,7 +6,8 @@ matrix is open; it is deleted when the matrix is filled.
 **Status, 2026-11-18 morning: the four Windows hosts are measured in VST3, with the gaps listed in
 part 6; findings in part 7, two of them waiting on the author. The validators pass on all three
 systems, `lv2_validate` reporting only JUCE's own errors as it has since Phase 0 (part 3), and the probe is installed on
-the Mac mini and the NUC, ready for the author's sessions there. Go.dot, LV2 in a host, and every macOS and Linux host row are not begun.** Part 4
+the Mac mini and the NUC. REAPER on the Mac is begun (2026-11-18); Go.dot, LV2 in a host, the
+other macOS hosts and Linux are not.** Part 4
 says what JUCE's wrappers do as read from their source: it tells what to expect and is not a
 measurement.
 
@@ -132,7 +133,7 @@ to that host.
 | Samplitude, VST3, Windows | **Yes.** *Side chain input* menu in the plug-in window; on choosing, the host enables the bus as stereo and the buffer has four channels with the key in the last two (-20.0 and -21.4 dB). Mono main does not exist in this host; a mono source not tried | **Bus disabled** until a sidechain is chosen; the buffer then holds the two main channels only (2584 blocks) | **Realigns at the next play start, not during playback.** A change while playing leaves the null broken until stop and start; the host does not restart the plugin by itself | Generic view of eight slots, each a chooser over the parameters; names shown, choices as text, **no units**, continuous values with seven decimals | **Restored exactly**: one `getStateInformation` per save, one `setStateInformation` on opening (6913 bytes, after the first `prepareToPlay`); the sidechain routing comes back with the project | n/a: no mono tracks | **Several fingers, once the editor asks for multitouch** (the author, 2026-11-17). Without the request: the first finger only |
 | Go.dot, VST3, Windows | n/a |  |  |  |  |  |  |
 | Go.dot, LV2, Windows | n/a |  |  |  |  |  |  |
-| REAPER, VST3, macOS |  |  |  |  |  |  | n/a |
+| REAPER, VST3, macOS | **Yes, on a four-channel track**: main bus four wide (L R C Lfe), sidechain enabled after it as channels 5 and 6, signal on both (-3.7 dB) while playing, exact zeros when stopped. How it was routed is not yet on file | **Bus disabled** as inserted, two channels | **Realigns on the fly**, a small sliver at the change, no restart needed (the author). Ten changes while playing: latency reported within 10 to 70 ms each time, no `prepareToPlay` after any | Not yet | Not yet: nothing scrambled | **A four-channel track is given as "L R C Lfe", LFE on channel 4**, as on Windows; on loading REAPER asks for 64 channels and is told yes, as on Windows | n/a; the author: "doesn't work out of the box" |
 | REAPER, AU, macOS |  |  |  |  |  |  | n/a |
 | REAPER, LV2, macOS |  |  |  |  |  |  | n/a |
 | Live, AU, macOS |  |  |  |  |  | n/a | n/a |
@@ -1097,3 +1098,110 @@ Four discs, "#0 touch" to "#3 touch", and the pad's last line still "no wheel or
 The author: "Reaper and Bitwig too. All four are now showing multitouch response." Row 7 is
 answered for the four Windows hosts.
 
+### REAPER, VST3, macOS 15.8.3 (Mac mini), 2026-11-18 15:06 to 15:23, session 1
+
+Four reports of one instance, read from `~/Documents/likyu-hostprobe/` on the Mac over SSH. The
+three of 15:06 differ only in their time and block count. The author: "As expected multitouch
+doesn't work out of the box. Null test okay. Small sliver of sound gets through when changing look
+ahead time, but no need to restart."
+
+- **How REAPER runs it here:** 48 kHz, blocks of 512, **double**, as on Windows (blocks of 128
+  there: each machine's audio buffer). `reset` at every play start. Called while stopped, then
+  not after about two minutes (15:05:10 to 15:07:13).
+- **On loading:** the 64-channel request seen on Windows, accepted and applied for an instant,
+  then stereo. One detail not seen there: the first `prepareToPlay` had the sidechain enabled as
+  stereo; REAPER released the plugin and prepared it again with the bus disabled, within 3 ms.
+- **Row 2:** bus disabled as inserted, two channels.
+- **Row 3, answered.** Ten changes of lookahead during playback (15:18:34 to 15:19:46), every
+  choice in both directions. Each time the latency reaches the host 10 to 70 ms after the button,
+  and no `prepareToPlay` follows. The null holds, with a sliver at each change (the author).
+- **Row 6:** at 15:22:03 the track goes to four channels. REAPER asks the same questions as on
+  Windows, is refused `[L R C Lfe | L R C Lfe]` and `[L R C Lfe | Stereo] out [Stereo]`, and
+  settles on `in [L R C Lfe | disabled] out [L R C Lfe]`: a four-channel main bus, LFE reported on
+  channel 4. Back to stereo at 15:22:29, four again at 15:22:56.
+- **Row 1: the sidechain fed, beside a four-channel main.** At 15:23:24 REAPER enables the
+  sidechain after the four main channels: a buffer of six, the key in 5 and 6, exact zeros until
+  play; at 15:23:48 signal, -3.7 dB on both channels, and zeros again on stop. The main input's
+  highest peak is -0.7 dB. **How the author routed it is not yet on file**: if by the drag onto
+  the plugin's window, this is the layout the Windows session could not record (finding 2).
+- **Row 5:** nothing scrambled yet; the fingerprint is the defaults' (`1CC8BDCE`).
+- **Row 7:** one pointer, of kind mouse. macOS has no touch screen of its own; the row is n/a
+  there.
+- Seventeen distinct layouts asked about by the end.
+
+The last report's status lines, and its log from the change of width (the lines before are the
+loading and the lookahead changes summarised above):
+
+```text
+Host       Reaper (REAPER) - VST3 - Mac OSX 15.8.3
+Prepared   48000 Hz, block 512 - prepareToPlay x6, releaseResources x5, reset x15
+Blocks     48134 - sizes 512 to 512, last 512 - zero-length 0 - float 0, double 48134 - bypassed 0
+Transport  stopped - process calls: running
+Main bus   Unknown (L R C Lfe) - LFE: channel 4 - peak exact zero, highest ever -0.7 dB
+Sidechain  Stereo (L R) - process buffer 6 channels, buses add up to 6
+  SEEN AS  BUS ENABLED, EXACT ZEROS - now exact zero, exact zero
+           highest ever -3.7 dB, -3.7 dB
+Latency    0 samples (lookahead 0 ms) - changed 10 times - prepareToPlay calls since the last change: 4
+State      fingerprint 1CC8BDCE - 0 of 284 off default - get x7, set x0
+Pointers   most down at once 1 - kinds seen: mouse
+Layout     in [Unknown (L R C Lfe) | Stereo (L R)] out [Unknown (L R C Lfe)]
+Layouts    17 distinct layouts asked about
+```
+
+Log:
+
+```text
+15:22:03.935  releaseResources #2
+15:22:03.935  host asks: in [disabled | disabled] out [Stereo (L R)]  -> no
+15:22:03.935  numChannelsChanged: in [Stereo (L R) | Stereo (L R)] out [Stereo (L R)]
+15:22:03.935  processorLayoutsChanged: in [Stereo (L R) | Stereo (L R)] out [Stereo (L R)]
+15:22:03.935  host asks: in [Unknown (L R C Lfe) | Unknown (L R C Lfe)] out [Unknown (L R C Lfe)]  -> no
+15:22:03.935  host asks: in [Stereo (L R) | Unknown (L R C Lfe)] out [Stereo (L R)]  -> no
+15:22:03.935  host asks: in [Unknown (L R C Lfe) | Stereo (L R)] out [Stereo (L R)]  -> no
+15:22:03.935  host asks: in [Unknown (L R C Lfe) | Stereo (L R)] out [Unknown (L R C Lfe)]  -> yes
+15:22:03.935  numChannelsChanged: in [Unknown (L R C Lfe) | Stereo (L R)] out [Unknown (L R C Lfe)]
+15:22:03.935  processorLayoutsChanged: in [Unknown (L R C Lfe) | Stereo (L R)] out [Unknown (L R C Lfe)]
+15:22:03.936  host asks: in [Unknown (L R C Lfe) | disabled] out [disabled]  -> no
+15:22:03.936  host asks: in [Unknown (L R C Lfe) | disabled] out [Unknown (L R C Lfe)]  -> yes
+15:22:03.936  numChannelsChanged: in [Unknown (L R C Lfe) | disabled] out [Unknown (L R C Lfe)]
+15:22:03.936  processorLayoutsChanged: in [Unknown (L R C Lfe) | disabled] out [Unknown (L R C Lfe)]
+15:22:03.936  prepareToPlay #3: 48000 Hz, block 512, double, realtime, latency 0; in [Unknown (L R C Lfe) | disabled] out [Unknown (L R C Lfe)]
+15:22:03.979  process buffer: 4 channels; the enabled buses add up to 4
+15:22:03.979  reset x1 (total 11)
+15:22:29.255  releaseResources #3
+15:22:29.255  host asks: in [disabled | disabled] out [Unknown (L R C Lfe)]  -> no
+15:22:29.255  numChannelsChanged: in [Unknown (L R C Lfe) | Stereo (L R)] out [Unknown (L R C Lfe)]
+15:22:29.255  processorLayoutsChanged: in [Unknown (L R C Lfe) | Stereo (L R)] out [Unknown (L R C Lfe)]
+15:22:29.255  numChannelsChanged: in [Stereo (L R) | Stereo (L R)] out [Stereo (L R)]
+15:22:29.255  processorLayoutsChanged: in [Stereo (L R) | Stereo (L R)] out [Stereo (L R)]
+15:22:29.255  numChannelsChanged: in [Stereo (L R) | disabled] out [Stereo (L R)]
+15:22:29.255  processorLayoutsChanged: in [Stereo (L R) | disabled] out [Stereo (L R)]
+15:22:29.255  prepareToPlay #4: 48000 Hz, block 512, double, realtime, latency 0; in [Stereo (L R) | disabled] out [Stereo (L R)]
+15:22:29.307  process buffer: 2 channels; the enabled buses add up to 2
+15:22:29.307  reset x1 (total 12)
+15:22:29.811  getStateInformation x1 (total 5); fingerprint 1CC8BDCE
+15:22:56.844  releaseResources #4
+15:22:56.845  numChannelsChanged: in [Stereo (L R) | Stereo (L R)] out [Stereo (L R)]
+15:22:56.845  processorLayoutsChanged: in [Stereo (L R) | Stereo (L R)] out [Stereo (L R)]
+15:22:56.845  numChannelsChanged: in [Unknown (L R C Lfe) | Stereo (L R)] out [Unknown (L R C Lfe)]
+15:22:56.845  processorLayoutsChanged: in [Unknown (L R C Lfe) | Stereo (L R)] out [Unknown (L R C Lfe)]
+15:22:56.845  numChannelsChanged: in [Unknown (L R C Lfe) | disabled] out [Unknown (L R C Lfe)]
+15:22:56.845  processorLayoutsChanged: in [Unknown (L R C Lfe) | disabled] out [Unknown (L R C Lfe)]
+15:22:56.845  prepareToPlay #5: 48000 Hz, block 512, double, realtime, latency 0; in [Unknown (L R C Lfe) | disabled] out [Unknown (L R C Lfe)]
+15:22:56.918  process buffer: 4 channels; the enabled buses add up to 4
+15:22:56.918  reset x1 (total 13)
+15:23:24.537  releaseResources #5
+15:23:24.537  numChannelsChanged: in [Unknown (L R C Lfe) | Stereo (L R)] out [Unknown (L R C Lfe)]
+15:23:24.537  processorLayoutsChanged: in [Unknown (L R C Lfe) | Stereo (L R)] out [Unknown (L R C Lfe)]
+15:23:24.537  prepareToPlay #6: 48000 Hz, block 512, double, realtime, latency 0; in [Unknown (L R C Lfe) | Stereo (L R)] out [Unknown (L R C Lfe)]
+15:23:24.549  process buffer: 6 channels; the enabled buses add up to 6
+15:23:24.549  sidechain seen as: bus enabled, exact zeros
+15:23:24.549  reset x1 (total 14)
+15:23:39.891  getStateInformation x1 (total 6); fingerprint 1CC8BDCE
+15:23:45.263  getStateInformation x1 (total 7); fingerprint 1CC8BDCE
+15:23:48.010  sidechain seen as: bus enabled, signal
+15:23:48.010  reset x1 (total 15)
+15:23:48.010  transport: playing
+15:23:52.078  transport: stopped
+15:23:53.092  sidechain seen as: bus enabled, exact zeros
+```
