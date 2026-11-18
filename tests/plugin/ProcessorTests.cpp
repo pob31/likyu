@@ -28,6 +28,7 @@
 #include <dsp/Parameters.h>
 #include <dsp/rt/RtCheck.h>
 
+#include <cmath>
 #include <cstring>
 
 using namespace likyu;
@@ -78,7 +79,7 @@ namespace
                 processor.processBlock (buffer, midi);
 
             for (int n = 0; n < blockSize; ++n)
-                if (buffer.getSample (0, n) != 0.0f)
+                if (std::fpclassify (buffer.getSample (0, n)) != FP_ZERO) // exact silence, not near it
                     return block * blockSize + n;
         }
 
