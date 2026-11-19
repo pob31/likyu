@@ -28,5 +28,8 @@ the per-user plugin folders; `-Uninstall` and `--uninstall` remove them. By hand
 `likyu_hostprobe_snapshot <absolute folder>`, a third target, runs the probe without a host and
 writes its report and a picture of its editor there.
 
+`auhost.c`, macOS only and built by hand, is a minimal AU host that renders the probe or the
+product with chosen widths; its header says how (finding 9 of the report).
+
 This project is not built by the root `CMakeLists.txt` and not by CI. It is deleted when the
 report is complete; `LikyuProcessor` then becomes `final` again (`src/shims/juce/PluginProcessor.h`).
