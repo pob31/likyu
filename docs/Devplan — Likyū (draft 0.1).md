@@ -247,6 +247,21 @@ the procedure for each row: [`docs/spikes/phase1-hosts.md`](spikes/phase1-hosts.
   and the NUC, auval and lilv included; `lv2_validate` reports only what JUCE's wrapper writes,
   as in CI. The probe is installed on both for the author's sessions there.
 
+**Record, 2026-11-18: the macOS hosts are measured.** Handoff:
+[`docs/handoffs/2026-11-18-phase1-macos.md`](handoffs/2026-11-18-phase1-macos.md).
+
+- *Done.* REAPER (VST3, AU), Live (VST3, AU), Bitwig (VST3) on the Mac mini, by the author with
+  the probe; findings 1 to 10 of the report.
+- *Decided by the author:* every channel starts in the link, the LFE is left out by hand (PRD
+  amended). Go.dot is on hold until its plugin system changes.
+- *Found and corrected:* the plugin exported JUCE's Objective-C++ symbols on macOS, which a
+  JUCE host merged with its own (finding 10; the build now hides them).
+- *Waiting for the author:* the main bus width in REAPER, with its evidence complete (findings 2
+  and 9).
+- *Not done:* LV2 in a host, Linux, a wide REAPER track. Done-when is still not met: the
+  fallback rule is not yet confirmed or amended in the PRD, and REAPER's limits have no line
+  there yet. Phase 2 starts beside it, by the author's plan.
+
 ---
 
 ## Phase 2 — Static EQ · M

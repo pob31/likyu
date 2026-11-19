@@ -1,5 +1,8 @@
 # Handoff: Phase 1, the four Windows hosts measured in VST3
 
+> **Superseded as the place to start** by [`2026-11-18-phase1-macos.md`](2026-11-18-phase1-macos.md).
+> Its notes for Phases 2, 4 and 6 and its things that bite still hold.
+
 2026-11-17, evening. Replaces the morning's note
 ([`2026-11-17-phase1-probe.md`](2026-11-17-phase1-probe.md)) as the place to start; that one
 still describes how the probe is built. Phase 1 is **not** done: one format on one system is in.
