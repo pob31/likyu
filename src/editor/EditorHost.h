@@ -23,6 +23,11 @@
     knows no shim, and no parameter ID: a parameter is its index in the table
     (dsp/Parameters.h).
 
+    TEMPORARY, while the listening pass has not set them: the indices from
+    dsp::numParams on are the transient shaper's four time constants
+    (dsp::temporaryTransientSpecs), which are host parameters outside the
+    table. They go with them.
+
     Every function is called on the message thread only.
 */
 

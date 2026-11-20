@@ -350,6 +350,27 @@ TEST_CASE ("editor: the picture, with a band of each kind")
     CHECK (where (P::key) == keyInDynamic);
     CHECK (where (P::fmode) == frequencyMode);
     CHECK (where (P::range) == rangeInDynamic);
+
+    // The ghost of band 5's Own detector, set apart from its node; a band keyed by a sidechain that is not there.
+    set (processor, 4, P::dfreq, 6000.0);
+    set (processor, 1, P::gmode, static_cast<double> (dsp::GainMode::dynamic));
+    set (processor, 1, P::key, static_cast<double> (dsp::KeySource::sidechain));
+    run (processor, 1000.0, 0.5, 40);
+    opened.refresh();
+    write ("likyu-editor-ghost.png");
+
+    // TEMPORARY: the transient's times, slid open over the frequency controls.
+    set (processor, 3, P::fmode, static_cast<double> (dsp::FrequencyMode::fixed));
+    set (processor, 3, P::gmode, static_cast<double> (dsp::GainMode::transient));
+    root.selectBand (3);
+    opened.refresh();
+    root.footPanel().setTimesOpen (true);
+
+    for (int i = 0; i < 6; ++i)
+        opened.refresh();
+
+    CHECK (root.footPanel().timesPanel().isVisible());
+    write ("likyu-editor-times.png");
 }
 
 TEST_CASE ("editor: a drag moves what its part of the handle moves, by what the geometry says, in one gesture")
@@ -1034,4 +1055,160 @@ TEST_CASE ("editor: any values of the 284 parameters paint, as a validator throw
         CHECK (std::isfinite (band.offsetDb));
         CHECK (std::isfinite (band.frequencyHz));
     }
+}
+
+TEST_CASE ("editor: the ghost node of an Own detector: the selected band's is dragged and wheeled, the others' take no press")
+{
+    Opened opened;
+    auto& processor = opened.processor;
+    auto& curve = opened.curve();
+    const auto plot = opened.plot();
+
+    // Two dynamic bells, each listening somewhere else than where it acts.
+    for (const auto band : { 2, 5 })
+    {
+        set (processor, band, P::on, 1.0);
+        set (processor, band, P::gmode, static_cast<double> (dsp::GainMode::dynamic));
+        set (processor, band, P::dfilt, static_cast<double> (dsp::DetectorFilter::own));
+    }
+
+    set (processor, 2, P::dfreq, 600.0);
+    set (processor, 5, P::dfreq, 9000.0);
+    curve.selectBand (2);
+    opened.refresh();
+
+    const auto ghostOf = [&opened, &processor, plot] (int band)
+    {
+        return juce::Point<float> (static_cast<float> (editor::geometry::xOfHz (plot, get (processor, band, P::dfreq))),
+                                   opened.nodeOf (band).y);
+    };
+
+    GestureCounter gestures (processor);
+
+    // The selected band's ghost: a drag moves the detector's frequency, and nothing of the band.
+    auto from = ghostOf (2);
+    drag (curve, from, from + juce::Point<float> (80.0f, -30.0f));
+    CHECK (get (processor, 2, P::dfreq) == doctest::Approx (editor::geometry::draggedHz (600.0, 80.0, plot, false)).epsilon (1.0e-5));
+    CHECK (get (processor, 2, P::freq) == doctest::Approx (200.0));
+    CHECK (get (processor, 2, P::gain) == 0.0);
+    CHECK (gestures.begunFor (2, P::dfreq) == 1);
+    CHECK (gestures.endedFor (2, P::dfreq) == 1);
+    CHECK (gestures.begunFor (2, P::freq) == 0);
+    CHECK (gestures.open == 0);
+
+    // The wheel over it: the detector's Q, not the band's.
+    juce::MouseWheelDetails wheel;
+    wheel.deltaX = 0.0f;
+    wheel.deltaY = 0.1f;
+    wheel.isReversed = false;
+    wheel.isSmooth = false;
+    wheel.isInertial = false;
+
+    from = ghostOf (2);
+    curve.mouseWheelMove (eventAt (curve, from, from, juce::ModifierKeys()), wheel);
+    CHECK (get (processor, 2, P::dq) == doctest::Approx (1.1).epsilon (1.0e-5));
+    CHECK (get (processor, 2, P::q) == doctest::Approx (1.0));
+
+    // Another band's ghost is drawn, faint, and takes no press: it does not move, and the selection stays.
+    const auto others = ghostOf (5);
+    drag (curve, others, others + juce::Point<float> (-90.0f, 0.0f));
+    CHECK (get (processor, 5, P::dfreq) == doctest::Approx (9000.0));
+    CHECK (curve.selectedBand() == 2);
+
+    // Selected, it does.
+    curve.selectBand (5);
+    drag (curve, others, others + juce::Point<float> (-90.0f, 0.0f));
+    CHECK (get (processor, 5, P::dfreq) == doctest::Approx (editor::geometry::draggedHz (9000.0, -90.0, plot, false)).epsilon (1.0e-5));
+
+    // Follow, or a band that reads no key: no ghost to press.
+    set (processor, 5, P::dfilt, static_cast<double> (dsp::DetectorFilter::follow));
+    opened.refresh();
+    const auto before = get (processor, 5, P::dfreq);
+    const auto where = ghostOf (5);
+    drag (curve, where, where + juce::Point<float> (60.0f, 0.0f));
+    CHECK (get (processor, 5, P::dfreq) == doctest::Approx (before));
+
+    CHECK (opened.window->createComponentSnapshot (opened.window->getLocalBounds()).isValid());
+}
+
+TEST_CASE ("editor: the transient's temporary times slide over the frequency controls from a chevron, and close with the band")
+{
+    Opened opened;
+    auto& processor = opened.processor;
+    auto& root = opened.window->editorRoot();
+    auto& foot = root.footPanel();
+
+    set (processor, 2, P::on, 1.0);
+    set (processor, 2, P::gmode, static_cast<double> (dsp::GainMode::transient));
+    set (processor, 4, P::on, 1.0);
+    set (processor, 4, P::gmode, static_cast<double> (dsp::GainMode::dynamic));
+
+    // No chevron on a band that is not in Transient.
+    root.selectBand (4);
+    opened.refresh();
+    CHECK_FALSE (foot.timesChevron().isVisible());
+    CHECK_FALSE (foot.timesPanel().isVisible());
+
+    // In Transient: the chevron, in the Gain block; the panel closed.
+    root.selectBand (2);
+    opened.refresh();
+    CHECK (foot.timesChevron().isVisible());
+    CHECK_FALSE (foot.timesAreOpen());
+    CHECK_FALSE (foot.timesPanel().isVisible());
+
+    // A press on the chevron: it slides open over a few refreshes, over the Frequency block and nothing else.
+    const juce::Point<float> centre (9.0f, 9.0f);
+    foot.timesChevron().mouseDown (eventAt (foot.timesChevron(), centre, centre));
+    CHECK (foot.timesAreOpen());
+
+    opened.refresh();
+    const auto partly = foot.timesPanel().getWidth();
+    CHECK (foot.timesPanel().isVisible());
+
+    for (int i = 0; i < 6; ++i)
+        opened.refresh();
+
+    const auto open = foot.timesPanel().getBounds();
+    CHECK (partly > 0);
+    CHECK (partly < open.getWidth());
+    CHECK (open.contains (foot.boundsOf (P::fmode)));
+    CHECK_FALSE (open.intersects (foot.boundsOf (P::gmode)));
+    CHECK_FALSE (open.intersects (foot.boundsOf (P::range)));
+    CHECK_FALSE (open.intersects (foot.channelCells().getBounds()));
+    CHECK_FALSE (open.intersects (foot.timesChevron().getBounds()));
+
+    // Its four dials are the four temporary host parameters: a wheel on the first moves the first.
+    const auto before = processor.temporaryTransientTime (0).get();
+    auto* dial = foot.timesPanel().getChildComponent (0);
+    REQUIRE (dial != nullptr);
+
+    juce::MouseWheelDetails wheel;
+    wheel.deltaX = 0.0f;
+    wheel.deltaY = 1.0f;
+    wheel.isReversed = false;
+    wheel.isSmooth = false;
+    wheel.isInertial = false;
+    dial->mouseWheelMove (eventAt (*dial, { 20.0f, 30.0f }, { 20.0f, 30.0f }, juce::ModifierKeys()), wheel);
+    CHECK (processor.temporaryTransientTime (0).get() > before);
+    CHECK (processor.temporaryTransientTime (1).get() == doctest::Approx (dsp::temporaryTransientSpecs()[1].defaultValue));
+
+    // Another band selected: it closes, and is gone a few refreshes later.
+    root.selectBand (4);
+    CHECK_FALSE (foot.timesAreOpen());
+
+    for (int i = 0; i < 6; ++i)
+        opened.refresh();
+
+    CHECK_FALSE (foot.timesPanel().isVisible());
+
+    // Back on the Transient band it stays closed until asked; leaving Transient closes it too.
+    root.selectBand (2);
+    opened.refresh();
+    CHECK_FALSE (foot.timesAreOpen());
+
+    foot.setTimesOpen (true);
+    set (processor, 2, P::gmode, static_cast<double> (dsp::GainMode::dynamic));
+    opened.refresh();
+    CHECK_FALSE (foot.timesAreOpen());
+    CHECK_FALSE (foot.timesChevron().isVisible());
 }

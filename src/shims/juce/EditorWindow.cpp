@@ -25,10 +25,31 @@ namespace likyu
         editor::Host hostFor (LikyuProcessor& processor)
         {
             editor::Host host;
-            host.valueOf = [&processor] (int index) { return processor.valueOf (index); };
-            host.setValue = [&processor] (int index, double value) { processor.setValue (index, value); };
-            host.beginGesture = [&processor] (int index) { processor.beginGesture (index); };
-            host.endGesture = [&processor] (int index) { processor.endGesture (index); };
+            /*  A parameter of the table, or past it one of the temporary
+                transient constants, which are host parameters of their own
+                (TEMPORARY, EditorHost.h). */
+            const auto parameterFor = [&processor] (int index) -> juce::RangedAudioParameter&
+            {
+                if (index >= dsp::numParams)
+                    return processor.temporaryTransientTime (index - dsp::numParams);
+
+                return processor.parameterAt (index);
+            };
+
+            host.valueOf = [parameterFor] (int index)
+            {
+                auto& parameter = parameterFor (index);
+                return static_cast<double> (parameter.convertFrom0to1 (parameter.getValue()));
+            };
+
+            host.setValue = [parameterFor] (int index, double value)
+            {
+                auto& parameter = parameterFor (index);
+                parameter.setValueNotifyingHost (parameter.convertTo0to1 (static_cast<float> (value)));
+            };
+
+            host.beginGesture = [parameterFor] (int index) { parameterFor (index).beginChangeGesture(); };
+            host.endGesture = [parameterFor] (int index) { parameterFor (index).endChangeGesture(); };
             host.readMeters = [&processor] (core::Meters& meters) { return processor.meters().read (meters); };
             host.sampleRate = [&processor] { return processor.getSampleRate(); };
 

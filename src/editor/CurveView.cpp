@@ -96,6 +96,7 @@ namespace likyu::editor
         if (clamped != selected)
         {
             selected = clamped;
+            rebuild();      // the ghost that takes a press is the selected band's
             repaint();
         }
     }
@@ -152,6 +153,12 @@ namespace likyu::editor
             place.gainArm = node.hasGain;
             place.x = geometry::xOfHz (plot, node.hz);
             place.y = geometry::yOfDb (plot, node.gainDb);
+
+            // The ghost, where an Own detector listens, level with its node. Only the selected band's takes a press.
+            const auto ghost = presentation::ghostOf (s);
+            place.ghost = ghost.shown && s.on && band == selected;
+            place.ghostX = geometry::xOfHz (plot, ghost.hz);
+            place.ghostY = place.y;
 
             still[i] = staticBandOf (s);
             live[i] = liveBandOf (s, m, running);
@@ -363,6 +370,29 @@ namespace likyu::editor
             g.fillRoundedRectangle (x - 1.5f * cap, mark - 2.0f * scale, 3.0f * cap, 4.0f * scale, 2.0f * scale);
         }
 
+        // The ghost: where the band's Own detector listens. Faint, until the band is the selected one.
+        if (const auto ghost = presentation::ghostOf (s); ghost.shown && node.on)
+        {
+            const auto gx = px (geometry::xOfHz (plot, ghost.hz));
+            const auto radius = px (sizes.ghost) + (isSelected ? 1.5f * scale : 0.0f);
+            const auto onGhost = hovered.band == band && hovered.part == Part::ghost;
+            const auto strength = isSelected ? 1.0f : 0.3f;
+
+            // Tied to its node by a dotted line, so that it is read as that band's ear.
+            if (isSelected)
+            {
+                const float dashes[] = { 3.0f, 4.0f };
+                g.setColour (colour.withMultipliedAlpha (0.7f));
+                g.drawDashedLine ({ x, y, gx, y }, dashes, 2, 1.0f);
+            }
+
+            g.setColour (palette::plot.withMultipliedAlpha (strength));
+            g.fillEllipse (gx - radius, y - radius, 2.0f * radius, 2.0f * radius);
+            g.setColour ((onGhost ? colour.brighter (0.4f) : colour).withMultipliedAlpha (strength));
+            g.drawEllipse (gx - radius, y - radius, 2.0f * radius, 2.0f * radius, 2.0f * scale);
+            g.fillEllipse (gx - 1.5f * scale, y - 1.5f * scale, 3.0f * scale, 3.0f * scale);
+        }
+
         // The node.
         {
             const auto radius = px (isSelected ? sizes.selectedNode : sizes.node);
@@ -381,6 +411,16 @@ namespace likyu::editor
             g.setFont (fontOf (std::max (8.0, 12.0 * sizes.scale), true));
             g.drawText (juce::String (band + 1), juce::Rectangle<float> (x - radius, y - radius, 2.0f * radius, 2.0f * radius),
                         juce::Justification::centred, false);
+
+            // The key badge: what the band is keyed by, and a warning when that is not what was asked.
+            if (const auto badge = presentation::badgeOf (s, m, false); badge.key != presentation::Key::none && node.on)
+            {
+                g.setColour ((badge.warns ? palette::warning : palette::textSecondary).withMultipliedAlpha (alpha));
+                g.setFont (fontOf (std::max (8.0, 9.0 * sizes.scale), badge.warns));
+                g.drawText (juce::String (badge.text),
+                            juce::Rectangle<float> (x + radius + 2.0f * scale, y - radius - 9.0f * scale, 30.0f, 11.0f * scale),
+                            juce::Justification::centredLeft, false);
+            }
         }
     }
 
@@ -413,6 +453,9 @@ namespace likyu::editor
 
         if (drag.movesGain)
             call (dsp::indexOf (drag.band, P::gain));
+
+        if (drag.movesDetector)
+            call (dsp::indexOf (drag.band, P::dfreq));
     }
 
     /*  The drag starts again from here: at the press, and when Shift changes
@@ -427,6 +470,7 @@ namespace likyu::editor
         drag.fromDb = host.valueOf (dsp::indexOf (drag.band, P::gain));
         drag.fromLow = host.valueOf (dsp::indexOf (drag.band, P::flo));
         drag.fromHigh = host.valueOf (dsp::indexOf (drag.band, P::fhi));
+        drag.fromDetectorHz = host.valueOf (dsp::indexOf (drag.band, P::dfreq));
     }
 
     void CurveView::endDrag (const Drag& drag)
@@ -523,7 +567,7 @@ namespace likyu::editor
             }
         }
 
-        if (hit.band < 0 || hit.part == Part::none || hit.part == Part::ghost || isDragged (hit.band))
+        if (hit.band < 0 || hit.part == Part::none || isDragged (hit.band))
             return;
 
         if (hit.band != selected)
@@ -544,6 +588,7 @@ namespace likyu::editor
         drag.movesRange = sideways && node.drag == presentation::FrequencyDrag::range;
         drag.movesFrequency = sideways && ! drag.movesRange;
         drag.movesGain = node.hasGain && (hit.part == Part::node || hit.part == Part::gainArm);
+        drag.movesDetector = hit.part == Part::ghost;
         drag.last = at;
         anchor (drag, at, mods.isShiftDown());
 
@@ -590,6 +635,9 @@ namespace likyu::editor
         if (drag.movesGain)
             host.setValue (dsp::indexOf (drag.band, P::gain), geometry::draggedDb (drag.fromDb, dy, plot, drag.fine));
 
+        if (drag.movesDetector)
+            host.setValue (dsp::indexOf (drag.band, P::dfreq), geometry::draggedHz (drag.fromDetectorHz, dx, plot, drag.fine));
+
         refresh();
     }
 
@@ -626,7 +674,7 @@ namespace likyu::editor
             case Part::node:            setMouseCursor (juce::MouseCursor::DraggingHandCursor); break;
             case Part::frequencyArm:    setMouseCursor (juce::MouseCursor::LeftRightResizeCursor); break;
             case Part::gainArm:         setMouseCursor (juce::MouseCursor::UpDownResizeCursor); break;
-            case Part::ghost:
+            case Part::ghost:           setMouseCursor (juce::MouseCursor::LeftRightResizeCursor); break;
             case Part::none:            setMouseCursor (juce::MouseCursor::NormalCursor); break;
         }
     }
@@ -656,9 +704,9 @@ namespace likyu::editor
         refresh();
     }
 
-    void CurveView::setQ (int band, double q)
+    void CurveView::setQ (int band, dsp::BandParam which, double q)
     {
-        const auto index = dsp::indexOf (band, P::q);
+        const auto index = dsp::indexOf (band, which);
         host.beginGesture (index);
         host.setValue (index, q);
         host.endGesture (index);
@@ -670,20 +718,22 @@ namespace likyu::editor
         if (! (std::abs (wheel.deltaY) > 0.0f))
             return;
 
-        // The band under the pointer, else the selected one.
+        // The band under the pointer, else the selected one; over a ghost, its detector's Q.
         const auto hit = hitAt (e);
-        const auto band = hit.band >= 0 && hit.part != Part::ghost ? hit.band : selected;
-        const auto q = host.valueOf (dsp::indexOf (band, P::q));
+        const auto band = hit.band >= 0 ? hit.band : selected;
+        const auto which = hit.part == Part::ghost ? P::dq : P::q;
+        const auto q = host.valueOf (dsp::indexOf (band, which));
 
         // Ctrl + wheel is a Windows touchpad's pinch, the other way up.
-        setQ (band, turnedQ (q, static_cast<double> (wheel.deltaY), e.mods.isCtrlDown(), e.mods.isShiftDown()));
+        setQ (band, which, turnedQ (q, static_cast<double> (wheel.deltaY), e.mods.isCtrlDown(), e.mods.isShiftDown()));
     }
 
     void CurveView::mouseMagnify (const juce::MouseEvent& e, float scaleFactor)
     {
         const auto hit = hitAt (e);
-        const auto band = hit.band >= 0 && hit.part != Part::ghost ? hit.band : selected;
+        const auto band = hit.band >= 0 ? hit.band : selected;
+        const auto which = hit.part == Part::ghost ? P::dq : P::q;
 
-        setQ (band, magnifiedQ (host.valueOf (dsp::indexOf (band, P::q)), static_cast<double> (scaleFactor)));
+        setQ (band, which, magnifiedQ (host.valueOf (dsp::indexOf (band, which)), static_cast<double> (scaleFactor)));
     }
 }

@@ -338,10 +338,98 @@ namespace likyu::editor
     }
 
     //==========================================================================
+    TimesPanel::TimesPanel (Host& host)
+        : fastAttack (host, dsp::numParams + 0, "Fast attack", palette::warning),
+          slowAttack (host, dsp::numParams + 1, "Slow attack", palette::warning),
+          fastRelease (host, dsp::numParams + 2, "Fast release", palette::warning),
+          slowRelease (host, dsp::numParams + 3, "Slow release", palette::warning)
+    {
+        setOpaque (true);
+
+        for (auto* dial : { &fastAttack, &slowAttack, &fastRelease, &slowRelease })
+            addAndMakeVisible (dial);
+    }
+
+    void TimesPanel::refresh()
+    {
+        for (auto* dial : { &fastAttack, &slowAttack, &fastRelease, &slowRelease })
+            dial->refresh();
+    }
+
+    void TimesPanel::setCell (int width, int height)
+    {
+        cellWidth = width;
+        cellHeight = height;
+        resized();
+    }
+
+    void TimesPanel::resized()
+    {
+        // Where they are when the panel is fully open: sliding only uncovers them.
+        const auto at = [this] (int column, int row)
+        {
+            return juce::Rectangle<int> (8 + column * cellWidth, blockTitleHeight + row * cellHeight, cellWidth, cellHeight).reduced (4, 4);
+        };
+
+        fastAttack.setBounds (at (0, 0));
+        slowAttack.setBounds (at (0, 1));
+        fastRelease.setBounds (at (1, 0));
+        slowRelease.setBounds (at (1, 1));
+    }
+
+    void TimesPanel::paint (juce::Graphics& g)
+    {
+        g.fillAll (palette::selectedColumn);
+
+        g.setColour (palette::warning);
+        g.fillRect (0, 0, 2, getHeight());
+
+        g.setFont (fontOf (11.0f));
+        g.drawText ("TRANSIENT TIMES, EVERY BAND (TEMPORARY)", juce::Rectangle<int> (10, 0, 400, blockTitleHeight),
+                    juce::Justification::centredLeft, false);
+    }
+
+    void ChevronButton::setOpen (bool shouldBeOpen)
+    {
+        if (open != shouldBeOpen)
+        {
+            open = shouldBeOpen;
+            repaint();
+        }
+    }
+
+    void ChevronButton::paint (juce::Graphics& g)
+    {
+        const auto area = getLocalBounds().toFloat();
+        const auto x = area.getCentreX(), y = area.getCentreY();
+        const auto way = open ? -1.0f : 1.0f;
+
+        // Pointing at the panel when it is closed, away from it when it is open.
+        juce::Path chevron;
+        chevron.startNewSubPath (x - 2.5f * way, y - 4.5f);
+        chevron.lineTo (x + 2.5f * way, y);
+        chevron.lineTo (x - 2.5f * way, y + 4.5f);
+
+        g.setColour (palette::warning);
+        g.strokePath (chevron, juce::PathStrokeType (1.8f));
+    }
+
+    void ChevronButton::mouseDown (const juce::MouseEvent&)
+    {
+        if (onClick != nullptr)
+            onClick();
+    }
+
+    //==========================================================================
     FootPanel::FootPanel (Host& hostIn)
-        : host (hostIn)
+        : host (hostIn),
+          times (hostIn)
     {
         addChildComponent (cells);
+        addChildComponent (times);
+        addChildComponent (chevron);
+
+        chevron.onClick = [this] { setTimesOpen (! timesWanted); };
 
         cells.onChange = [this] (std::uint64_t leftOut)
         {
@@ -402,12 +490,20 @@ namespace likyu::editor
         for (const auto& section : presentation::footOf (settings))
             now.insert (now.end(), section.params.begin(), section.params.end());
 
-        // Another band: a Listen in progress was the other band's.
+        // Another band: a Listen in progress was the other band's, and the times' panel closes.
         if (bandIn != band)
         {
             listen.cancel();
             stopListening();
+            setTimesOpen (false);
         }
+
+        // TEMPORARY: the chevron to the transient's times, while the band is in Transient.
+        const auto transient = presentation::gainModeInEffect (settings) == dsp::GainMode::transient;
+        chevron.setVisible (transient);
+
+        if (! transient)
+            setTimesOpen (false);
 
         // Nothing to hear on a band that is off or has no detector in use.
         listen.setEnabled (settings.on && presentation::usesDetector (settings));
@@ -468,10 +564,46 @@ namespace likyu::editor
         return {};
     }
 
+    void FootPanel::setTimesOpen (bool shouldBeOpen)
+    {
+        timesWanted = shouldBeOpen;
+        chevron.setOpen (shouldBeOpen);
+    }
+
+    /*  The panel over the Frequency block, as much of it as it is open: it
+        grows from the block's left edge, and its dials stay where they are
+        under it. */
+    void FootPanel::layoutTimes()
+    {
+        const auto block = blockArea (presentation::FootBlock::frequency).withBottom (getHeight() - 4);
+        const auto width = static_cast<int> (std::lround (block.getWidth() * openness));
+
+        times.setCell (cellWidthNow(), cellHeight);
+        times.setBounds (block.withWidth (width));
+        times.setVisible (width > 0);
+        times.toFront (false);
+
+        const auto gain = blockArea (presentation::FootBlock::gain);
+        chevron.setBounds (gain.getRight() - 18, gain.getY() + 1, 18, blockTitleHeight - 2);
+        chevron.toFront (false);
+    }
+
     void FootPanel::refresh()
     {
         for (auto& control : controls)
             control->refresh();
+
+        // The slide: a quarter of the way at each refresh, some 130 ms in all.
+        const auto target = timesWanted ? 1.0 : 0.0;
+
+        if (! juce::exactlyEqual (openness, target))
+        {
+            openness = std::clamp (openness + (timesWanted ? 0.25 : -0.25), 0.0, 1.0);
+            layoutTimes();
+        }
+
+        if (times.isVisible())
+            times.refresh();
 
         if (band < 0)
             return;
@@ -528,6 +660,8 @@ namespace likyu::editor
 
             controls[i]->setBounds (juce::Rectangle<int> (x, top + place.row * cellHeight, width, cellHeight).reduced (4, 4));
         }
+
+        layoutTimes();
 
         // On the title's line, at the right: Listen, then Reset.
         auto titleRow = juce::Rectangle<int> (0, 3, getWidth() - footMargin, footTitleHeight - 5);

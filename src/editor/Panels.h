@@ -26,6 +26,9 @@
       FootPanel    under the columns, one for all bands: the selected band's
                    gain mode, frequency mode and key, each with the controls
                    of its current choice and no others; and its channels
+      TimesPanel   TEMPORARY, in the foot: the transient shaper's four time
+                   constants, which slide over the Frequency block from a
+                   chevron in the Gain block, while the band is in Transient
       ChannelCells in the foot: a cell per channel of the instance, its name
                    beneath; a press takes the channel out of the selected
                    band or back in (PRD, Band model, Channels)
@@ -141,6 +144,41 @@ namespace likyu::editor
     };
 
     //==========================================================================
+    /*  TEMPORARY, with the four host parameters it shows (decided by the
+        author 2026-11-20: a panel that slides over the frequency controls,
+        from a chevron, and closes when another band is selected). The
+        constants are the instance's, not the band's. */
+    class TimesPanel final : public juce::Component
+    {
+    public:
+        explicit TimesPanel (Host& host);
+
+        void refresh();
+        void setCell (int width, int height);
+
+        void paint (juce::Graphics&) override;
+        void resized() override;
+
+    private:
+        ParamDial fastAttack, slowAttack, fastRelease, slowRelease;
+        int cellWidth = 78, cellHeight = 76;
+    };
+
+    /** A chevron that opens what is to its right, and closes it. */
+    class ChevronButton final : public juce::Component
+    {
+    public:
+        std::function<void()> onClick;
+
+        void setOpen (bool shouldBeOpen);
+        void paint (juce::Graphics&) override;
+        void mouseDown (const juce::MouseEvent&) override;
+
+    private:
+        bool open = false;
+    };
+
+    //==========================================================================
     class FootPanel final : public juce::Component
     {
     public:
@@ -156,6 +194,13 @@ namespace likyu::editor
         std::function<void (int band)> onReset;
 
         LongPressButton& listenButton() noexcept        { return listen; }
+
+        /** TEMPORARY: the transient's times. The chevron shows in Transient
+            only; the panel slides open over a few refreshes. */
+        ChevronButton& timesChevron() noexcept          { return chevron; }
+        TimesPanel& timesPanel() noexcept               { return times; }
+        bool timesAreOpen() const noexcept              { return timesWanted; }
+        void setTimesOpen (bool shouldBeOpen);
         LongPressButton& resetButton() noexcept         { return reset; }
         void refresh();
 
@@ -189,6 +234,13 @@ namespace likyu::editor
 
         // Listen: heard from the moment its press is long enough until the release.
         void stopListening();
+
+        void layoutTimes();
+
+        TimesPanel times;
+        ChevronButton chevron;
+        bool timesWanted = false;
+        double openness = 0.0;
 
         LongPressButton listen { "Listen" };
         LongPressButton reset { "Reset band" };

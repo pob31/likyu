@@ -34,6 +34,10 @@
       - the wheel sets Q of the band under the pointer, else of the selected
         band; Ctrl turns it over (a Windows touchpad's pinch), Shift is fine;
       - a double click on a bell's or a shelf's node puts its gain at 0 dB;
+      - the selected band's ghost node, where its Own detector listens,
+        drags the detector's frequency, and the wheel over it sets the
+        detector's Q. The other bands' ghosts are drawn faint and take no
+        press (decided by the author 2026-11-20);
       - each pointer has its own drag, keyed by kind and index (JUCE numbers
         the mouse 0 and the first finger 0), so several nodes move at once;
       - a second finger on a node a finger holds, or on nothing while one
@@ -115,9 +119,9 @@ namespace likyu::editor
             bool fine = false;
 
             // The values at the press, or at the last change of Shift.
-            double fromHz = 0.0, fromDb = 0.0, fromLow = 0.0, fromHigh = 0.0;
+            double fromHz = 0.0, fromDb = 0.0, fromLow = 0.0, fromHigh = 0.0, fromDetectorHz = 0.0;
 
-            bool movesFrequency = false, movesRange = false, movesGain = false;
+            bool movesFrequency = false, movesRange = false, movesGain = false, movesDetector = false;
         };
 
         /** Two fingers on one band: its Q from how far apart they are. */
@@ -140,7 +144,7 @@ namespace likyu::editor
         geometry::Hit hitAt (const juce::MouseEvent&) const noexcept;
         geometry::Hit hitAt (juce::Point<float> at, bool touch) const noexcept;
         void endPinch();
-        void setQ (int band, double q);
+        void setQ (int band, dsp::BandParam which, double q);
 
         void paintGrid (juce::Graphics&) const;
         void paintLines (juce::Graphics&) const;

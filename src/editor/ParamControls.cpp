@@ -61,6 +61,10 @@ namespace likyu::editor
 
     const dsp::ParamSpec& ParamControl::spec() const
     {
+        // TEMPORARY: past the table, the transient shaper's constants (EditorHost.h).
+        if (index >= dsp::numParams)
+            return dsp::temporaryTransientSpecs()[static_cast<std::size_t> (index - dsp::numParams)];
+
         return dsp::parameterTable()[static_cast<std::size_t> (index)];
     }
 
