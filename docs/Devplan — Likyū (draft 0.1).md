@@ -369,7 +369,7 @@ speaks.
 [`docs/handoffs/2026-11-20-phase3.md`](handoffs/2026-11-20-phase3.md); bench note:
 [`docs/bench/2026-11-20-phase3.md`](bench/2026-11-20-phase3.md).
 
-- *Done.* 3a to 3d, in eight commits to `main`.
+- *Done.* 3a to 3d, in nine commits to `main`.
   - `lib/dsp`: `FastLog.h`, `Detector.h`, `Dynamics.h`. `Band` carries the detector and the
     Dynamic values. `Chain` reads a `Key` (the input undelayed, the sidechain) and keeps the
     detectors, the lanes and their offsets, Listen and the meters.
