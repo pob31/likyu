@@ -534,6 +534,70 @@ resonance).
 - **Band-pass as a band type** (PRD open decision): kept or dropped, now that Env has been heard
   on it. Dropping it after the freeze would cost an enum value, so it is decided before.
 
+**Record, 2026-11-20: built in one session, after Phase 4.** Handoff:
+[`docs/handoffs/2026-11-20-phase5.md`](handoffs/2026-11-20-phase5.md); bench note:
+[`docs/bench/2026-11-20-phase5.md`](bench/2026-11-20-phase5.md).
+
+- *Decided by the author before it started:*
+  - the spike's estimator and deflation form, accepted provisionally;
+  - `fconf` at 30 %, confidence over the whole key;
+  - Env resting at the start of its mapping (the Band model's note amended, CLAUDE.md copied).
+- *Done.* 5a to 5d, in eight commits to `main`, this record's included.
+  - `lib/dsp`:
+    - `Frequency.h`: the modes, and Low and High ramped in log2 Hz;
+    - `Env.h`: the follower and the mapping;
+    - `Tracker.h`: the loop, confidence, the states, the glide, and the group of trackers on one
+      key, with deflation and spacing;
+    - `SeedBank.h`: the third-octave bank;
+    - `Band` gains the frequency values, `fmode` and `fdir` in the shape, and
+      `coefficientsWithG`;
+    - `Chain` gains lane frequencies, per-lane Follow detectors, the Track pass, seeding at grid
+      points, and `runBandPerLane`.
+  - `likyu::core`: `Dispatch` reads all 35 values of a band.
+  - `likyu_bench`: the `env`, `track`, `trackself` and `seeding` scenarios.
+- *Rows green on Windows and in CI:*
+  - Env;
+  - Track lock, no swap, exclusion and loss;
+  - again with the frequency modes:
+    - constant latency over every gain mode with every frequency mode, in the DSP and through the
+      processor;
+    - block-size invariance, modulation safety, realtime;
+    - exact bypass and its return;
+    - layouts, channel linking, gain limit, denormals.
+- *Not as planned.*
+  - A first commit of its own: an identity mix is skipped per sample on every path. An Env or Track
+    bell at 0 dB moves g all the time, and the exact-bypass row asks that it null.
+  - The frequency path is one control step late, by construction of the 16-sample g. The Env
+    timing row is read on the lane's frequency, and the lag is tested exactly.
+  - The seeding bank came with 5c as planned; 5b's lock row ran from a rest half an octave off, as
+    the spike did.
+- *Added beyond the plan*, each forced by a failing test (bench note, PRD):
+  - Confidence:
+    - a 5 ms floor on its smoothing;
+    - the jump rule;
+    - a lock confirmed over a quarter of Speed;
+    - Hold freezing the loop, as the spike said;
+  - Several trackers:
+    - lock weights graded by confidence;
+    - the first lock keeps its component;
+    - the spacing pushes only released trackers.
+  - Track at rest is the Fixed band, bit for bit.
+  - Confidence scaling the gain ramps over 20 ms.
+- *Found on the way.*
+  - The spike's onset case (finding 5) needed no gate of its own: the jump rule plus the others'
+    deflation hold the quiet band within 6 cents, where the spike measured 726.
+  - The close low pair no longer wobbles in the product (0.55 cents at Speed 20 ms). The spike's
+    109 cents was its start, with the filters empty.
+  - On white noise alone, confidence peaks at 0.20 at 16 kHz, under the 30 % default.
+  - Track is the most expensive mode: 5.0 % for the budget's case, twice Dynamic.
+- *Done-when.* The rows are green. **Not yet:**
+  - the listening pass;
+  - the reference use case whole in REAPER;
+  - the decision on Band-pass;
+  - the freeze of the parameter IDs.
+
+  All four need the author.
+
 ---
 
 ## Phase 6 — Editor · M
@@ -662,7 +726,7 @@ for.
 | 2 | The performance budget, after the first figure | Decided 2026-11-20: optimised as much as possible |
 | 3 | Form of the link list | Decided 2026-11-20 |
 | 4 | Listening pass; the transient time constants (temporary parameters in place, 2026-11-20) | Yes |
-| 5 | The spike's result (accepted provisionally 2026-11-20); freeze of the parameter IDs; band-pass as a band type | Yes, at the end |
+| 5 | The spike's result (accepted provisionally 2026-11-20); the listening pass; freeze of the parameter IDs; band-pass as a band type | Yes, at the end |
 | 6 | Listen guard mechanism; a look at the first curve | Yes, for 6d |
 | 7 | Oldest processor supported; signing identities | Yes |
 | 8 | Whether the beta waits for Phase 9 | Yes, at the end |

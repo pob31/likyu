@@ -622,3 +622,34 @@ TEST_CASE ("track, Speed against a close low pair, for information (PRD, open de
     }
 }
 
+
+TEST_CASE ("track, confidence of white noise alone across the spectrum, for information (PRD: over the whole key)")
+{
+    // A notch of Q 4 at f removes (pi / 2) (f / Q) of white noise's fs / 2:
+    // noise alone reads more confidence the higher the band tracks.
+    for (const auto rate : { 44100.0, 96000.0 })
+    {
+        std::string line;
+
+        for (const auto hz : { 250.0, 1000.0, 4000.0, 8000.0, 16000.0 })
+        {
+            const auto settings = trackBand (BandType::bell, hz, 6.0, hz / std::sqrt (2.0), std::min (hz * std::sqrt (2.0), 20000.0));
+            const auto t = trace (rate, noise<double> (static_cast<int> (2.0 * rate), 23, 1.0), { settings });
+
+            double sum = 0.0, peak = 0.0;
+            int count = 0;
+
+            for (auto s = t.at (0.5); s < t.hz.size(); ++s, ++count)
+            {
+                sum += t.confidence[s];
+                peak = std::max (peak, t.confidence[s]);
+            }
+
+            const auto expected = (pi / 2.0) * (hz / trackerQ) / (rate / 2.0);
+            line += "  " + std::to_string (static_cast<int> (hz)) + " Hz: mean " + std::to_string (sum / count) + " (expected "
+                    + std::to_string (expected) + "), peak " + std::to_string (peak) + ";";
+        }
+
+        MESSAGE ("white noise, rate " << rate << ":" << line);
+    }
+}
