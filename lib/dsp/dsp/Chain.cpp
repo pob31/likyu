@@ -120,7 +120,7 @@ namespace likyu::dsp
         laneDetectors.assign (stride * numBands, DetectorCoefficients {});
         trackers.assign (stride * numBands, TrackerState {});
         laneConfidence.assign (stride * numBands * controlStep, 1.0);
-        banks.assign (stride * numKeySources, SeedBank {});
+        banks.assign (stride * (numKeySources + numBands), SeedBank {});
         bankCoefficients.prepare (rate);
         modulated.fill (false);
         perLaneDetector.fill (false);
@@ -198,6 +198,15 @@ namespace likyu::dsp
         exclusionsPending = true;
     }
 
+    void Chain::setBandChannels (int band, std::uint64_t channelsLeftOut) noexcept
+    {
+        if (band >= 0 && band < numBands)
+        {
+            pendingBandLeftOut[static_cast<std::size_t> (band)] = channelsLeftOut;
+            bandChannelsPending = true;
+        }
+    }
+
     void Chain::setListen (int band) noexcept
     {
         pendingListen = band >= 0 && band < numBands ? band : -1;
@@ -252,7 +261,8 @@ namespace likyu::dsp
             return -1;
 
         const auto& l = lanes[static_cast<std::size_t> (band)];
-        return l.count == 0 ? -1 : static_cast<int> (l.ofChannel[static_cast<std::size_t> (channel)]);
+        const auto lane = l.ofChannel[static_cast<std::size_t> (channel)];
+        return l.count == 0 || lane == Lanes::noLane ? -1 : static_cast<int> (lane);
     }
 
     double Chain::offsetDb (int band, int channel) const noexcept
@@ -313,6 +323,12 @@ namespace likyu::dsp
         {
             exclusionsPending = false;
             excluded = pendingExcluded;
+        }
+
+        if (bandChannelsPending)
+        {
+            bandChannelsPending = false;
+            bandLeftOut = pendingBandLeftOut;
         }
 
         if (listenPending)
@@ -387,7 +403,9 @@ namespace likyu::dsp
         for (int b = 0; b < numBands; ++b)
         {
             auto& band = bands[static_cast<std::size_t> (b)];
-            band.setContext (context);
+            auto own = context;
+            own.leftOut = bandLeftOut[static_cast<std::size_t> (b)] & prepared64;
+            band.setContext (own);
 
             if (newTimes)
                 band.setTransientTimes (pendingTimes);
@@ -442,59 +460,88 @@ namespace likyu::dsp
         std::fill (trackers.begin() + b * stride, trackers.begin() + (b + 1) * stride, TrackerState {});
 
         const auto& shape = band.activeShape();
+        const auto applies = [&shape] (int c) { return ((shape.leftOut >> c) & 1u) == 0; };
 
-        // A Track band's key starts again: its key's seeding banks with it.
+        // A channel the band does not apply to: its filter and its detector at rest.
+        for (int c = 0; c < channels; ++c)
+        {
+            if (applies (c))
+                continue;
+
+            ic1[static_cast<std::size_t> (b * channels + c)] = 0.0;
+            ic2[static_cast<std::size_t> (b * channels + c)] = 0.0;
+
+            const auto slot = slotIndex (c, b);
+            detectorS1[slot] = detectorS2[slot] = detectorPeak[slot] = 0.0f;
+        }
+
+        // A Track band's key starts again: its key's seeding banks with it, and its own.
         if (shape.fmode == FrequencyMode::track)
         {
-            const auto first = static_cast<std::size_t> (shape.key == KeySource::sidechain ? stride : 0);
-            std::fill (banks.begin() + static_cast<std::ptrdiff_t> (first),
-                       banks.begin() + static_cast<std::ptrdiff_t> (first) + stride, SeedBank {});
+            for (const auto first : { static_cast<std::size_t> (shape.key == KeySource::sidechain ? stride : 0),
+                                      static_cast<std::size_t> ((numKeySources + b) * stride) })
+                std::fill (banks.begin() + static_cast<std::ptrdiff_t> (first),
+                           banks.begin() + static_cast<std::ptrdiff_t> (first) + stride, SeedBank {});
         }
 
         if (! shape.readsKey() || channels <= 0)
             return;
 
+        // No lane for a channel the band does not apply to.
+        for (int c = 0; c < channels; ++c)
+            l.ofChannel[static_cast<std::size_t> (c)] = Lanes::noLane;
+
+        auto next = 0;
+
         if (shape.key == KeySource::sidechain)
         {
-            // One lane for every channel, on the sidechain's maximum.
-            l.count = 1;
+            // One lane for every channel of the band, on the sidechain's maximum.
+            for (int c = 0; c < channels; ++c)
+                if (applies (c))
+                {
+                    l.ofChannel[static_cast<std::size_t> (c)] = 0;
+                    next = 1;
+                }
         }
         else if (shape.linked)
         {
-            // The link's lane first (when any channel is in it), then one per channel left out.
+            // The link's lane first (when any channel is in it), then one per channel left out of the link.
             auto anyIn = false;
 
             for (int c = 0; c < channels; ++c)
-                anyIn = anyIn || ((shape.excluded >> c) & 1u) == 0;
+                anyIn = anyIn || (applies (c) && ((shape.excluded >> c) & 1u) == 0);
 
-            auto next = anyIn ? 1 : 0;
+            next = anyIn ? 1 : 0;
 
             for (int c = 0; c < channels; ++c)
             {
+                if (! applies (c))
+                    continue;
+
                 const auto out = ((shape.excluded >> c) & 1u) != 0;
                 l.ofChannel[static_cast<std::size_t> (c)] = static_cast<std::uint8_t> (out ? next++ : 0);
             }
-
-            l.count = next;
         }
         else
         {
             for (int c = 0; c < channels; ++c)
-                l.ofChannel[static_cast<std::size_t> (c)] = static_cast<std::uint8_t> (c);
-
-            l.count = channels;
+                if (applies (c))
+                    l.ofChannel[static_cast<std::size_t> (c)] = static_cast<std::uint8_t> (next++);
         }
+
+        l.count = next;
 
         // A Self band's key slots are its channels; a Sidechain band's all go to lane 0 (already 0).
         if (shape.key == KeySource::self)
             for (int c = 0; c < channels; ++c)
                 l.ofSlot[static_cast<std::size_t> (c)] = l.ofChannel[static_cast<std::size_t> (c)];
 
-        // The channels grouped by lane, for applying each lane's gain.
+        // The band's channels grouped by lane, for applying each lane's gain.
         std::array<int, maxChannels + 1> start {};
 
         for (int c = 0; c < channels; ++c)
-            ++start[static_cast<std::size_t> (l.ofChannel[static_cast<std::size_t> (c)]) + 1];
+            if (applies (c))
+                ++start[static_cast<std::size_t> (l.ofChannel[static_cast<std::size_t> (c)]) + 1];
 
         for (int lane = 0; lane < l.count; ++lane)
             start[static_cast<std::size_t> (lane) + 1] += start[static_cast<std::size_t> (lane)];
@@ -504,6 +551,9 @@ namespace likyu::dsp
 
         for (int c = 0; c < channels; ++c)
         {
+            if (! applies (c))
+                continue;
+
             auto& at = start[static_cast<std::size_t> (l.ofChannel[static_cast<std::size_t> (c)])];
             l.channelsByLane[static_cast<std::size_t> (at++)] = static_cast<std::uint8_t> (c);
         }
@@ -723,25 +773,57 @@ namespace likyu::dsp
         }
     }
 
-    int Chain::trackMembers (int source, std::array<int, numBands>& members, int& laneCount) const noexcept
+    int Chain::trackMembers (int source, int leader, std::array<int, numBands>& members, int& laneCount) const noexcept
     {
         auto count = 0;
         laneCount = 0;
 
-        for (int b = 0; b < numBands; ++b)
+        const auto tracks = [this, source] (int b)
         {
             const auto index = static_cast<std::size_t> (b);
             const auto& band = bands[index];
 
-            if (band.frequencyMode() != FrequencyMode::track || band.isIdle() || lanes[index].count == 0
-                || static_cast<int> (band.activeShape().key) != source)
+            return band.frequencyMode() == FrequencyMode::track && ! band.isIdle() && lanes[index].count > 0
+                   && static_cast<int> (band.activeShape().key) == source;
+        };
+
+        // What tells two bands' keys apart: nothing on the sidechain, their channels on the input.
+        const auto keyOf = [this, source] (int b)
+        {
+            return source == static_cast<int> (KeySource::sidechain)
+                       ? std::uint64_t (0) : bands[static_cast<std::size_t> (b)].activeShape().leftOut;
+        };
+
+        if (! tracks (leader))
+            return 0;
+
+        for (int b = 0; b < leader; ++b)
+            if (tracks (b) && keyOf (b) == keyOf (leader))
+                return 0;
+
+        for (int b = leader; b < numBands; ++b)
+        {
+            if (! tracks (b) || keyOf (b) != keyOf (leader))
                 continue;
 
             members[static_cast<std::size_t> (count++)] = b;
-            laneCount = std::max (laneCount, lanes[index].count);
+            laneCount = std::max (laneCount, lanes[static_cast<std::size_t> (b)].count);
         }
 
         return count;
+    }
+
+    /*  The bands that apply to every channel, and every band on the
+        sidechain, share their key source's banks, as before a band could
+        leave a channel out. A group that leaves channels out reads another
+        key and has its leader's own. */
+    std::size_t Chain::bankBase (int source, int leader) const noexcept
+    {
+        const auto stride = static_cast<std::size_t> (laneStride (channels));
+        const auto whole = source == static_cast<int> (KeySource::sidechain)
+                           || bands[static_cast<std::size_t> (leader)].activeShape().leftOut == 0;
+
+        return (whole ? static_cast<std::size_t> (source) : static_cast<std::size_t> (numKeySources + leader)) * stride;
     }
 
     void Chain::track (int n) noexcept LIKYU_AUDIO_THREAD
@@ -751,9 +833,11 @@ namespace likyu::dsp
         std::array<int, numBands> members {};
 
         for (int source = 0; source < numKeySources; ++source)
+            for (int leader = 0; leader < numBands; ++leader)
         {
             auto laneCount = 0;
-            const auto count = trackMembers (source, members, laneCount);
+            const auto count = trackMembers (source, leader, members, laneCount);
+            const auto base = count > 0 ? bankBase (source, leader) : std::size_t (0);
 
             for (int lane = 0; lane < laneCount; ++lane)
             {
@@ -780,7 +864,7 @@ namespace likyu::dsp
                     continue;
 
                 laneKey (first, lane, n, trackKey.data());
-                banks[static_cast<std::size_t> (source * stride + lane)].run (trackKey.data(), n, bankCoefficients, stepEnds);
+                banks[base + static_cast<std::size_t> (lane)].run (trackKey.data(), n, bankCoefficients, stepEnds);
                 runTrackerGroup (trackKey.data(), n, group.data(), size);
 
                 for (int m = 0; m < size; ++m)
@@ -799,13 +883,15 @@ namespace likyu::dsp
         std::array<int, numBands> members {};
 
         for (int source = 0; source < numKeySources; ++source)
+            for (int leader = 0; leader < numBands; ++leader)
         {
             auto laneCount = 0;
-            const auto count = trackMembers (source, members, laneCount);
+            const auto count = trackMembers (source, leader, members, laneCount);
+            const auto base = count > 0 ? bankBase (source, leader) : std::size_t (0);
 
             for (int lane = 0; lane < laneCount; ++lane)
             {
-                const auto& bank = banks[static_cast<std::size_t> (source * stride + lane)];
+                const auto& bank = banks[base + static_cast<std::size_t> (lane)];
                 std::array<bool, numSeedRegions> claimed {};
 
                 const auto stateOf = [this, stride, lane] (int b) -> TrackerState&
@@ -916,19 +1002,26 @@ namespace likyu::dsp
         // Every key channel's detector; the maximum of the powers into its lane.
         for (int slot = first; slot < last; ++slot)
         {
+            // A channel the band does not apply to is no part of its key; it is still heard under Listen.
+            const auto laneOfSlot = l.ofSlot[static_cast<std::size_t> (slot)];
+            const auto counted = dynamic && laneOfSlot != Lanes::noLane;
+
+            if (! counted && ! listening)
+                continue;
+
             const auto i0 = slotIndex (slot, b);
             auto s1 = detectorS1[i0], s2 = detectorS2[i0], peak = detectorPeak[i0];
             const float* x = keys.data() + slot * controlStep;
-            float* power = lanePower.data() + (dynamic ? l.ofSlot[static_cast<std::size_t> (slot)] : 0) * controlStep;
+            float* power = lanePower.data() + (counted ? laneOfSlot : 0) * controlStep;
             float* heard = listened.data() + slot * controlStep;
             float output = 0.0f;
-            const auto& k = perLane != nullptr ? perLane[l.ofSlot[static_cast<std::size_t> (slot)]] : shared;
+            const auto& k = perLane != nullptr && laneOfSlot != Lanes::noLane ? perLane[laneOfSlot] : shared;
 
             for (int i = 0; i < n; ++i)
             {
                 const auto p = detectorTick (x[i], s1, s2, peak, k, output);
 
-                if (dynamic)
+                if (counted)
                     power[i] = std::max (power[i], p);
 
                 if (listening)
@@ -1030,6 +1123,10 @@ namespace likyu::dsp
 
         const auto all = allSamples (n);
 
+        // The channels the band does not apply to are passed over: not filtered, not marked.
+        const auto leftOut = band.activeShape().leftOut;
+        const auto applies = [leftOut] (int c) noexcept { return ((leftOut >> c) & 1u) == 0; };
+
         // At the end of a control step, a state that has decayed to nothing is nothing.
         const auto stepEnds = position + n == controlStep;
         const auto snap = [stepEnds] (double& state) noexcept
@@ -1048,6 +1145,9 @@ namespace likyu::dsp
 
                 for (int c = 0; c < numChannels; ++c)
                 {
+                    if (! applies (c))
+                        continue;
+
                     double* w = work.data() + c * controlStep;
                     auto x1 = s1[c], x2 = s2[c];
 
@@ -1082,6 +1182,9 @@ namespace likyu::dsp
 
             for (int c = 0; c < numChannels; ++c)
             {
+                if (! applies (c))
+                    continue;
+
                 double* w = work.data() + c * controlStep;
                 auto x1 = s1[c], x2 = s2[c];
 

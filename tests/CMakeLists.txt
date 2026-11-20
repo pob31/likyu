@@ -31,6 +31,7 @@ add_executable(likyu_dsp_tests
     dsp/DspTestMain.cpp
     dsp/DspTestSupport.h
     dsp/ChainTests.cpp
+    dsp/ChannelsTests.cpp
     dsp/DetectorTests.cpp
     dsp/DynamicsTests.cpp
     dsp/EnvTests.cpp
@@ -80,6 +81,7 @@ if(LIKYU_BUILD_PLUGINS)
         TestMain.cpp
         TestSupport.h
         LocaleTests.cpp
+        core/BandChannelsTests.cpp
         core/DispatchTests.cpp
         core/LinkListTests.cpp
         core/MeterSnapshotTests.cpp

@@ -171,6 +171,7 @@ namespace likyu::dsp
         int sidechainChannels = 0;      // 0: the bus is absent or disabled
         bool linked = true;
         std::uint64_t excluded = 0;     // channels left out of the link, among those prepared
+        std::uint64_t leftOut = 0;      // channels this band does not apply to, among those prepared
     };
 
     class Band
@@ -192,6 +193,11 @@ namespace likyu::dsp
             bool linked = true;
             std::uint64_t excluded = 0;
 
+            /** The channels the band does not apply to (PRD, Band model,
+                Channels): not filtered, not read as a key, not in a lane. It
+                matters for every band, a static one included. */
+            std::uint64_t leftOut = 0;
+
             /** Dynamic or Transient: a detector, lanes and an offset. */
             bool hasOffset() const noexcept     { return gmode != GainMode::staticGain; }
 
@@ -208,7 +214,8 @@ namespace likyu::dsp
             /** The same effect: what does not matter for this band is not compared. */
             bool operator== (const Shape& o) const noexcept
             {
-                if (! (on == o.on && type == o.type && qmode == o.qmode && gmode == o.gmode && fmode == o.fmode))
+                if (! (on == o.on && type == o.type && qmode == o.qmode && gmode == o.gmode && fmode == o.fmode
+                       && leftOut == o.leftOut))
                     return false;
 
                 if (! readsKey())
@@ -611,6 +618,7 @@ namespace likyu::dsp
             shape.direction = s.direction;
             shape.linked = c.linked;
             shape.excluded = c.excluded;
+            shape.leftOut = c.leftOut;
             return shape;
         }
 

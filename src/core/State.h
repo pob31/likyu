@@ -20,7 +20,8 @@
     THE STATE CHUNK, `version` 1 (PRD, Parameters and state).
 
         { "version": 1, "parameters": { "bypass": 0, "out_gain": 0.0, "b1_on": 1, "b1_freq": 30.0, ... },
-          "link_out": { "layout": "L R C Lfe Ls Rs", "channels": 6, "excluded": [ 3 ] } }
+          "link_out": { "layout": "L R C Lfe Ls Rs", "channels": 6, "excluded": [ 3 ] },
+          "band_out": { "layout": "L R C Lfe Ls Rs", "channels": 6, "bands": [ [ 3 ], [], [], [], [], [], [], [] ] } }
 
     - Values in the table's real units (dsp/Parameters.h), keyed by
       parameter ID, never by position. A choice is its index, a toggle 0 or 1.
@@ -29,6 +30,11 @@
       2026-11-20). Written only when a channel is left out; a chunk without
       it has every channel in. Added within version 1: nothing is shipped
       before the freeze.
+    - "band_out", the channels each band leaves out and the layout the lists
+      were made for (core/BandChannels.h; decided by the author 2026-11-20).
+      Written only when some band leaves a channel out; a chunk without it
+      has every band on every channel. Added within version 1, like
+      "link_out", and like it never kept as an unknown field.
     - JSON written and read by juce::JSON, whose number text does not follow
       the C locale (tests run under C and fr_FR).
     - UNKNOWN FIELDS ARE KEPT and written back: at the top level, and inside
@@ -49,6 +55,7 @@
     the audio thread.
 */
 
+#include "BandChannels.h"
 #include "LinkList.h"
 
 #include <juce_core/juce_core.h>
@@ -67,7 +74,8 @@ namespace likyu::core
 
         /** `values` in table order, numParams of them, and the link list,
             with the fields kept from the last chunk read. */
-        juce::String write (const std::vector<double>& values, const LinkList& link = {}) const;
+        juce::String write (const std::vector<double>& values, const LinkList& link = {},
+                            const BandChannels& bandChannels = {}) const;
 
         /** Fills `values` (resized to the table) from a version 1 chunk:
             IDs it names, clamped to their ranges; the others, their
@@ -76,6 +84,11 @@ namespace likyu::core
             False, and nothing changed, when the text is not a version 1
             chunk. */
         bool read (const juce::String& text, std::vector<double>& values, LinkList& link);
+
+        /** The same, with the channels each band leaves out: the chunk's
+            lists, or every band on every channel when it has none or some
+            that cannot be read. */
+        bool read (const juce::String& text, std::vector<double>& values, LinkList& link, BandChannels& bandChannels);
 
         /** The same, the link list not wanted. */
         bool read (const juce::String& text, std::vector<double>& values);

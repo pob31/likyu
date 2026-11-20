@@ -28,6 +28,7 @@ namespace likyu::core
         const juce::Identifier versionKey { "version" };
         const juce::Identifier parametersKey { "parameters" };
         const juce::Identifier linkKey { "link_out" };
+        const juce::Identifier bandChannelsKey { "band_out" };
 
         bool isNumber (const juce::var& v)
         {
@@ -66,7 +67,8 @@ namespace likyu::core
         return values;
     }
 
-    juce::String StateChunk::write (const std::vector<double>& values, const LinkList& link) const
+    juce::String StateChunk::write (const std::vector<double>& values, const LinkList& link,
+                                    const BandChannels& bandChannels) const
     {
         const auto& table = dsp::parameterTable();
 
@@ -93,6 +95,9 @@ namespace likyu::core
         if (link.excluded != 0)
             root->setProperty (linkKey, toVar (link));
 
+        if (bandChannels.any())
+            root->setProperty (bandChannelsKey, toVar (bandChannels));
+
         for (const auto& kept : keptTop)
             root->setProperty (kept.name, kept.value);
 
@@ -106,6 +111,13 @@ namespace likyu::core
     }
 
     bool StateChunk::read (const juce::String& text, std::vector<double>& values, LinkList& link)
+    {
+        BandChannels ignored;
+        return read (text, values, link, ignored);
+    }
+
+    bool StateChunk::read (const juce::String& text, std::vector<double>& values, LinkList& link,
+                           BandChannels& bandChannels)
     {
         juce::var root;
 
@@ -145,7 +157,8 @@ namespace likyu::core
         }
 
         for (const auto& property : root.getDynamicObject()->getProperties())
-            if (property.name != versionKey && property.name != parametersKey && property.name != linkKey)
+            if (property.name != versionKey && property.name != parametersKey && property.name != linkKey
+                && property.name != bandChannelsKey)
                 unknownTop.set (property.name, property.value);
 
         LinkList list;
@@ -153,8 +166,14 @@ namespace likyu::core
         if (! fromVar (root.getProperty (linkKey, juce::var()), list))
             list = {};
 
+        BandChannels lists;
+
+        if (! fromVar (root.getProperty (bandChannelsKey, juce::var()), lists))
+            lists = {};
+
         values = std::move (result);
         link = list;
+        bandChannels = lists;
         keptInParameters = std::move (unknownParameters);
         keptTop = std::move (unknownTop);
         return true;

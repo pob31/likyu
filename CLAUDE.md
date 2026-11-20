@@ -48,6 +48,7 @@ Each instance owns **8 bands**, numbered 1 to 8, processed in series in that ord
 | Key source | Self (plugin input), Sidechain | Per band |
 | Detector filter | Follow band, Own (type, frequency, Q) | Own types: band-pass, high-pass, low-pass |
 | Range | −30 to +30 dB | Limit of the dynamic gain offset, and its sign in Dynamic mode |
+| Channels | Every channel of the instance (default), or any of them | Per band; state, not a parameter (decided 2026-11-20) |
 
 **Rules**
 
@@ -56,7 +57,8 @@ Each instance owns **8 bands**, numbered 1 to 8, processed in series in that ord
 - The effective gain of a band is `static gain + dynamic offset`, in dB, the offset clamped to the Range and the sum clamped to −30 to +30 dB (decided 2026-11-16). Static mode: offset 0.
 - All detection reads the plugin input (Self) or the sidechain bus, both undelayed. No detector reads another band's output.
 - Sidechain selected but the sidechain bus absent or disabled: the band falls back to Self and the editor says so. A bus that is enabled but silent cannot be told from a quiet key and is treated as a key.
-- Track bands that share a key source exclude each other automatically. There is no user-defined set.
+- Track bands that share a key source exclude each other automatically. There is no user-defined set. Bands keyed by the input that apply to different channels read different keys, and do not exclude each other (2026-11-20).
+- A band applies to a set of the instance's channels, every channel by default (decided 2026-11-20): a low cut can spare the LFE, and another band be the LFE's alone. A channel a band leaves out is not filtered by it, is no part of its key, and has none of its gain or frequency. The sets are state, not parameters: kept by channel index with the layout they were made for, like the list of channels left out of the link, and applied only in that layout; in any other, every band applies to every channel. Changing a set is click-free, like a type switch.
 - Mode switches, type switches and band on/off are click-free (short crossfade of the mix terms) and never change latency.
 - Lookahead is a per-instance choice, not automatable, and is the only thing that changes reported latency.
 

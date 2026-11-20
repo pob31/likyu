@@ -233,9 +233,99 @@ namespace likyu::editor
         }
     }
 
+    //==========================================================================
+    void ChannelCells::show (const std::vector<std::string>& namesIn, std::uint64_t leftOutIn, juce::Colour colourIn)
+    {
+        if (namesIn == names && leftOutIn == leftOut && colourIn == colour)
+            return;
+
+        names = namesIn;
+        leftOut = leftOutIn;
+        colour = colourIn;
+        repaint();
+    }
+
+    /*  Cells of 26 pixels with their names beneath where they fit; smaller,
+        and without names, where an instance has more channels than that
+        leaves room for (64 at the most). */
+    ChannelCells::Grid ChannelCells::grid() const
+    {
+        Grid g;
+        const auto channels = std::max (1, count());
+
+        for (const auto cell : { 26, 20, 16, 12, 9 })
+        {
+            g.cell = cell;
+            g.named = cell >= 20;
+            g.row = cell + (g.named ? 16 : 3);
+            g.columns = std::max (1, getWidth() / cell);
+
+            if (((channels + g.columns - 1) / g.columns) * g.row <= getHeight())
+                break;
+        }
+
+        return g;
+    }
+
+    juce::Rectangle<int> ChannelCells::cellBounds (int channel) const
+    {
+        const auto g = grid();
+        return { (channel % g.columns) * g.cell, (channel / g.columns) * g.row, g.cell, g.row };
+    }
+
+    void ChannelCells::paint (juce::Graphics& g)
+    {
+        const auto layout = grid();
+        g.setFont (fontOf (10.0f));
+
+        for (int c = 0; c < count(); ++c)
+        {
+            const auto area = cellBounds (c);
+            const auto box = area.withHeight (layout.cell).toFloat().reduced (layout.cell >= 16 ? 3.0f : 1.0f);
+            const auto in = ((leftOut >> c) & 1u) == 0;
+
+            g.setColour (in ? colour : palette::controlTrack);
+            g.fillRoundedRectangle (box, 3.0f);
+            g.setColour (palette::controlBorder);
+            g.drawRoundedRectangle (box, 3.0f, 1.0f);
+
+            if (layout.named)
+            {
+                g.setColour (in ? palette::textPrimary : palette::textSecondary);
+                g.drawText (juce::String (names[static_cast<std::size_t> (c)]),
+                            area.withTrimmedTop (layout.cell - 1), juce::Justification::centredTop, false);
+            }
+        }
+    }
+
+    void ChannelCells::mouseDown (const juce::MouseEvent& e)
+    {
+        for (int c = 0; c < count(); ++c)
+        {
+            if (! cellBounds (c).contains (e.getPosition()))
+                continue;
+
+            leftOut ^= std::uint64_t (1) << c;
+            repaint();
+
+            if (onChange != nullptr)
+                onChange (leftOut);
+
+            return;
+        }
+    }
+
+    //==========================================================================
     FootPanel::FootPanel (Host& hostIn)
         : host (hostIn)
     {
+        addChildComponent (cells);
+
+        cells.onChange = [this] (std::uint64_t leftOut)
+        {
+            if (band >= 0)
+                host.setBandLeftOut (band, leftOut);
+        };
     }
 
     std::vector<int> FootPanel::parameters() const
@@ -316,6 +406,21 @@ namespace likyu::editor
     {
         for (auto& control : controls)
             control->refresh();
+
+        if (band < 0)
+            return;
+
+        // The band's channels: nothing to choose on a mono instance.
+        const auto names = host.channelNames();
+        const auto wanted = names.size() > 1;
+
+        cells.show (names, host.bandLeftOut (band), palette::band (band));
+
+        if (wanted != cells.isVisible())
+        {
+            cells.setVisible (wanted);
+            repaint();
+        }
     }
 
     void FootPanel::resized()
@@ -328,8 +433,11 @@ namespace likyu::editor
         if (columns == 0)
             return;
 
+        // The channels' cells keep the right of the panel, at the least this much of it.
+        constexpr int channelsWidth = 190;
+
         // Cells at their own width where there is room; narrower, all alike, where there is not.
-        const auto room = getWidth() - 24 - blockGap * static_cast<int> (blocks.size() - 1);
+        const auto room = getWidth() - 24 - channelsWidth - blockGap * static_cast<int> (blocks.size());
         const auto cell = std::clamp (room / columns, 48, cellWidth);
 
         auto x = 12;
@@ -350,6 +458,11 @@ namespace likyu::editor
 
             x += wide * cell + blockGap;
         }
+
+        // What is left, to the right: the band's channels under their own title.
+        cellsTitle = { x, footTitleHeight, std::max (0, getWidth() - 12 - x), blockTitleHeight };
+        cells.setBounds (cellsTitle.getX(), top + 6, cellsTitle.getWidth(),
+                         std::max (0, getHeight() - top - 12));
     }
 
     void FootPanel::paint (juce::Graphics& g)
@@ -379,6 +492,15 @@ namespace likyu::editor
 
             g.setColour (palette::gridLine);
             g.fillRect (title.getX(), title.getBottom() - 1, title.getWidth(), 1);
+        }
+
+        if (cells.isVisible())
+        {
+            g.setColour (palette::textSecondary);
+            g.drawText ("CHANNELS", cellsTitle.withTrimmedLeft (4), juce::Justification::centredLeft, false);
+
+            g.setColour (palette::gridLine);
+            g.fillRect (cellsTitle.getX(), cellsTitle.getBottom() - 1, cellsTitle.getWidth(), 1);
         }
     }
 }

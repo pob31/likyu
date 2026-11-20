@@ -896,6 +896,109 @@ TEST_CASE ("processor: link exclusion on 5.1: the list applies to its layout, su
     }
 }
 
+TEST_CASE ("processor: a band's channels on 5.1: a low cut the LFE is spared; the lists apply to their layout, survive state, and the editor's calls make them")
+{
+    constexpr int lfe = 3, length = 4800;
+    const auto fiveOne = juce::AudioChannelSet::create5point1();
+    const auto sevenOne = juce::AudioChannelSet::create7point1();
+
+    const auto makeProcessor = [] (LikyuProcessor& p, const juce::AudioChannelSet& main)
+    {
+        REQUIRE (p.setBusesLayout (layout (main, none)));
+        setBand (p, 0, true, dsp::BandType::highPass, 120.0, 0.7, 0.0);
+        p.setRateAndBufferSizeDetails (48000.0, 256);
+        p.prepareToPlay (48000.0, 256);
+    };
+
+    // Noise on every channel: a channel the low cut applies to is not the input any more.
+    const auto cut = [] (LikyuProcessor& p)
+    {
+        const auto channels = p.getTotalNumInputChannels();
+        auto buffer = noiseBuffer (channels, length, 60);
+        const auto input = buffer;
+        processInBlocks (p, buffer, 256);
+
+        std::vector<bool> result;
+
+        for (int c = 0; c < channels; ++c)
+            result.push_back (! sameChannel (buffer, c, input, c));
+
+        return result;
+    };
+
+    LikyuProcessor first;
+    makeProcessor (first, fiveOne);
+
+    // The channels as the host names them, for the editor's cells.
+    CHECK (first.channelNames() == juce::StringArray { "L", "R", "C", "Lfe", "Ls", "Rs" });
+
+    // Every channel, the default.
+    CHECK (first.bandChannelsLeftOut (0) == 0);
+    CHECK (cut (first) == std::vector<bool> (6, true));
+
+    // The editor takes the LFE out of band 1: the lists become this layout's.
+    first.setBandChannelsLeftOut (0, std::uint64_t (1) << lfe);
+    CHECK (first.bandChannelsLeftOut (0) == std::uint64_t (1) << lfe);
+    CHECK (first.bandChannelsLeftOut (1) == 0);
+    CHECK (first.getBandChannels().layout == "L R C Lfe Ls Rs");
+    CHECK (first.getBandChannels().channels == 6);
+
+    // A second of noise for the band's fade through the identity, then: the LFE untouched, bit for bit.
+    cut (first);
+    CHECK (cut (first) == std::vector<bool> { true, true, true, false, true, true });
+
+    const auto lists = first.getBandChannels();
+    juce::MemoryBlock chunk;
+    first.getStateInformation (chunk);
+    CHECK (chunk.toString().contains ("band_out"));
+
+    // A second instance on 5.1, loaded from the first.
+    {
+        LikyuProcessor second;
+        makeProcessor (second, fiveOne);
+        second.setStateInformation (chunk.getData(), static_cast<int> (chunk.getSize()));
+        CHECK (second.getBandChannels() == lists);
+        cut (second);
+        CHECK (cut (second) == std::vector<bool> { true, true, true, false, true, true });
+    }
+
+    // On 7.1 the lists are kept but not applied: every channel.
+    {
+        LikyuProcessor other;
+        makeProcessor (other, sevenOne);
+        other.setStateInformation (chunk.getData(), static_cast<int> (chunk.getSize()));
+        CHECK (other.getBandChannels() == lists);
+        CHECK (other.bandChannelsLeftOut (0) == 0);
+        cut (other);
+        CHECK (cut (other) == std::vector<bool> (8, true));
+
+        // Edited there, they are made again for 7.1.
+        other.setBandChannelsLeftOut (2, 1u);
+        CHECK (other.getBandChannels().channels == 8);
+        CHECK (other.bandChannelsLeftOut (0) == 0);
+        CHECK (other.bandChannelsLeftOut (2) == 1u);
+    }
+
+    // Bitwig's order, state before the layout: the lists apply once the layout is their own.
+    {
+        LikyuProcessor bitwig;
+        bitwig.setStateInformation (chunk.getData(), static_cast<int> (chunk.getSize()));
+        makeProcessor (bitwig, fiveOne);
+        cut (bitwig);
+        CHECK (cut (bitwig) == std::vector<bool> { true, true, true, false, true, true });
+    }
+
+    // A stereo instance names its two channels, and a discrete one counts them.
+    {
+        LikyuProcessor stereoOne;
+        CHECK (stereoOne.channelNames() == juce::StringArray { "L", "R" });
+
+        LikyuProcessor discrete;
+        REQUIRE (discrete.setBusesLayout (layout (juce::AudioChannelSet::discreteChannels (4), none)));
+        CHECK (discrete.channelNames() == juce::StringArray { "1", "2", "3", "4" });
+    }
+}
+
 TEST_CASE ("processor: one block far longer than maximumBlockSize gives what blocks of 64 give, with a lookahead")
 {
     constexpr int length = 6000;

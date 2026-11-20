@@ -617,6 +617,10 @@ except Listen and the link list.
   link list beside Link. *2026-11-20, by the author on seeing the first curve:* not one strip but
   a column per band (On, Type, Frequency, Gain, Q) and a foot panel for the selected band's
   modes and key, as WFS-DIY's output EQ (PRD, Editor).
+  *The same day, by the author:* a band applies to a set of channels, so that a low cut can
+  spare the LFE (PRD, Band model, Channels). It is in `lib/dsp` (a band's channels left out of
+  its filter, its key and its lanes; Track bands grouped by the channels they read), in the
+  state chunk as `band_out`, and in the foot panel as a row of cells.
 - **6e. Touch.** Several nodes at once, pinch for Q, hit areas that do not overlap at the default
   size, where Phase 1 found that touches arrive. The mouse path complete without it.
 - **6f. Analyser**, off by default, from a lock-free tap, last.

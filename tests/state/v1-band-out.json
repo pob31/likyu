@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "parameters": {
+    "b1_on": 1,
+    "b1_type": 3,
+    "b1_freq": 120.0,
+    "b8_on": 1,
+    "b8_type": 4,
+    "b8_freq": 120.0
+  },
+  "band_out": {
+    "layout": "L R C Lfe Ls Rs",
+    "channels": 6,
+    "bands": [ [ 3 ], [], [], [], [], [], [], [ 0, 1, 2, 4, 5 ] ]
+  }
+}

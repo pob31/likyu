@@ -31,6 +31,19 @@ namespace likyu
             host.endGesture = [&processor] (int index) { processor.endGesture (index); };
             host.readMeters = [&processor] (core::Meters& meters) { return processor.meters().read (meters); };
             host.sampleRate = [&processor] { return processor.getSampleRate(); };
+
+            host.channelNames = [&processor]
+            {
+                std::vector<std::string> names;
+
+                for (const auto& name : processor.channelNames())
+                    names.push_back (name.toStdString());
+
+                return names;
+            };
+
+            host.bandLeftOut = [&processor] (int band) { return processor.bandChannelsLeftOut (band); };
+            host.setBandLeftOut = [&processor] (int band, std::uint64_t leftOut) { processor.setBandChannelsLeftOut (band, leftOut); };
             return host;
         }
     }

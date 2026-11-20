@@ -28,7 +28,10 @@
 
 #include <core/MeterSnapshot.h>
 
+#include <cstdint>
 #include <functional>
+#include <string>
+#include <vector>
 
 namespace likyu::editor
 {
@@ -50,5 +53,15 @@ namespace likyu::editor
 
         /** The rate the plugin runs at; 0 before the host has prepared it. */
         std::function<double()> sampleRate;
+
+        /** The main bus's channels as the host names them, in order ("L",
+            "Lfe"; "1" for one it does not name). */
+        std::function<std::vector<std::string>()> channelNames;
+
+        /** The channels a band (from 0) leaves out in the layout of the
+            moment, bit c for channel c, and setting them (PRD, Band model,
+            Channels). Not parameters: they are in the state. */
+        std::function<std::uint64_t (int band)> bandLeftOut;
+        std::function<void (int band, std::uint64_t leftOut)> setBandLeftOut;
     };
 }

@@ -25,7 +25,10 @@
                    Q and Gain, in the band's colour
       FootPanel    under the columns, one for all bands: the selected band's
                    gain mode, frequency mode and key, each with the controls
-                   of its current choice and no others
+                   of its current choice and no others; and its channels
+      ChannelCells in the foot: a cell per channel of the instance, its name
+                   beneath; a press takes the channel out of the selected
+                   band or back in (PRD, Band model, Channels)
 
     Which control is where is Presentation.h's (columnOf, footOf, labelOf);
     here they are only made and laid out.
@@ -37,8 +40,10 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <cstdint>
 #include <functional>
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace likyu::editor
@@ -97,6 +102,38 @@ namespace likyu::editor
     };
 
     //==========================================================================
+    class ChannelCells final : public juce::Component
+    {
+    public:
+        /** The channels' names, which of them the band leaves out, and the band's colour. */
+        void show (const std::vector<std::string>& names, std::uint64_t leftOut, juce::Colour colour);
+
+        int count() const noexcept      { return static_cast<int> (names.size()); }
+
+        /** Where a channel's cell is, name included: for a press, and for a test. */
+        juce::Rectangle<int> cellBounds (int channel) const;
+
+        /** Called with the new set when a press changes it. */
+        std::function<void (std::uint64_t leftOut)> onChange;
+
+        void paint (juce::Graphics&) override;
+        void mouseDown (const juce::MouseEvent&) override;
+
+    private:
+        struct Grid
+        {
+            int columns = 1, cell = 26, row = 36;
+            bool named = true;
+        };
+
+        Grid grid() const;
+
+        std::vector<std::string> names;
+        std::uint64_t leftOut = 0;
+        juce::Colour colour;
+    };
+
+    //==========================================================================
     class FootPanel final : public juce::Component
     {
     public:
@@ -110,6 +147,9 @@ namespace likyu::editor
 
         /** The table indices of the controls shown, in order: for a test. */
         std::vector<int> parameters() const;
+
+        /** The selected band's channels; not shown on a mono instance. */
+        ChannelCells& channelCells() noexcept       { return cells; }
 
         void paint (juce::Graphics&) override;
         void resized() override;
@@ -129,6 +169,9 @@ namespace likyu::editor
         std::vector<dsp::BandParam> shown;
         std::vector<Block> blocks;
         std::vector<std::unique_ptr<ParamControl>> controls;
+
+        ChannelCells cells;
+        juce::Rectangle<int> cellsTitle;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FootPanel)
     };

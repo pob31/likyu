@@ -20,6 +20,8 @@
 # Phase 3: the list of channels left out of the link.
 
 add_library(likyu_core STATIC
+    BandChannels.h
+    BandChannels.cpp
     Dispatch.h
     Dispatch.cpp
     LinkList.h

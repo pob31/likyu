@@ -158,6 +158,24 @@ namespace likyu
         /** The main bus's layout as a link list names it: its speaker arrangement. */
         juce::String currentLayoutName() const;
 
+        //======================================================================
+        /** The channels each band leaves out, and the layout they were left
+            out of (core/BandChannels.h). Not for the audio thread. */
+        core::BandChannels getBandChannels() const;
+
+        /** For the state and the tests. Takes effect at the next block. */
+        void setBandChannels (const core::BandChannels& lists);
+
+        /** For the editor: the channels `band` (from 0) leaves out in the
+            layout of the moment, bit c for channel c; and setting them,
+            which makes the lists this layout's. */
+        std::uint64_t bandChannelsLeftOut (int band) const;
+        void setBandChannelsLeftOut (int band, std::uint64_t leftOut);
+
+        /** The main bus's channels as the host names them ("L", "Lfe"; "1"
+            for a channel it does not name), for the editor's cells. */
+        juce::StringArray channelNames() const;
+
         /** The temporary Listen parameter, after the 284 (removed in Phase 6). */
         juce::AudioParameterChoice& temporaryListen() const noexcept    { return *listenParameter; }
 
@@ -226,6 +244,10 @@ namespace likyu
         juce::String layoutName;
         int layoutChannels = 0;
         std::atomic<std::uint64_t> linkMask { 0 };
+
+        // The channels each band leaves out: the lists under the same lock, their masks for the audio thread.
+        core::BandChannels bandChannels;
+        std::array<std::atomic<std::uint64_t>, dsp::numBands> bandMasks {};
 
         core::StateChunk stateChunk;   // holds the fields kept from the last chunk loaded
 

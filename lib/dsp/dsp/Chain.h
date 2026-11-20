@@ -121,7 +121,7 @@
     audio thread after process(); likyu::core publishes them
     (core/MeterSnapshot.h).
 
-    THREADS. setBand(), setChain(), setLinkExclusions(), setListen(),
+    THREADS. setBand(), setChain(), setLinkExclusions(), setBandChannels(), setListen(),
     setLookahead(), setTransientTimes() are called on the audio thread, before process(), with values read from the
     host's atomics once per block (likyu::core does that); they take effect
     at the next grid point. prepare() allocates and belongs to the message
@@ -210,6 +210,14 @@ namespace likyu::dsp
             Detection; the list itself is the state chunk's). Takes effect at
             the next grid point; bits beyond the channels prepared are ignored. */
         void setLinkExclusions (std::uint64_t channelsLeftOut) noexcept;
+
+        /** The channels `band` (from 0) does not apply to, bit c for channel
+            c; 0, the default, is every channel (PRD, Band model, Channels).
+            A channel left out is not filtered by the band, is not part of
+            its key, and has no lane of its. Takes effect at the next grid
+            point, through the band's fade to the identity and back, like a
+            type switch; bits beyond the channels prepared are ignored. */
+        void setBandChannels (int band, std::uint64_t channelsLeftOut) noexcept;
 
         /** The band (from 0) whose detector replaces the output, or -1 for
             none. Takes effect at the next grid point, through a crossfade. */
@@ -360,6 +368,9 @@ namespace likyu::dsp
             level goes to. Slots: the main channels, then the sidechain's. */
         struct Lanes
         {
+            /** In ofChannel and ofSlot: a channel the band does not apply to. */
+            static constexpr std::uint8_t noLane = 255;
+
             int count = 0;
             std::array<std::uint8_t, maxChannels> ofChannel {};
             std::array<std::uint8_t, maxChannels + maxSidechainChannels> ofSlot {};
@@ -416,9 +427,16 @@ namespace likyu::dsp
             region of their range that the others of their key have not claimed. */
         void seedTrackers() noexcept LIKYU_AUDIO_THREAD;
 
-        /** The Track bands in effect with key source `source`, in band order;
-            returns how many, and the most lanes any of them has. */
-        int trackMembers (int source, std::array<int, numBands>& members, int& laneCount) const noexcept;
+        /** The Track bands in effect with key source `source` that read the
+            same channels as `leader`, in band order; returns how many, and
+            the most lanes any of them has. 0 when `leader` is not such a band
+            or is not the first of its group: each group is met once. Bands
+            of the sidechain read the same key whatever channels they apply
+            to; bands of the input are grouped by the channels they leave out. */
+        int trackMembers (int source, int leader, std::array<int, numBands>& members, int& laneCount) const noexcept;
+
+        /** Where in `banks` the seeding banks of that group start. */
+        std::size_t bankBase (int source, int leader) const noexcept;
 
         /** The mean of the key channels of `band`'s lane `lane`, into `out`. */
         void laneKey (int band, int lane, int n, float* out) const noexcept LIKYU_AUDIO_THREAD;
@@ -471,7 +489,7 @@ namespace likyu::dsp
         std::vector<TrackerState> trackers;          // the same: a Track lane's tracker
         std::vector<double> laneConfidence;          // (band * stride + lane) * controlStep + sample
         std::array<float, controlStep> trackKey {};  // one lane's key, the mean of its channels
-        std::vector<SeedBank> banks;                 // key source * stride + lane
+        std::vector<SeedBank> banks;                 // bankBase() + lane: per key source, then per band
         SeedBankCoefficients bankCoefficients;
         std::array<bool, numBands> modulated {};     // this step, some lane is off the band's own frequency
         std::array<bool, numBands> scaled {};        // this step, confidence scales the band's gain
@@ -496,6 +514,8 @@ namespace likyu::dsp
         bool linked = true;
         std::uint64_t excluded = 0, pendingExcluded = 0;
         bool exclusionsPending = false;
+        std::array<std::uint64_t, numBands> bandLeftOut {}, pendingBandLeftOut {};
+        bool bandChannelsPending = false;
         int sidechainNow = 0, sidechainChannels = 0;
         bool selfKeyed = false, sidechainKeyed = false;   // a detector of this step reads that key
 

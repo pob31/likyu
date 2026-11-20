@@ -572,3 +572,94 @@ TEST_CASE ("editor: a column per band, and a foot that follows the selected band
     CHECK (footShows (1, P::gmode));
     CHECK_FALSE (footShows (4, P::gmode));
 }
+
+TEST_CASE ("editor: the selected band's channels are cells in the foot; a press takes a channel out of that band, and back")
+{
+    LikyuProcessor processor;
+    const auto fiveOne = juce::AudioChannelSet::create5point1();
+
+    juce::AudioProcessor::BusesLayout layout;
+    layout.inputBuses.add (fiveOne);
+    layout.inputBuses.add (juce::AudioChannelSet::disabled());
+    layout.outputBuses.add (fiveOne);
+    REQUIRE (processor.setBusesLayout (layout));
+
+    processor.setRateAndBufferSizeDetails (rate, blockSize);
+    processor.prepareToPlay (rate, blockSize);
+
+    {
+        std::unique_ptr<EditorWindow> window (dynamic_cast<EditorWindow*> (processor.createEditor()));
+        REQUIRE (window != nullptr);
+
+        auto& root = window->editorRoot();
+        auto& cells = root.footPanel().channelCells();
+
+        // Six cells, shown, inside the foot, none overlapping another.
+        CHECK (cells.isVisible());
+        REQUIRE (cells.count() == 6);
+        CHECK (root.footPanel().getLocalBounds().contains (cells.getBounds()));
+
+        for (int c = 0; c < 6; ++c)
+        {
+            CHECK (cells.getLocalBounds().contains (cells.cellBounds (c)));
+
+            for (int other = c + 1; other < 6; ++other)
+                CHECK_FALSE (cells.cellBounds (c).intersects (cells.cellBounds (other)));
+        }
+
+        const auto press = [&cells] (int channel)
+        {
+            const auto at = cells.cellBounds (channel).getCentre().toFloat();
+            cells.mouseDown (eventAt (cells, at, at));
+        };
+
+        // Band 1 is selected: the LFE out of it, and of it alone.
+        press (3);
+        CHECK (processor.bandChannelsLeftOut (0) == 8u);
+        CHECK (processor.bandChannelsLeftOut (1) == 0u);
+        CHECK (processor.getBandChannels().layout == "L R C Lfe Ls Rs");
+
+        // Another band selected: its own cells, all in; a press there is that band's.
+        root.selectBand (7);
+        press (0);
+        press (1);
+        CHECK (processor.bandChannelsLeftOut (7) == 3u);
+        CHECK (processor.bandChannelsLeftOut (0) == 8u);
+
+        // Back on band 1: the foot shows what it left out, and a second press takes the LFE back.
+        root.selectBand (0);
+        press (3);
+        CHECK (processor.bandChannelsLeftOut (0) == 0u);
+        CHECK (processor.bandChannelsLeftOut (7) == 3u);
+
+        CHECK (window->createComponentSnapshot (window->getLocalBounds()).isValid());
+    }
+
+    processor.releaseResources();
+
+    // A mono instance has nothing to choose: no cells. 64 channels: every cell still inside.
+    {
+        LikyuProcessor mono (1);
+        std::unique_ptr<EditorWindow> window (dynamic_cast<EditorWindow*> (mono.createEditor()));
+        REQUIRE (window != nullptr);
+        CHECK_FALSE (window->editorRoot().footPanel().channelCells().isVisible());
+    }
+
+    {
+        LikyuProcessor wide;
+        juce::AudioProcessor::BusesLayout wideLayout;
+        wideLayout.inputBuses.add (juce::AudioChannelSet::discreteChannels (64));
+        wideLayout.inputBuses.add (juce::AudioChannelSet::disabled());
+        wideLayout.outputBuses.add (juce::AudioChannelSet::discreteChannels (64));
+        REQUIRE (wide.setBusesLayout (wideLayout));
+
+        std::unique_ptr<EditorWindow> window (dynamic_cast<EditorWindow*> (wide.createEditor()));
+        REQUIRE (window != nullptr);
+
+        auto& cells = window->editorRoot().footPanel().channelCells();
+        REQUIRE (cells.count() == 64);
+
+        for (int c = 0; c < 64; ++c)
+            CHECK (cells.getLocalBounds().contains (cells.cellBounds (c)));
+    }
+}

@@ -296,6 +296,56 @@ namespace likyu
     {
         const juce::ScopedLock lock (linkLock);
         linkMask.store (core::effectiveMask (linkList, layoutName, layoutChannels), std::memory_order_relaxed);
+
+        for (int band = 0; band < dsp::numBands; ++band)
+            bandMasks[static_cast<std::size_t> (band)].store (core::effectiveMask (bandChannels, band, layoutName, layoutChannels),
+                                                              std::memory_order_relaxed);
+    }
+
+    core::BandChannels LikyuProcessor::getBandChannels() const
+    {
+        const juce::ScopedLock lock (linkLock);
+        return bandChannels;
+    }
+
+    void LikyuProcessor::setBandChannels (const core::BandChannels& lists)
+    {
+        {
+            const juce::ScopedLock lock (linkLock);
+            bandChannels = lists;
+        }
+
+        updateLinkMask();
+    }
+
+    std::uint64_t LikyuProcessor::bandChannelsLeftOut (int band) const
+    {
+        return juce::isPositiveAndBelow (band, dsp::numBands)
+                   ? bandMasks[static_cast<std::size_t> (band)].load (std::memory_order_relaxed) : 0;
+    }
+
+    void LikyuProcessor::setBandChannelsLeftOut (int band, std::uint64_t leftOut)
+    {
+        {
+            const juce::ScopedLock lock (linkLock);
+            bandChannels = core::withBand (bandChannels, band, leftOut, layoutName, layoutChannels);
+        }
+
+        updateLinkMask();
+    }
+
+    juce::StringArray LikyuProcessor::channelNames() const
+    {
+        const auto layout = getChannelLayoutOfBus (true, 0);
+        juce::StringArray names;
+
+        for (int c = 0; c < layout.size(); ++c)
+        {
+            const auto name = juce::AudioChannelSet::getAbbreviatedChannelTypeName (layout.getTypeOfChannel (c));
+            names.add (name.isNotEmpty() && ! name.startsWith ("Discrete") ? name : juce::String (c + 1));
+        }
+
+        return names;
     }
 
     //==========================================================================
@@ -384,6 +434,9 @@ namespace likyu
 
         dispatch.apply (values, chain);
         chain.setLinkExclusions (linkMask.load (std::memory_order_relaxed));
+
+        for (int band = 0; band < dsp::numBands; ++band)
+            chain.setBandChannels (band, bandMasks[static_cast<std::size_t> (band)].load (std::memory_order_relaxed));
         chain.setListen (listenParameter != nullptr ? listenParameter->getIndex() - 1 : -1);
         chain.setLookahead (delaySamples.load (std::memory_order_relaxed));
 
@@ -458,7 +511,7 @@ namespace likyu
         for (std::size_t i = 0; i < current.size(); ++i)
             current[i] = valueOf (static_cast<int> (i));
 
-        const auto text = stateChunk.write (current, getLinkList());
+        const auto text = stateChunk.write (current, getLinkList(), getBandChannels());
         destination.replaceAll (text.toRawUTF8(), text.getNumBytesAsUTF8());
     }
 
@@ -473,8 +526,9 @@ namespace likyu
         const auto text = juce::String::fromUTF8 (static_cast<const char*> (data), sizeInBytes);
         std::vector<double> loaded;
         core::LinkList link;
+        core::BandChannels lists;
 
-        if (! stateChunk.read (text, loaded, link))
+        if (! stateChunk.read (text, loaded, link, lists))
             return;
 
         for (std::size_t i = 0; i < loaded.size() && i < parameters.size(); ++i)
@@ -482,5 +536,6 @@ namespace likyu
 
         // Kept as loaded, whatever the layout now: it applies once the layout is its own.
         setLinkList (link);
+        setBandChannels (lists);
     }
 }
