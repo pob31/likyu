@@ -85,6 +85,8 @@ if(LIKYU_BUILD_PLUGINS)
         core/MeterSnapshotTests.cpp
         core/StateTests.cpp
         core/ValueTextTests.cpp
+        editor/CurveGeometryTests.cpp
+        editor/PresentationTests.cpp
         plugin/ProcessorTests.cpp
         support/RtAllocCounter.cpp
 

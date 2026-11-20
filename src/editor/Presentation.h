@@ -1,0 +1,443 @@
+/*
+    This file is part of Likyu — https://github.com/pob31/likyu
+
+    Copyright (C) 2026 Pierre-Olivier Boulant
+
+    Likyu is free software: you can redistribute it and/or modify it under the
+    terms of the GNU General Public License as published by the Free Software
+    Foundation, either version 3 of the License, or (at your option) any later
+    version. Likyu is distributed in the hope that it will be useful, but
+    WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+    or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
+    (LICENSE, at the repository root) for more details.
+
+    SPDX-License-Identifier: GPL-3.0-or-later
+*/
+
+#pragma once
+
+/*
+    WHAT A NODE, A BRACKET, A BADGE AND A STRIP SAY (PRD, Editor, last
+    bullet; devplan 6a): pure functions over a band's settings and its
+    meters, so that headless tests assert them (tests/editor/
+    PresentationTests.cpp) and the components only paint what they return.
+    The pattern is the OSCQuery plugin's SlotPresentation.h.
+
+    No JUCE here, and no parameter ID: a parameter is a dsp::BandParam.
+
+    THE WORDING is the author's to change, in this one place.
+
+    WHICH PARTS OF A BAND ARE IN USE follows the DSP (dsp/Band.h, THE SHAPE):
+    a type without a gain is Static whatever its gain mode says; a band reads
+    a key when it is Dynamic, Transient, Env or Track; its detector filter
+    shapes that key except in Track without a gain mode, where the tracker
+    reads the key itself.
+*/
+
+#include <core/MeterSnapshot.h>
+#include <dsp/Band.h>
+#include <dsp/Gain.h>
+#include <dsp/Parameters.h>
+
+#include <algorithm>
+#include <cmath>
+#include <string>
+#include <utility>
+#include <vector>
+
+namespace likyu::editor::presentation
+{
+    using dsp::BandParam;
+
+    //==========================================================================
+    /** The gain mode in effect: Static for a type without a gain (PRD, non-goals). */
+    inline dsp::GainMode gainModeInEffect (const dsp::BandSettings& s) noexcept
+    {
+        return dsp::hasGain (s.type) ? s.gmode : dsp::GainMode::staticGain;
+    }
+
+    /** Dynamic, Transient, Env or Track: the band reads a key. */
+    inline bool readsKey (const dsp::BandSettings& s) noexcept
+    {
+        return gainModeInEffect (s) != dsp::GainMode::staticGain || s.fmode != dsp::FrequencyMode::fixed;
+    }
+
+    /** The detector filter shapes what the band reads: every keyed band but
+        a Track band with no gain mode. */
+    inline bool usesDetector (const dsp::BandSettings& s) noexcept
+    {
+        return gainModeInEffect (s) != dsp::GainMode::staticGain || s.fmode == dsp::FrequencyMode::env;
+    }
+
+    /** Low and High in order and inside the table's range (PRD, range rules). */
+    inline std::pair<double, double> frequencyRange (const dsp::BandSettings& s) noexcept
+    {
+        const auto low = std::clamp (s.lowHz, dsp::minFrequency, dsp::maxFrequency);
+        const auto high = std::clamp (s.highHz, dsp::minFrequency, dsp::maxFrequency);
+        return low <= high ? std::pair { low, high } : std::pair { high, low };
+    }
+
+    /** Where the band sits with no key: its Frequency; in Track, that clamped
+        into [Low, High]; in Env the start of the mapping, Low for Up and High
+        for Down (decided 2026-11-20). */
+    inline double restFrequency (const dsp::BandSettings& s) noexcept
+    {
+        const auto own = std::clamp (s.frequency, dsp::minFrequency, dsp::maxFrequency);
+        const auto [low, high] = frequencyRange (s);
+
+        switch (s.fmode)
+        {
+            case dsp::FrequencyMode::fixed:  return own;
+            case dsp::FrequencyMode::track:  return std::clamp (own, low, high);
+            case dsp::FrequencyMode::env:    return s.envDirection == dsp::EnvDirection::up ? low : high;
+        }
+
+        return own;
+    }
+
+    /** The meters say something: a block has been published since the editor
+        opened or the processor started. */
+    inline bool metersRunning (const core::Meters& meters) noexcept
+    {
+        return meters.block > 0;
+    }
+
+    /** Where the band is now: the meter's frequency for an Env or Track band
+        that is on and metered, its rest otherwise. A Fixed band is drawn at
+        its parameter, so that it follows the hand and not the smoothing. */
+    inline double liveFrequency (const dsp::BandSettings& s, const core::BandMeters& m, bool running) noexcept
+    {
+        const auto metered = static_cast<double> (m.frequencyHz);
+
+        if (s.on && running && s.fmode != dsp::FrequencyMode::fixed && std::isfinite (metered) && metered > 0.0)
+            return std::clamp (metered, dsp::minFrequency, dsp::maxFrequency);
+
+        return restFrequency (s);
+    }
+
+    /** Track's confidence against the band's threshold; true elsewhere. */
+    inline bool confident (const dsp::BandSettings& s, const core::BandMeters& m, bool running) noexcept
+    {
+        if (s.fmode != dsp::FrequencyMode::track || ! s.on || ! running)
+            return true;
+
+        return static_cast<double> (m.confidence) * 100.0 >= s.confidencePercent;
+    }
+
+    /** The band's gain now, in dB: the static gain and the metered offset as
+        the filter combines them (dsp/Band.h, coefficientsWithG), confidence
+        scaling included. 0 for a type without a gain. */
+    inline double liveGainDb (const dsp::BandSettings& s, const core::BandMeters& m, bool running) noexcept
+    {
+        if (! dsp::hasGain (s.type))
+            return 0.0;
+
+        const auto own = std::clamp (s.gainDb, -dsp::maxGainDb, dsp::maxGainDb);
+
+        if (! s.on || ! running)
+            return own;
+
+        const auto scales = s.fmode == dsp::FrequencyMode::track && s.confidenceScalesGain;
+        const auto scale = scales ? std::clamp (static_cast<double> (m.confidence), 0.0, 1.0) : 1.0;
+        const auto offset = gainModeInEffect (s) != dsp::GainMode::staticGain ? static_cast<double> (m.offsetDb) : 0.0;
+
+        if (! scales)
+            return dsp::effectiveGainDb (own, std::isfinite (offset) ? offset : 0.0, s.rangeDb);
+
+        const auto limit = std::abs (s.rangeDb);
+        const auto scaled = own > 0.0 ? own * scale : own;
+        const auto bounded = std::clamp (std::isfinite (offset) ? offset : 0.0, -limit, limit);
+        return std::clamp (scaled + bounded * scale, -dsp::maxGainDb, dsp::maxGainDb);
+    }
+
+    //==========================================================================
+    /** What a sideways drag of the node moves. In Env the band's Frequency is
+        not used, so the drag carries Low and High together. */
+    enum class FrequencyDrag { frequency, range };
+
+    struct Node
+    {
+        bool on = false;            // off: drawn darker, still draggable
+        bool hasGain = true;        // a gain arm, and a place off the 0 dB line
+        bool dimmed = false;        // Track, under the confidence threshold
+        bool live = false;          // Env or Track: it slides inside its bracket
+        double hz = 1000.0;         // where it is drawn
+        double gainDb = 0.0;        // where it is drawn: the static gain, or 0
+        FrequencyDrag drag = FrequencyDrag::frequency;
+    };
+
+    inline Node nodeOf (const dsp::BandSettings& s, const core::BandMeters& m, bool running) noexcept
+    {
+        Node n;
+        n.on = s.on;
+        n.hasGain = dsp::hasGain (s.type);
+        n.live = s.fmode != dsp::FrequencyMode::fixed;
+        n.dimmed = ! confident (s, m, running);
+        n.hz = liveFrequency (s, m, running);
+        n.gainDb = n.hasGain ? std::clamp (s.gainDb, -dsp::maxGainDb, dsp::maxGainDb) : 0.0;
+        n.drag = s.fmode == dsp::FrequencyMode::env ? FrequencyDrag::range : FrequencyDrag::frequency;
+        return n;
+    }
+
+    //==========================================================================
+    /** Dynamic and Transient: where the gain may go, and where it is. */
+    struct VerticalBracket
+    {
+        bool shown = false;
+        double restDb = 0.0;        // the static gain
+        double lowDb = 0.0;         // the bracket's ends, within +-30 dB
+        double highDb = 0.0;
+        double markDb = 0.0;        // the gain now
+    };
+
+    inline VerticalBracket verticalBracketOf (const dsp::BandSettings& s, const core::BandMeters& m, bool running) noexcept
+    {
+        VerticalBracket b;
+        const auto mode = gainModeInEffect (s);
+
+        if (mode == dsp::GainMode::staticGain)
+            return b;
+
+        b.shown = true;
+        b.restDb = std::clamp (s.gainDb, -dsp::maxGainDb, dsp::maxGainDb);
+
+        // Dynamic: the Range's sign is the offset's. Transient: either way.
+        const auto range = std::clamp (s.rangeDb, -dsp::maxRangeDb, dsp::maxRangeDb);
+        const auto down = mode == dsp::GainMode::transient ? -std::abs (range) : std::min (range, 0.0);
+        const auto up = mode == dsp::GainMode::transient ? std::abs (range) : std::max (range, 0.0);
+
+        b.lowDb = std::clamp (b.restDb + down, -dsp::maxGainDb, dsp::maxGainDb);
+        b.highDb = std::clamp (b.restDb + up, -dsp::maxGainDb, dsp::maxGainDb);
+        b.markDb = liveGainDb (s, m, running);
+        return b;
+    }
+
+    /** Env and Track: where the frequency may go, and where it rests. */
+    struct HorizontalBracket
+    {
+        bool shown = false;
+        double lowHz = 0.0;
+        double highHz = 0.0;
+        double restHz = 0.0;
+    };
+
+    inline HorizontalBracket horizontalBracketOf (const dsp::BandSettings& s) noexcept
+    {
+        HorizontalBracket b;
+
+        if (s.fmode == dsp::FrequencyMode::fixed)
+            return b;
+
+        const auto [low, high] = frequencyRange (s);
+        b.shown = true;
+        b.lowHz = low;
+        b.highHz = high;
+        b.restHz = restFrequency (s);
+        return b;
+    }
+
+    //==========================================================================
+    /** The detector's own node (PRD, Editor: a ghost node, draggable). */
+    struct Ghost
+    {
+        bool shown = false;
+        double hz = 1000.0;
+        double q = 1.0;
+        dsp::DetectorType type = dsp::DetectorType::bandPass;
+    };
+
+    inline Ghost ghostOf (const dsp::BandSettings& s) noexcept
+    {
+        Ghost g;
+        g.shown = usesDetector (s) && s.dfilt == dsp::DetectorFilter::own;
+        g.hz = std::clamp (s.detectorFrequency, dsp::minFrequency, dsp::maxFrequency);
+        g.q = std::clamp (s.detectorQ, dsp::minQ, dsp::maxQ);
+        g.type = s.dtype;
+        return g;
+    }
+
+    //==========================================================================
+    enum class Key
+    {
+        none,           // the band reads no key: no badge
+        self,
+        sidechain,
+        fellBack,       // Sidechain chosen, the bus absent or disabled: keyed by the input
+        silentByHost    // Sidechain chosen in a host that feeds that bus silence
+    };
+
+    struct Badge
+    {
+        Key key = Key::none;
+        bool warns = false;
+        std::string text;       // on the node
+        std::string tooltip;    // in full
+    };
+
+    /** `hostFeedsSilence`: the host is known to give the sidechain bus silence
+        whatever is routed (Go.dot, until it can route to it: devplan Phase 9). */
+    inline Badge badgeOf (const dsp::BandSettings& s, const core::BandMeters& m, bool hostFeedsSilence)
+    {
+        Badge b;
+
+        if (! readsKey (s))
+            return b;
+
+        if (s.key == dsp::KeySource::self)
+        {
+            b.key = Key::self;
+            b.text = "IN";
+            b.tooltip = "Keyed by the plugin's input.";
+            return b;
+        }
+
+        if (m.keyFellBack)
+        {
+            b.key = Key::fellBack;
+            b.warns = true;
+            b.text = "SC?";
+            b.tooltip = "Sidechain chosen, but the host gives this plugin no sidechain: keyed by the input instead.";
+            return b;
+        }
+
+        if (hostFeedsSilence)
+        {
+            b.key = Key::silentByHost;
+            b.warns = true;
+            b.text = "SC?";
+            b.tooltip = "Sidechain chosen, but this host feeds the sidechain silence: the band has no key.";
+            return b;
+        }
+
+        b.key = Key::sidechain;
+        b.text = "SC";
+        b.tooltip = "Keyed by the sidechain.";
+        return b;
+    }
+
+    //==========================================================================
+    /** Listen (PRD, Detection): the band's detector, solo in place, while held. */
+    struct Listen
+    {
+        bool enabled = false;       // the band has a detector to hear
+        bool needsArm = false;      // a guarded host: Arm shows, and must be on
+        bool acts = false;          // a press would act
+        bool playing = false;       // the chain says this band is heard now
+    };
+
+    inline Listen listenOf (const dsp::BandSettings& s, int band, const core::Meters& meters,
+                            bool guarded, bool armed) noexcept
+    {
+        Listen l;
+        l.enabled = s.on && usesDetector (s);
+        l.needsArm = guarded;
+        l.acts = l.enabled && (! guarded || armed);
+        l.playing = meters.listening == band;
+        return l;
+    }
+
+    //==========================================================================
+    /** The strip (PRD, Editor: only the controls of the selected band's
+        current gain mode and frequency mode are shown; the others keep their
+        values). In the order they are laid out. */
+    struct StripSection
+    {
+        std::string title;
+        std::vector<BandParam> params;
+    };
+
+    inline std::vector<StripSection> stripOf (const dsp::BandSettings& s)
+    {
+        using P = BandParam;
+        std::vector<StripSection> sections;
+
+        // The band itself. Frequency is not shown in Env, which does not use it.
+        {
+            StripSection band { "Band", { P::on, P::type } };
+
+            if (s.fmode != dsp::FrequencyMode::env)
+                band.params.push_back (P::freq);
+
+            band.params.push_back (P::q);
+
+            if (dsp::hasGain (s.type))
+                band.params.push_back (P::gain);
+
+            if (s.type == dsp::BandType::bell)
+                band.params.push_back (P::qmode);
+
+            sections.push_back (std::move (band));
+        }
+
+        // The gain axis: bells and shelves only.
+        if (dsp::hasGain (s.type))
+        {
+            StripSection gain { "Gain", { P::gmode } };
+
+            switch (s.gmode)
+            {
+                case dsp::GainMode::staticGain:
+                    break;
+
+                case dsp::GainMode::dynamic:
+                    gain.params.insert (gain.params.end(),
+                                        { P::range, P::thresh, P::ratio, P::knee, P::atk, P::rel, P::ddir });
+                    break;
+
+                case dsp::GainMode::transient:
+                    gain.params.insert (gain.params.end(),
+                                        { P::range, P::tatk, P::tsus, P::ttime, P::tfloor });
+                    break;
+            }
+
+            sections.push_back (std::move (gain));
+        }
+
+        // The frequency axis: every type.
+        {
+            StripSection frequency { "Frequency", { P::fmode } };
+
+            switch (s.fmode)
+            {
+                case dsp::FrequencyMode::fixed:
+                    break;
+
+                case dsp::FrequencyMode::env:
+                    frequency.params.insert (frequency.params.end(),
+                                             { P::flo, P::fhi, P::fdir, P::fsens, P::fspan, P::fatk, P::frel });
+                    break;
+
+                case dsp::FrequencyMode::track:
+                    frequency.params.insert (frequency.params.end(),
+                                             { P::flo, P::fhi, P::fspeed, P::fconf, P::fhold, P::fcgain });
+                    break;
+            }
+
+            sections.push_back (std::move (frequency));
+        }
+
+        // The key, and the detector where it shapes the key.
+        if (readsKey (s))
+        {
+            StripSection key { "Key", { P::key } };
+
+            if (usesDetector (s))
+            {
+                key.params.push_back (P::dfilt);
+
+                if (s.dfilt == dsp::DetectorFilter::own)
+                    key.params.insert (key.params.end(), { P::dtype, P::dfreq, P::dq });
+            }
+
+            sections.push_back (std::move (key));
+        }
+
+        return sections;
+    }
+
+    /** The per-instance row beside the strip: all four, always. */
+    inline std::vector<dsp::GlobalParam> globalRow()
+    {
+        return { dsp::GlobalParam::bypass, dsp::GlobalParam::outGain, dsp::GlobalParam::lookahead, dsp::GlobalParam::link };
+    }
+}
