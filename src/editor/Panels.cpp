@@ -116,6 +116,7 @@ namespace likyu::editor
             addAndMakeVisible (control);
 
         frequency.setMarker (true);
+        q.setShowsWidth (true);
 
         // A press on any of its controls is a press in the column.
         addMouseListener (this, true);
@@ -160,6 +161,9 @@ namespace likyu::editor
         frequency.refresh();
         gain.refresh();
         q.refresh();
+
+        // A sharp band is a narrow mark on its Frequency bar, a broad band a wide one.
+        frequency.setSpread (1.0 - q.shownNormalised());
     }
 
     void BandColumn::mouseDown (const juce::MouseEvent&)

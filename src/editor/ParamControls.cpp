@@ -185,6 +185,12 @@ namespace likyu::editor
         return getLocalBounds().toFloat().withTrimmedTop (labelHeight).withTrimmedBottom (textHeight).reduced (1.0f);
     }
 
+    void ParamDial::setShowsWidth (bool shouldShowWidth)
+    {
+        showsWidth = shouldShowWidth;
+        repaint();
+    }
+
     void ParamDial::resized()
     {
         text.setBounds (getLocalBounds().removeFromBottom (static_cast<int> (textHeight)));
@@ -213,12 +219,25 @@ namespace likyu::editor
         g.setColour (palette::controlTrack);
         g.strokePath (whole, stroke);
 
-        // From the range's start, or from 0 where 0 is inside the range.
-        const auto from = isBipolar (spec()) ? dsp::toNormalised (spec(), 0.0) : 0.0;
         const auto now = angleOf (shown);
 
-        if (std::abs (shown - from) > 1.0e-4)
+        if (showsWidth)
         {
+            /*  A Q: the lit arc is the band's width, centred on the dot. A
+                fifth of the track either side at the lowest Q, a fiftieth
+                at the highest, and never past the track's ends. */
+            const auto half = arcRange * static_cast<float> (0.2 - 0.18 * shown);
+
+            juce::Path active;
+            active.addCentredArc (centre.x, centre.y, track, track, 0.0f,
+                                  std::max (arcStart, now - half), std::min (arcStart + arcRange, now + half), true);
+            g.setColour (accent);
+            g.strokePath (active, stroke);
+        }
+        else if (const auto from = isBipolar (spec()) ? dsp::toNormalised (spec(), 0.0) : 0.0;
+                 std::abs (shown - from) > 1.0e-4)
+        {
+            // From the range's start, or from 0 where 0 is inside the range.
             juce::Path active;
             active.addCentredArc (centre.x, centre.y, track, track, 0.0f,
                                   std::min (angleOf (from), now), std::max (angleOf (from), now), true);
@@ -272,6 +291,17 @@ namespace likyu::editor
     {
         textBeside = beside;
         resized();
+    }
+
+    void ParamBar::setSpread (double newSpread)
+    {
+        const auto clamped = std::clamp (newSpread, 0.0, 1.0);
+
+        if (! dsp::exactlyEqual (clamped, spread))
+        {
+            spread = clamped;
+            repaint();
+        }
     }
 
     void ParamBar::setMarker (bool shouldBeMarker)
@@ -328,7 +358,7 @@ namespace likyu::editor
                 tinted from end to end, and the full colour round the value,
                 fading out either side. A fill from the left gave a band at
                 14 kHz a bar of colour and a band at 30 Hz almost none. */
-            const auto reach = std::min (36.0f, 0.3f * area.getWidth());
+            const auto reach = area.getWidth() * static_cast<float> (0.04 + 0.36 * spread);
 
             g.setColour (accent.withMultipliedAlpha (0.25f));
             g.fillRect (area);

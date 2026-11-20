@@ -91,6 +91,9 @@ namespace likyu::editor
         void mouseDoubleClick (const juce::MouseEvent&) override;
         void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
+        /** The value last drawn, along the host's 0 to 1. */
+        double shownNormalised() const noexcept     { return shown; }
+
     protected:
         void beginDrag();
         void dragTo (double normalisedValue);
@@ -109,6 +112,11 @@ namespace likyu::editor
     public:
         using ContinuousControl::ContinuousControl;
 
+        /** For a Q: the lit arc is centred on the dot and is as wide as the
+            band is, narrow at a high Q and wide at a low one, instead of
+            running from the range's start. */
+        void setShowsWidth (bool shouldShowWidth);
+
         void paint (juce::Graphics&) override;
         void resized() override;
         void mouseDown (const juce::MouseEvent&) override;
@@ -116,6 +124,8 @@ namespace likyu::editor
 
     private:
         juce::Rectangle<float> dialArea() const;
+
+        bool showsWidth = false;
 
         double fromNormalised = 0.0;
         float lastAngle = 0.0f;
@@ -134,6 +144,11 @@ namespace likyu::editor
         /** A tinted bar with a block at the value, in place of a fill. */
         void setMarker (bool marker);
 
+        /** How wide a marker's colour is, from 0 (narrowest) to 1 (widest):
+            a band's Frequency bar is given its Q, so a sharp band is a
+            narrow mark and a broad one a wide mark. */
+        void setSpread (double spread);
+
         void paint (juce::Graphics&) override;
         void resized() override;
         void mouseDown (const juce::MouseEvent&) override;
@@ -144,6 +159,7 @@ namespace likyu::editor
 
         bool textBeside = false;
         bool marker = false;
+        double spread = 0.6;
 
         double fromNormalised = 0.0;
         float pressX = 0.0f;
