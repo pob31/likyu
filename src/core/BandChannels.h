@@ -22,12 +22,12 @@
     user takes a channel out of it: a low cut that the LFE is spared, a
     low-pass for the LFE alone.
 
-    THE FORM is the link list's (core/LinkList.h), for the same reasons: a
-    list in the state chunk, by channel index, with the layout it was made
-    for; not host parameters, so the count stays at 284 and no ID is added.
-    The editor sets it.
+    THE FORM is the one the link list had (retired 2026-11-20, which these
+    lists replace): a list in the state chunk, by channel index, with the
+    layout it was made for; not host parameters, so the count stays at 284
+    and no ID is added. The editor sets it.
 
-    A LAYOUT CHANGE, as for the link list: the lists apply only while the
+    A LAYOUT CHANGE (decided by the author 2026-11-20): the lists apply only while the
     current layout is the one they were made for; in any other layout every
     band applies to every channel. A layout a host sets for a moment erases
     nothing. The lists are made again for a new layout when the user edits

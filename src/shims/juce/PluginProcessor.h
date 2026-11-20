@@ -27,16 +27,15 @@
         Self instead; one that is enabled and silent is a key (PRD, Band
         model; Phase 1 bench).
       - The 284 parameters of dsp/Parameters.h, in real units, each with its
-        own value text (core/ValueText.h). Static, Dynamic and Transient act;
-        Env and Track wait for Phase 5.
+        own value text (core/ValueText.h).
       - The audio path, the host's block in place: the chain (dsp/Chain.h)
         reads the main input as the KEY, undelayed, and the sidechain, then
         delays the audio by the lookahead (the only latency, set only by the
         `lookahead` parameter) and runs its eight bands, its output gain and
         its bypass crossfade.
-      - The state chunk, version 1 (core/State.h), with the list of channels
-        left out of the link (core/LinkList.h), which applies only to the
-        layout it was made for.
+      - The state chunk, version 1 (core/State.h), with the channels each
+        band leaves out (core/BandChannels.h), which apply only to the
+        layout they were made for.
       - Listen (PRD, Detection): one band's detector on the output while
         the editor holds its button. An action of the editor, not a
         parameter: setListen(), not saved.
@@ -58,7 +57,6 @@
 */
 
 #include <core/Dispatch.h>
-#include <core/LinkList.h>
 #include <core/MeterSnapshot.h>
 #include <core/State.h>
 #include <dsp/Chain.h>
@@ -148,14 +146,7 @@ namespace likyu
         void endGesture (int index);
 
         //======================================================================
-        /** The channels left out of the link, and the layout they were left
-            out of (core/LinkList.h). Not for the audio thread. */
-        core::LinkList getLinkList() const;
-
-        /** For the editor (Phase 6) and the tests. Takes effect at the next block. */
-        void setLinkList (const core::LinkList& list);
-
-        /** The main bus's layout as a link list names it: its speaker arrangement. */
+        /** The main bus's layout as the band channels name it: its speaker arrangement. */
         juce::String currentLayoutName() const;
 
         //======================================================================
@@ -204,7 +195,7 @@ namespace likyu
 
         /** The main bus's layout now, and the link's mask for it. */
         void updateLayout();
-        void updateLinkMask();
+        void updateBandMasks();
 
         /** `hostBypassed`: called through processBlockBypassed, which a host
             only does when it owns the bypass; the chain then crossfades out
@@ -242,14 +233,11 @@ namespace likyu
         std::atomic<int> delaySamples { 0 };
         double currentSampleRate = 0.0;
 
-        // The link list, and the layout it is compared with.
-        mutable juce::CriticalSection linkLock;
-        core::LinkList linkList;
+        // The layout of the moment, and the channels each band leaves out: the lists
+        // under the lock, their masks for the audio thread.
+        mutable juce::CriticalSection layoutLock;
         juce::String layoutName;
         int layoutChannels = 0;
-        std::atomic<std::uint64_t> linkMask { 0 };
-
-        // The channels each band leaves out: the lists under the same lock, their masks for the audio thread.
         core::BandChannels bandChannels;
         std::array<std::atomic<std::uint64_t>, dsp::numBands> bandMasks {};
 

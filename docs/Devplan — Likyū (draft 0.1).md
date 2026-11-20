@@ -603,7 +603,7 @@ resonance).
 ## Phase 6 — Editor · M
 
 **Goal:** the curve and the strip, by mouse and by touch, adding nothing a parameter cannot do
-except Listen and the link list.
+except Listen and the link list (retired 2026-11-20: the channels of each band).
 
 - **6a. Presentation first.** What a node, a bracket, a badge and a strip say in each state, as
   pure functions over the band's state and the snapshot, with headless tests. No pixel before
@@ -614,7 +614,7 @@ except Listen and the link list.
 - **6c. Detector and keys.** The ghost node for an Own detector; the key badge and its warnings
   (sidechain absent; in Go.dot before Phase 9, sidechain silent by design).
 - **6d. Strip.** Only the current modes' controls; Listen, with the guard in the form decided; the
-  link list beside Link. *2026-11-20, by the author on seeing the first curve:* not one strip but
+  link list beside Link (*retired 2026-11-20 by the author*: the channels of each band do its work). *2026-11-20, by the author on seeing the first curve:* not one strip but
   a column per band (On, Type, Frequency, Gain, Q) and a foot panel for the selected band's
   modes and key, as WFS-DIY's output EQ (PRD, Editor).
   *The same day, by the author:* a band applies to a set of channels, so that a low cut can

@@ -500,14 +500,14 @@ namespace
             { "link, Linked to Unlinked", loudLeft, 1, false, 0,
               [] (Chain& c) { c.setBand (0, dynamicBell (-24.0)); c.setChain ({ false, 0.0, true }); },
               [] (Chain& c) { c.setChain ({ false, 0.0, false }); } },
-            { "exclusion, the right left out of the link", loudLeft, 1, false, 0,
+            { "a band's channels, the right left out of the band", loudLeft, 1, false, 0,
               [] (Chain& c) { c.setBand (0, dynamicBell (-24.0)); },
-              [] (Chain& c) { c.setLinkExclusions (2u); } },
+              [] (Chain& c) { c.setBandChannels (0, 2u); } },
         };
     }
 }
 
-TEST_CASE ("switches: gain mode, detector, direction, key, the fallback, link and exclusion switch without a click; a hard switch would click")
+TEST_CASE ("switches: gain mode, detector, direction, key, the fallback, link and a band's channels switch without a click; a hard switch would click")
 {
     for (const auto& s : dynamicSwitches())
     {

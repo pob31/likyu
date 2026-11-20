@@ -257,39 +257,22 @@ namespace likyu
         return getChannelLayoutOfBus (true, 0).getSpeakerArrangementAsString();
     }
 
-    core::LinkList LikyuProcessor::getLinkList() const
-    {
-        const juce::ScopedLock lock (linkLock);
-        return linkList;
-    }
-
-    void LikyuProcessor::setLinkList (const core::LinkList& list)
-    {
-        {
-            const juce::ScopedLock lock (linkLock);
-            linkList = list;
-        }
-
-        updateLinkMask();
-    }
-
     void LikyuProcessor::updateLayout()
     {
         {
-            const juce::ScopedLock lock (linkLock);
+            const juce::ScopedLock lock (layoutLock);
             layoutName = currentLayoutName();
             layoutChannels = getMainBusNumInputChannels();
         }
 
-        updateLinkMask();
+        updateBandMasks();
     }
 
-    /*  The list applies only to the layout it was made for (decided by the
+    /*  The lists apply only to the layout they were made for (decided by the
         author 2026-11-20): a host's layout of a moment erases nothing. */
-    void LikyuProcessor::updateLinkMask()
+    void LikyuProcessor::updateBandMasks()
     {
-        const juce::ScopedLock lock (linkLock);
-        linkMask.store (core::effectiveMask (linkList, layoutName, layoutChannels), std::memory_order_relaxed);
+        const juce::ScopedLock lock (layoutLock);
 
         for (int band = 0; band < dsp::numBands; ++band)
             bandMasks[static_cast<std::size_t> (band)].store (core::effectiveMask (bandChannels, band, layoutName, layoutChannels),
@@ -298,18 +281,18 @@ namespace likyu
 
     core::BandChannels LikyuProcessor::getBandChannels() const
     {
-        const juce::ScopedLock lock (linkLock);
+        const juce::ScopedLock lock (layoutLock);
         return bandChannels;
     }
 
     void LikyuProcessor::setBandChannels (const core::BandChannels& lists)
     {
         {
-            const juce::ScopedLock lock (linkLock);
+            const juce::ScopedLock lock (layoutLock);
             bandChannels = lists;
         }
 
-        updateLinkMask();
+        updateBandMasks();
     }
 
     std::uint64_t LikyuProcessor::bandChannelsLeftOut (int band) const
@@ -321,11 +304,11 @@ namespace likyu
     void LikyuProcessor::setBandChannelsLeftOut (int band, std::uint64_t leftOut)
     {
         {
-            const juce::ScopedLock lock (linkLock);
+            const juce::ScopedLock lock (layoutLock);
             bandChannels = core::withBand (bandChannels, band, leftOut, layoutName, layoutChannels);
         }
 
-        updateLinkMask();
+        updateBandMasks();
     }
 
     juce::StringArray LikyuProcessor::channelNames() const
@@ -427,8 +410,6 @@ namespace likyu
             values[static_cast<std::size_t> (dsp::indexOf (dsp::GlobalParam::bypass))] = 1.0f;
 
         dispatch.apply (values, chain);
-        chain.setLinkExclusions (linkMask.load (std::memory_order_relaxed));
-
         for (int band = 0; band < dsp::numBands; ++band)
             chain.setBandChannels (band, bandMasks[static_cast<std::size_t> (band)].load (std::memory_order_relaxed));
         chain.setListen (listenBand.load (std::memory_order_relaxed));
@@ -505,7 +486,7 @@ namespace likyu
         for (std::size_t i = 0; i < current.size(); ++i)
             current[i] = valueOf (static_cast<int> (i));
 
-        const auto text = stateChunk.write (current, getLinkList(), getBandChannels());
+        const auto text = stateChunk.write (current, getBandChannels());
         destination.replaceAll (text.toRawUTF8(), text.getNumBytesAsUTF8());
     }
 
@@ -519,17 +500,15 @@ namespace likyu
             block reads. */
         const auto text = juce::String::fromUTF8 (static_cast<const char*> (data), sizeInBytes);
         std::vector<double> loaded;
-        core::LinkList link;
         core::BandChannels lists;
 
-        if (! stateChunk.read (text, loaded, link, lists))
+        if (! stateChunk.read (text, loaded, lists))
             return;
 
         for (std::size_t i = 0; i < loaded.size() && i < parameters.size(); ++i)
             setValue (static_cast<int> (i), loaded[i]);
 
-        // Kept as loaded, whatever the layout now: it applies once the layout is its own.
-        setLinkList (link);
+        // Kept as loaded, whatever the layout now: they apply once the layout is their own.
         setBandChannels (lists);
     }
 }

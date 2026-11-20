@@ -192,12 +192,6 @@ namespace likyu::dsp
         chainPending = true;
     }
 
-    void Chain::setLinkExclusions (std::uint64_t channelsLeftOut) noexcept
-    {
-        pendingExcluded = channelsLeftOut;
-        exclusionsPending = true;
-    }
-
     void Chain::setBandChannels (int band, std::uint64_t channelsLeftOut) noexcept
     {
         if (band >= 0 && band < numBands)
@@ -319,12 +313,6 @@ namespace likyu::dsp
             linked = pendingChain.linked;
         }
 
-        if (exclusionsPending)
-        {
-            exclusionsPending = false;
-            excluded = pendingExcluded;
-        }
-
         if (bandChannelsPending)
         {
             bandChannelsPending = false;
@@ -392,7 +380,7 @@ namespace likyu::dsp
         }
 
         const auto prepared64 = channels >= 64 ? ~std::uint64_t (0) : (std::uint64_t (1) << channels) - 1u;
-        const BandContext context { sidechainChannels, linked, excluded & prepared64 };
+        const BandContext context { sidechainChannels, linked };
 
         selfKeyed = sidechainKeyed = false;
         anyTrack = false;
@@ -505,22 +493,13 @@ namespace likyu::dsp
         }
         else if (shape.linked)
         {
-            // The link's lane first (when any channel is in it), then one per channel left out of the link.
-            auto anyIn = false;
-
+            // Linked: one lane for every channel of the band.
             for (int c = 0; c < channels; ++c)
-                anyIn = anyIn || (applies (c) && ((shape.excluded >> c) & 1u) == 0);
-
-            next = anyIn ? 1 : 0;
-
-            for (int c = 0; c < channels; ++c)
-            {
-                if (! applies (c))
-                    continue;
-
-                const auto out = ((shape.excluded >> c) & 1u) != 0;
-                l.ofChannel[static_cast<std::size_t> (c)] = static_cast<std::uint8_t> (out ? next++ : 0);
-            }
+                if (applies (c))
+                {
+                    l.ofChannel[static_cast<std::size_t> (c)] = 0;
+                    next = 1;
+                }
         }
         else
         {

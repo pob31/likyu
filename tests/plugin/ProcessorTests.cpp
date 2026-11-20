@@ -795,102 +795,6 @@ TEST_CASE ("processor: a Sidechain band is keyed by the bus; disabled, it falls 
     }
 }
 
-TEST_CASE ("processor: link exclusion on 5.1: the list applies to its layout, survives state, and any other layout has every channel in")
-{
-    constexpr int lfe = 3, length = 4800;
-    const auto fiveOne = juce::AudioChannelSet::create5point1();
-    const auto sevenOne = juce::AudioChannelSet::create7point1();
-    const auto wide = juce::AudioChannelSet::discreteChannels (64);
-
-    const auto makeProcessor = [] (LikyuProcessor& p, const juce::AudioChannelSet& main)
-    {
-        REQUIRE (p.setBusesLayout (layout (main, none)));
-        setDynamic (p, 0, dsp::BandType::lowShelf, 80.0, -30.0, -9.0);
-        p.setRateAndBufferSizeDetails (48000.0, 256);
-        p.prepareToPlay (48000.0, 256);
-    };
-
-    /*  Quiet noise everywhere, the key under the threshold, and a burst at
-        80 Hz on the LFE: a channel whose gain moves is not the input any more,
-        and one whose gain does not is the input, bit for bit. A second of the
-        quiet noise first, for what came before to return to zero. */
-    const auto moved = [] (LikyuProcessor& p)
-    {
-        const auto channels = p.getTotalNumInputChannels();
-
-        auto settle = noiseBuffer (channels, 48000, 40);
-        settle.applyGain (1.0e-4f);
-        processInBlocks (p, settle, 256);
-
-        auto buffer = noiseBuffer (channels, length, 41);
-        buffer.applyGain (1.0e-4f);
-        addTone (buffer, lfe, 80.0, 0.5, 480, length);
-        const auto input = buffer;
-        processInBlocks (p, buffer, 256);
-
-        std::vector<bool> result;
-
-        for (int c = 0; c < channels; ++c)
-            result.push_back (! sameChannel (buffer, c, input, c));
-
-        return result;
-    };
-
-    LikyuProcessor first;
-    makeProcessor (first, fiveOne);
-    CHECK (first.currentLayoutName() == "L R C Lfe Ls Rs");
-
-    // Every channel in, the default: the LFE's burst moves all six.
-    CHECK (moved (first) == std::vector<bool> (6, true));
-
-    // The LFE left out: its burst moves it alone.
-    const core::LinkList lfeOut { first.currentLayoutName(), 6, std::uint64_t (1) << lfe };
-    first.setLinkList (lfeOut);
-    CHECK (moved (first) == std::vector<bool> { false, false, false, true, false, false });
-
-    juce::MemoryBlock chunk;
-    first.getStateInformation (chunk);
-
-    // A second instance on 5.1, loaded from the first: the same list, the same behaviour.
-    {
-        LikyuProcessor second;
-        makeProcessor (second, fiveOne);
-        second.setStateInformation (chunk.getData(), static_cast<int> (chunk.getSize()));
-        CHECK (second.getLinkList() == lfeOut);
-        CHECK (moved (second) == std::vector<bool> { false, false, false, true, false, false });
-    }
-
-    // On 7.1 the list is kept but not applied: every channel in.
-    {
-        LikyuProcessor other;
-        makeProcessor (other, sevenOne);
-        other.setStateInformation (chunk.getData(), static_cast<int> (chunk.getSize()));
-        CHECK (other.getLinkList() == lfeOut);
-        CHECK (moved (other) == std::vector<bool> (8, true));
-    }
-
-    // Bitwig's order, state before the layout: the list applies once the layout is its own.
-    {
-        LikyuProcessor bitwig;
-        bitwig.setStateInformation (chunk.getData(), static_cast<int> (chunk.getSize()));
-        makeProcessor (bitwig, fiveOne);
-        CHECK (moved (bitwig) == std::vector<bool> { false, false, false, true, false, false });
-    }
-
-    // REAPER's 64 channels for an instant while loading erase nothing.
-    {
-        LikyuProcessor reaper;
-        makeProcessor (reaper, fiveOne);
-        reaper.setStateInformation (chunk.getData(), static_cast<int> (chunk.getSize()));
-        reaper.releaseResources();
-        makeProcessor (reaper, wide);
-        reaper.releaseResources();
-        makeProcessor (reaper, fiveOne);
-        CHECK (reaper.getLinkList() == lfeOut);
-        CHECK (moved (reaper) == std::vector<bool> { false, false, false, true, false, false });
-    }
-}
-
 TEST_CASE ("processor: a band's channels on 5.1: a low cut the LFE is spared; the lists apply to their layout, survive state, and the editor's calls make them")
 {
     constexpr int lfe = 3, length = 4800;
@@ -1202,7 +1106,7 @@ TEST_CASE ("processor: 500 blocks of dynamic bands, a sidechain, the link and it
             // Outside the process call, as a host or the editor does.
             processor.setValue (dsp::indexOf (dsp::GlobalParam::link), (block / 10) % 2);
             processor.setValue (dsp::indexOf (block % dsp::numBands, dsp::BandParam::thresh), -60.0 + block % 50);
-            processor.setLinkList ({ processor.currentLayoutName(), 2, static_cast<std::uint64_t> ((block / 20) % 4) });
+            processor.setBandChannelsLeftOut (block % dsp::numBands, static_cast<std::uint64_t> ((block / 20) % 4));
         }
 
         processor.processBlock (buffer, midi);
@@ -1418,7 +1322,7 @@ TEST_CASE ("processor: 500 blocks of Env and Track bands, a sidechain, their mod
             processor.setValue (dsp::indexOf (b, dsp::BandParam::fmode), (block / 10) % dsp::numFrequencyModes);
             processor.setValue (dsp::indexOf (b, dsp::BandParam::fhi), 1000.0 + 50.0 * (block % 40));
             processor.setValue (dsp::indexOf (b, dsp::BandParam::fcgain), (block / 20) % 2);
-            processor.setLinkList ({ processor.currentLayoutName(), 2, static_cast<std::uint64_t> ((block / 20) % 4) });
+            processor.setBandChannelsLeftOut (block % dsp::numBands, static_cast<std::uint64_t> ((block / 20) % 4));
         }
 
         processor.processBlock (buffer, midi);

@@ -17,15 +17,13 @@
 # and nothing else of JUCE, so a headless test drives all of it. Includes as <core/...>.
 #
 # Phase 2: the dispatch of parameter values to the chain, their text, the state chunk.
-# Phase 3: the list of channels left out of the link.
+# Phase 3: the list of channels left out of the link (retired 2026-11-20 for the channels of each band).
 
 add_library(likyu_core STATIC
     BandChannels.h
     BandChannels.cpp
     Dispatch.h
     Dispatch.cpp
-    LinkList.h
-    LinkList.cpp
     MeterSnapshot.h
     State.h
     State.cpp

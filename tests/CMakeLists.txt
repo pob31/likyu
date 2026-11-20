@@ -83,7 +83,6 @@ if(LIKYU_BUILD_PLUGINS)
         LocaleTests.cpp
         core/BandChannelsTests.cpp
         core/DispatchTests.cpp
-        core/LinkListTests.cpp
         core/MeterSnapshotTests.cpp
         core/StateTests.cpp
         core/ValueTextTests.cpp

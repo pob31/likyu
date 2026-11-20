@@ -170,7 +170,6 @@ namespace likyu::dsp
     {
         int sidechainChannels = 0;      // 0: the bus is absent or disabled
         bool linked = true;
-        std::uint64_t excluded = 0;     // channels left out of the link, among those prepared
         std::uint64_t leftOut = 0;      // channels this band does not apply to, among those prepared
     };
 
@@ -191,7 +190,6 @@ namespace likyu::dsp
             DetectorType dtype = DetectorType::bandPass;
             Direction direction = Direction::above;
             bool linked = true;
-            std::uint64_t excluded = 0;
 
             /** The channels the band does not apply to (PRD, Band model,
                 Channels): not filtered, not read as a key, not in a lane. It
@@ -236,7 +234,7 @@ namespace likyu::dsp
                 if (key == KeySource::sidechain)
                     return true;
 
-                return linked == o.linked && (! linked || excluded == o.excluded);
+                return linked == o.linked;
             }
         };
 
@@ -617,7 +615,6 @@ namespace likyu::dsp
             shape.dtype = s.dfilt == DetectorFilter::own ? s.dtype : DetectorType::bandPass;
             shape.direction = s.direction;
             shape.linked = c.linked;
-            shape.excluded = c.excluded;
             shape.leftOut = c.leftOut;
             return shape;
         }

@@ -576,7 +576,7 @@ namespace
             { 2 * period, [] (Chain& c)
               {
                   c.setChain ({ false, 0.0, true });
-                  c.setLinkExclusions (1u);                                                                 // left channel out
+                  c.setBandChannels (5, 1u);                                                                // left channel out of band 6
                   auto s = dynamicBand (BandType::bell, 300.0, 1.0, 2.0, -20.0, -12.0);
                   s.gmode = GainMode::staticGain;                                                           // gain mode
                   c.setBand (0, s);
@@ -593,7 +593,7 @@ namespace
               } },
             { 3 * period, [] (Chain& c)
               {
-                  c.setLinkExclusions (0u);
+                  c.setBandChannels (5, 0u);
                   c.setChain ({ true, 0.0, true });
               } },
             { 4 * period, [] (Chain& c)
@@ -719,56 +719,6 @@ TEST_CASE ("linked maximum: a tone in one channel of eight, in all eight, and in
     }
 }
 
-TEST_CASE ("link exclusion, in the DSP: on 5.1 the LFE drives the link like any channel; left out, it drives only itself")
-{
-    constexpr int lfe = 3;
-    const auto length = static_cast<int> (0.6 * rate);
-    const auto burstAt = [] (std::vector<std::vector<double>>& audio, int channel, int from)
-    {
-        for (int n = from; n < from + 4800; ++n)
-            audio[static_cast<std::size_t> (channel)][static_cast<std::size_t> (n)] += 0.5 * std::sin (2.0 * pi * 80.0 * n / rate);
-    };
-
-    const auto setting = [] (Chain& c) { c.setBand (0, dynamicBand (BandType::lowShelf, 80.0, 0.7, 0.0, -30.0, -9.0, 4.0, 2.0, 20.0)); };
-
-    // Every channel in: a burst on the LFE moves all six.
-    {
-        std::vector<std::vector<double>> audio (6, std::vector<double> (static_cast<std::size_t> (length), 0.0));
-        burstAt (audio, lfe, 2400);
-        const auto t = trace (audio, { { 0, setting } }, 0);
-
-        for (int c = 0; c < 6; ++c)
-            CHECK (t.offsets[static_cast<std::size_t> (c)][7000] < -3.0);
-    }
-
-    // The LFE left out: its burst moves it alone, a burst on the left moves the five others.
-    {
-        std::vector<std::vector<double>> audio (6, std::vector<double> (static_cast<std::size_t> (length), 0.0));
-        burstAt (audio, lfe, 2400);
-        burstAt (audio, 0, 14400);
-        const auto t = trace (audio, { { 0, setting }, { 0, [] (Chain& c) { c.setLinkExclusions (1u << lfe); } } }, 0);
-
-        for (int c = 0; c < 6; ++c)
-        {
-            const auto duringLfe = t.offsets[static_cast<std::size_t> (c)][7000];
-            const auto duringLeft = t.offsets[static_cast<std::size_t> (c)][19000];
-
-            INFO ("channel " << c << ": " << duringLfe << " dB in the LFE's burst, " << duringLeft << " dB in the left's");
-
-            if (c == lfe)
-            {
-                CHECK (duringLfe < -3.0);
-                CHECK (duringLeft > -0.01);
-            }
-            else
-            {
-                CHECK (duringLfe > -0.01);
-                CHECK (duringLeft < -3.0);
-            }
-        }
-    }
-}
-
 //==============================================================================
 TEST_CASE ("sidechain: a Sidechain band is keyed by the sidechain's maximum; absent, it falls back to Self; present and silent, it is keyed by silence")
 {
@@ -888,7 +838,7 @@ TEST_CASE ("realtime: 500 blocks of dynamic bands, both keys, the link and exclu
             }
 
             chain.setChain ({ random.unit() < 0.2, 48.0 * random.unit() - 24.0, random.unit() < 0.5 });
-            chain.setLinkExclusions (random.next() % 4u);
+            chain.setBandChannels (static_cast<int> (random.next() % numBands), random.next() % 4u);
             chain.setListen (static_cast<int> (random.next() % 12u) - 3);
         }
 

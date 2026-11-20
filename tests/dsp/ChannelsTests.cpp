@@ -212,7 +212,7 @@ TEST_CASE_TEMPLATE ("a band's channels: block-size invariance with the sets movi
                  c.setBandChannels (0, 8u);
              } },
         { 1500, [] (Chain& c) { c.setBandChannels (1, 1u); c.setBandChannels (2, 6u); } },
-        { 3100, [] (Chain& c) { c.setBandChannels (0, 0u); c.setBandChannels (3, 9u); c.setLinkExclusions (2u); } },
+        { 3100, [] (Chain& c) { c.setBandChannels (0, 0u); c.setBandChannels (3, 9u); c.setBandChannels (2, 2u); } },
         { 5003, [] (Chain& c) { c.setBandChannels (1, 15u); c.setChain ({ false, 0.0, false }); } },
         { 7777, [] (Chain& c) { c.setBandChannels (1, 4u); c.setBandChannels (2, 0u); c.setChain ({ false, 0.0, true }); } },
         { 9000, [] (Chain& c) { c.setBandChannels (3, 0u); c.setBandChannels (0, 5u); } },

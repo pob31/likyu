@@ -27,7 +27,6 @@ namespace likyu::core
     {
         const juce::Identifier versionKey { "version" };
         const juce::Identifier parametersKey { "parameters" };
-        const juce::Identifier linkKey { "link_out" };
         const juce::Identifier bandChannelsKey { "band_out" };
 
         bool isNumber (const juce::var& v)
@@ -67,8 +66,7 @@ namespace likyu::core
         return values;
     }
 
-    juce::String StateChunk::write (const std::vector<double>& values, const LinkList& link,
-                                    const BandChannels& bandChannels) const
+    juce::String StateChunk::write (const std::vector<double>& values, const BandChannels& bandChannels) const
     {
         const auto& table = dsp::parameterTable();
 
@@ -92,9 +90,6 @@ namespace likyu::core
         root->setProperty (versionKey, version);
         root->setProperty (parametersKey, juce::var (parameters.get()));
 
-        if (link.excluded != 0)
-            root->setProperty (linkKey, toVar (link));
-
         if (bandChannels.any())
             root->setProperty (bandChannelsKey, toVar (bandChannels));
 
@@ -106,18 +101,11 @@ namespace likyu::core
 
     bool StateChunk::read (const juce::String& text, std::vector<double>& values)
     {
-        LinkList ignored;
+        BandChannels ignored;
         return read (text, values, ignored);
     }
 
-    bool StateChunk::read (const juce::String& text, std::vector<double>& values, LinkList& link)
-    {
-        BandChannels ignored;
-        return read (text, values, link, ignored);
-    }
-
-    bool StateChunk::read (const juce::String& text, std::vector<double>& values, LinkList& link,
-                           BandChannels& bandChannels)
+    bool StateChunk::read (const juce::String& text, std::vector<double>& values, BandChannels& bandChannels)
     {
         juce::var root;
 
@@ -157,14 +145,8 @@ namespace likyu::core
         }
 
         for (const auto& property : root.getDynamicObject()->getProperties())
-            if (property.name != versionKey && property.name != parametersKey && property.name != linkKey
-                && property.name != bandChannelsKey)
+            if (property.name != versionKey && property.name != parametersKey && property.name != bandChannelsKey)
                 unknownTop.set (property.name, property.value);
-
-        LinkList list;
-
-        if (! fromVar (root.getProperty (linkKey, juce::var()), list))
-            list = {};
 
         BandChannels lists;
 
@@ -172,7 +154,6 @@ namespace likyu::core
             lists = {};
 
         values = std::move (result);
-        link = list;
         bandChannels = lists;
         keptInParameters = std::move (unknownParameters);
         keptTop = std::move (unknownTop);

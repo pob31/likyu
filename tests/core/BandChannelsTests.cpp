@@ -122,48 +122,51 @@ TEST_CASE ("band channels: to and from their JSON form; anything else is refused
     CHECK (read == before);
 }
 
-TEST_CASE ("state: the band channels round trip beside the link list, are not kept as an unknown field, and their fixture reads as it says")
+TEST_CASE ("state: the band channels round trip, are not kept as an unknown field, and their fixture reads as it says; a retired link list is kept as unknown")
 {
     core::StateChunk chunk;
     std::vector<double> values;
-    core::LinkList link;
     core::BandChannels lists;
 
     // The fixture, spelled by hand.
     const auto file = likyutest::stateFixture ("v1-band-out.json");
     REQUIRE (file.existsAsFile());
-    REQUIRE (chunk.read (file.loadFileAsString(), values, link, lists));
+    REQUIRE (chunk.read (file.loadFileAsString(), values, lists));
     CHECK (lists == lfeApart());
-    CHECK (link == core::LinkList {});
     CHECK_FALSE (chunk.keptFields().contains ("band_out"));
 
-    // Written back with a link list too, read again: both, once each.
-    const core::LinkList lfeOut { fivePointOne, 6, lfe };
-    const auto text = chunk.write (values, lfeOut, lists);
+    // Written back, read again: the same lists, once.
+    const auto text = chunk.write (values, lists);
     CHECK (text.indexOf ("band_out") == text.lastIndexOf ("band_out"));
 
     core::StateChunk other;
-    core::LinkList linkAgain;
     core::BandChannels again;
     std::vector<double> otherValues;
-    REQUIRE (other.read (text, otherValues, linkAgain, again));
+    REQUIRE (other.read (text, otherValues, again));
     CHECK (again == lfeApart());
-    CHECK (linkAgain == lfeOut);
     CHECK (otherValues == values);
 
     // Every band on every channel: not written at all, and read back so.
-    const auto plain = chunk.write (values, lfeOut, {});
+    const auto plain = chunk.write (values, {});
     CHECK_FALSE (plain.contains ("band_out"));
-    REQUIRE (other.read (plain, otherValues, linkAgain, again));
+    REQUIRE (other.read (plain, otherValues, again));
     CHECK_FALSE (again.any());
 
-    // The readers that do not ask for them still read the chunk.
-    REQUIRE (other.read (text, otherValues, linkAgain));
+    // The reader that does not ask for them still reads the chunk.
     REQUIRE (other.read (text, otherValues));
     CHECK_FALSE (other.keptFields().contains ("band_out"));
 
     // Lists that cannot be read: every channel, and not kept.
-    REQUIRE (other.read ("{ \"version\": 1, \"parameters\": {}, \"band_out\": \"nonsense\" }", otherValues, linkAgain, again));
+    REQUIRE (other.read ("{ \"version\": 1, \"parameters\": {}, \"band_out\": \"nonsense\" }", otherValues, again));
     CHECK_FALSE (again.any());
     CHECK_FALSE (other.keptFields().contains ("band_out"));
+
+    // The list of channels left out of the link, retired 2026-11-20: a chunk of an earlier build reads,
+    // and its field is kept and written back like any field this build does not know.
+    const auto earlier = "{ \"version\": 1, \"parameters\": { \"b1_on\": 1 }, "
+                         "\"link_out\": { \"layout\": \"L R C Lfe Ls Rs\", \"channels\": 6, \"excluded\": [ 3 ] } }";
+    REQUIRE (other.read (earlier, otherValues, again));
+    CHECK_FALSE (again.any());
+    CHECK (other.keptFields().contains ("link_out"));
+    CHECK (other.write (otherValues).contains ("link_out"));
 }

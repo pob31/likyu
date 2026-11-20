@@ -215,7 +215,7 @@ namespace
             { 2 * period, [] (Chain& c)
               {
                   c.setChain ({ false, 0.0, true });
-                  c.setLinkExclusions (1u);                 // left channel out
+                  c.setBandChannels (4, 1u);                // left channel out of band 5
                   auto s = envBand (BandType::bandPass, 0.0, 400.0, 4000.0, -40.0, 12.0, 1000.0, EnvDirection::up, 0.2, 400.0);
                   c.setBand (4, s);                         // direction, Sensitivity, Span, times
                   c.setLookahead (lookaheadSamples (3, rate));
@@ -223,7 +223,7 @@ namespace
             { 2 * period + 300, [] (Chain& c) { c.setBand (5, trackBand (BandType::notch, 500.0, 0.0, 250.0, 1000.0)); } },  // back to Track mid-fade
             { 3 * period, [] (Chain& c)
               {
-                  c.setLinkExclusions (0u);
+                  c.setBandChannels (4, 0u);
                   c.setChain ({ true, 0.0, true });
               } },
             { 3 * period + 2000, [] (Chain& c) { c.setChain ({ false, 0.0, true }); } },
@@ -315,7 +315,7 @@ TEST_CASE ("realtime: 500 blocks of Env and Track bands, both keys, their values
             }
 
             chain.setChain ({ random.unit() < 0.2, 48.0 * random.unit() - 24.0, random.unit() < 0.5 });
-            chain.setLinkExclusions (random.next() % 4u);
+            chain.setBandChannels (static_cast<int> (random.next() % numBands), random.next() % 4u);
         }
 
         const auto gain = block % 7 < 3 ? 1.0 : 1.0e-4;

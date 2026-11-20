@@ -20,27 +20,24 @@
     THE STATE CHUNK, `version` 1 (PRD, Parameters and state).
 
         { "version": 1, "parameters": { "bypass": 0, "out_gain": 0.0, "b1_on": 1, "b1_freq": 30.0, ... },
-          "link_out": { "layout": "L R C Lfe Ls Rs", "channels": 6, "excluded": [ 3 ] },
           "band_out": { "layout": "L R C Lfe Ls Rs", "channels": 6, "bands": [ [ 3 ], [], [], [], [], [], [], [] ] } }
 
     - Values in the table's real units (dsp/Parameters.h), keyed by
       parameter ID, never by position. A choice is its index, a toggle 0 or 1.
-    - "link_out", the channels left out of the link and the layout the list
-      was made for (core/LinkList.h; Phase 3, decided by the author
-      2026-11-20). Written only when a channel is left out; a chunk without
-      it has every channel in. Added within version 1: nothing is shipped
-      before the freeze.
     - "band_out", the channels each band leaves out and the layout the lists
       were made for (core/BandChannels.h; decided by the author 2026-11-20).
       Written only when some band leaves a channel out; a chunk without it
-      has every band on every channel. Added within version 1, like
-      "link_out", and like it never kept as an unknown field.
+      has every band on every channel. Added within version 1: nothing is
+      shipped before the freeze.
+    - "link_out", the channels left out of the link, was written by the
+      builds of Phases 3 to 6 and is retired (decided by the author
+      2026-11-20): a chunk that has it keeps it as an unknown field.
     - JSON written and read by juce::JSON, whose number text does not follow
       the C locale (tests run under C and fr_FR).
     - UNKNOWN FIELDS ARE KEPT and written back: at the top level, and inside
-      "parameters". "link_out" is not unknown, and is never kept: a kept copy
-      would be written over the list of the moment. That is also how a chunk from a build with MORE bands
-      keeps its surplus bands (b9_...) untouched here.
+      "parameters". "band_out" is not unknown, and is never kept: a kept copy
+      would be written over the lists of the moment. That is also how a chunk
+      from a build with MORE bands keeps its surplus bands (b9_...) untouched here.
     - An ID the chunk does not name takes its default: a chunk from a build
       with FEWER bands loads with the remaining bands off.
     - Anything that is not a version 1 chunk is refused, and the instance
@@ -56,7 +53,6 @@
 */
 
 #include "BandChannels.h"
-#include "LinkList.h"
 
 #include <juce_core/juce_core.h>
 
@@ -72,25 +68,19 @@ namespace likyu::core
     public:
         static constexpr int version = 1;
 
-        /** `values` in table order, numParams of them, and the link list,
-            with the fields kept from the last chunk read. */
-        juce::String write (const std::vector<double>& values, const LinkList& link = {},
-                            const BandChannels& bandChannels = {}) const;
+        /** `values` in table order, numParams of them, and the channels each
+            band leaves out, with the fields kept from the last chunk read. */
+        juce::String write (const std::vector<double>& values, const BandChannels& bandChannels = {}) const;
 
         /** Fills `values` (resized to the table) from a version 1 chunk:
             IDs it names, clamped to their ranges; the others, their
-            defaults. `link` is the chunk's list, or every channel in when it
-            has none or one that cannot be read. Keeps its unknown fields.
-            False, and nothing changed, when the text is not a version 1
-            chunk. */
-        bool read (const juce::String& text, std::vector<double>& values, LinkList& link);
+            defaults. `bandChannels` is the chunk's lists, or every band on
+            every channel when it has none or some that cannot be read. Keeps
+            its unknown fields. False, and nothing changed, when the text is
+            not a version 1 chunk. */
+        bool read (const juce::String& text, std::vector<double>& values, BandChannels& bandChannels);
 
-        /** The same, with the channels each band leaves out: the chunk's
-            lists, or every band on every channel when it has none or some
-            that cannot be read. */
-        bool read (const juce::String& text, std::vector<double>& values, LinkList& link, BandChannels& bandChannels);
-
-        /** The same, the link list not wanted. */
+        /** The same, the lists not wanted. */
         bool read (const juce::String& text, std::vector<double>& values);
 
         /** The fields kept from the last chunk read: top level, and inside "parameters". */

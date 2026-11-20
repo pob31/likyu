@@ -121,7 +121,7 @@
     audio thread after process(); likyu::core publishes them
     (core/MeterSnapshot.h).
 
-    THREADS. setBand(), setChain(), setLinkExclusions(), setBandChannels(), setListen(),
+    THREADS. setBand(), setChain(), setBandChannels(), setListen(),
     setLookahead(), setTransientTimes() are called on the audio thread, before process(), with values read from the
     host's atomics once per block (likyu::core does that); they take effect
     at the next grid point. prepare() allocates and belongs to the message
@@ -205,11 +205,6 @@ namespace likyu::dsp
 
         /** Takes effect at the next grid point. */
         void setChain (const ChainSettings& settings) noexcept;
-
-        /** The channels left out of the link, bit c for channel c (PRD,
-            Detection; the list itself is the state chunk's). Takes effect at
-            the next grid point; bits beyond the channels prepared are ignored. */
-        void setLinkExclusions (std::uint64_t channelsLeftOut) noexcept;
 
         /** The channels `band` (from 0) does not apply to, bit c for channel
             c; 0, the default, is every channel (PRD, Band model, Channels).
@@ -512,8 +507,6 @@ namespace likyu::dsp
         bool snapPending = true;
 
         bool linked = true;
-        std::uint64_t excluded = 0, pendingExcluded = 0;
-        bool exclusionsPending = false;
         std::array<std::uint64_t, numBands> bandLeftOut {}, pendingBandLeftOut {};
         bool bandChannelsPending = false;
         int sidechainNow = 0, sidechainChannels = 0;
