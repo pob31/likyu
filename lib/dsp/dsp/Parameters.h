@@ -41,6 +41,10 @@ namespace likyu::dsp
 {
     inline constexpr int numBands = 8;
 
+    /** The range of every frequency parameter (PRD: 20 Hz to 20 kHz). */
+    inline constexpr double minFrequency = 20.0;
+    inline constexpr double maxFrequency = 20000.0;
+
     enum class ParamKind { toggle, choice, continuous };
 
     /** How a continuous parameter is laid along a host's 0 to 1. */

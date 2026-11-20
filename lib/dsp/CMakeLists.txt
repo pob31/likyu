@@ -15,13 +15,16 @@
 # likyu::dsp — the DSP library (PRD, Architecture). The C++ standard library only: no JUCE
 # header, no allocation after prepare. Includes as <dsp/...>.
 #
-# Phase 0 holds what a host can already measure: the parameter table and the lookahead
-# delay. The filters, detectors and the chain arrive from Phase 2.
+# Phase 0 brought the parameter table and the lookahead delay; Phase 2 the filters, the
+# bands and the chain. Detectors arrive in Phase 3.
 
 add_library(likyu_dsp STATIC
     dsp/Parameters.h
     dsp/Parameters.cpp
     dsp/Lookahead.h
+    dsp/Math.h
+    dsp/Svf.h
+    dsp/Tan.h
     dsp/rt/RtCheck.h)
 add_library(likyu::dsp ALIAS likyu_dsp)
 

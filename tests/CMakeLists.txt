@@ -30,6 +30,8 @@ add_executable(likyu_dsp_tests
     dsp/DspTestMain.cpp
     dsp/ParameterTableTests.cpp
     dsp/LookaheadTests.cpp
+    dsp/SvfTests.cpp
+    dsp/TanTests.cpp
     support/RtAllocCounter.cpp)
 
 # doctest from its own submodule, SYSTEM so its warnings stay off our -Werror.

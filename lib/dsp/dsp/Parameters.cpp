@@ -50,9 +50,6 @@ namespace likyu::dsp
                      ParamSkew::logarithmic, true, {} };
         }
 
-        constexpr double minFrequency = 20.0;
-        constexpr double maxFrequency = 20000.0;
-
         /*  "Spread per band" (PRD): where each band's Frequency rests by
             default. Marked tune: they may move until the first public beta. */
         constexpr double defaultFrequency[numBands] = { 30.0, 80.0, 200.0, 500.0, 1200.0, 3000.0, 7000.0, 14000.0 };
