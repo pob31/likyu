@@ -614,7 +614,9 @@ except Listen and the link list.
 - **6c. Detector and keys.** The ghost node for an Own detector; the key badge and its warnings
   (sidechain absent; in Go.dot before Phase 9, sidechain silent by design).
 - **6d. Strip.** Only the current modes' controls; Listen, with the guard in the form decided; the
-  link list beside Link.
+  link list beside Link. *2026-11-20, by the author on seeing the first curve:* not one strip but
+  a column per band (On, Type, Frequency, Gain, Q) and a foot panel for the selected band's
+  modes and key, as WFS-DIY's output EQ (PRD, Editor).
 - **6e. Touch.** Several nodes at once, pinch for Q, hit areas that do not overlap at the default
   size, where Phase 1 found that touches arrive. The mouse path complete without it.
 - **6f. Analyser**, off by default, from a lock-free tap, last.

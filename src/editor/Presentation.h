@@ -435,7 +435,98 @@ namespace likyu::editor::presentation
         return sections;
     }
 
-    /** The per-instance row beside the strip: all four, always. */
+    //==========================================================================
+    /*  THE COLUMNS AND THE FOOT (decided by the author 2026-11-20, on seeing
+        the first curve: the layout of WFS-DIY's output EQ). Under the curve,
+        one column per band with its main controls, always there; under the
+        columns, one foot panel shared by the bands, showing the selected
+        band's gain mode, frequency mode and key with their controls. Together
+        they show what stripOf lists, and Frequency always. */
+
+    /** A band's column: On, Type, Frequency, Q and Gain. */
+    struct Column
+    {
+        bool on = false;
+        bool showsGain = true;          // bells and shelves
+        bool frequencyInUse = true;     // not in Env, which does not use it: drawn dimmed
+    };
+
+    inline Column columnOf (const dsp::BandSettings& s) noexcept
+    {
+        return { s.on, dsp::hasGain (s.type), s.fmode != dsp::FrequencyMode::env };
+    }
+
+    inline bool inColumn (BandParam p) noexcept
+    {
+        return p == BandParam::on || p == BandParam::type || p == BandParam::freq
+            || p == BandParam::q || p == BandParam::gain;
+    }
+
+    /** The foot panel for a band: the strip's sections without the column's
+        controls. The Q mode, a bell's, stays in a "Band" section of its own. */
+    inline std::vector<StripSection> footOf (const dsp::BandSettings& s)
+    {
+        auto sections = stripOf (s);
+
+        for (auto& section : sections)
+            section.params.erase (std::remove_if (section.params.begin(), section.params.end(), inColumn),
+                                  section.params.end());
+
+        sections.erase (std::remove_if (sections.begin(), sections.end(),
+                                        [] (const StripSection& section) { return section.params.empty(); }),
+                        sections.end());
+        return sections;
+    }
+
+    /** A control's name, short enough for a dial. */
+    inline std::string labelOf (BandParam p)
+    {
+        using P = BandParam;
+
+        switch (p)
+        {
+            case P::on:      return "On";
+            case P::type:    return "Type";
+            case P::freq:    return "Freq";
+            case P::q:       return "Q";
+            case P::gain:    return "Gain";
+            case P::qmode:   return "Q mode";
+            case P::gmode:   return "Gain mode";
+            case P::fmode:   return "Freq mode";
+            case P::key:     return "Key";
+            case P::dfilt:   return "Detector";
+            case P::dtype:   return "Det. type";
+            case P::dfreq:   return "Det. freq";
+            case P::dq:      return "Det. Q";
+            case P::range:   return "Range";
+            case P::thresh:  return "Threshold";
+            case P::ratio:   return "Ratio";
+            case P::knee:    return "Knee";
+            case P::atk:     return "Attack";
+            case P::rel:     return "Release";
+            case P::ddir:    return "Acts";
+            case P::tatk:    return "Attack";
+            case P::tsus:    return "Sustain";
+            case P::ttime:   return "Time";
+            case P::tfloor:  return "Floor";
+            case P::flo:     return "Low";
+            case P::fhi:     return "High";
+            case P::fspeed:  return "Speed";
+            case P::fdir:    return "Direction";
+            case P::fsens:   return "Sensitivity";
+            case P::fspan:   return "Span";
+            case P::fatk:    return "Attack";
+            case P::frel:    return "Release";
+            case P::fconf:   return "Confidence";
+            case P::fhold:   return "Hold";
+            case P::fcgain:  return "Scales gain";
+            case P::count:   break;
+        }
+
+        return {};
+    }
+
+    /** The per-instance row above the curve: all four, always. */
     inline std::vector<dsp::GlobalParam> globalRow()
     {
         return { dsp::GlobalParam::bypass, dsp::GlobalParam::outGain, dsp::GlobalParam::lookahead, dsp::GlobalParam::link };

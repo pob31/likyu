@@ -335,12 +335,13 @@ Everything in this plugin runs on the audio thread, so the lipogram is the produ
 
 ## Editor
 
-One resizable window: the response curve on top, one strip for the selected band below. A plain `juce::Component` root, as in the OSCQuery plugin, so each shim can host it.
+One resizable window: the response curve on top, one strip for the selected band below. A plain `juce::Component` root, as in the OSCQuery plugin, so each shim can host it. *Amended 2026-11-20 by the author, on seeing the first curve:* under the curve, a column per band and a foot panel, the layout of WFS-DIY's output EQ (Band columns and foot, below); the instance's four parameters in a row above the curve.
 
 - **Curve.** The static response as a line, and the live response (static plus current offsets and current frequencies) as a second line moving over it. One node per band. Dragging the node's centre moves frequency and gain together; the node carries a crosshair whose horizontal arm drags frequency only and whose vertical arm drags gain only, so one can be moved without disturbing the other. Mouse wheel over a node sets Q.
 - **What a node shows of its modes.** Dynamic and Transient: a vertical bracket from the static gain to static gain + Range, with the current offset as a moving mark. Env and Track: a horizontal bracket from Low to High, the node sliding inside it, dimmed while confidence is below threshold.
 - **Detector.** With an Own detector filter, a ghost node at the detector's frequency, draggable. A key badge per node: Self or Sidechain, and a warning when Sidechain is chosen but not connected.
-- **Band strip.** Only the controls of the selected band's current gain mode and frequency mode are shown; the others keep their values.
+- **Band strip.** Only the controls of the selected band's current gain mode and frequency mode are shown; the others keep their values. *Replaced 2026-11-20 by the author* by the next item; the rule stands for the foot panel.
+- **Band columns and foot** (*decided 2026-11-20 by the author*). Eight columns side by side under the curve, one per band and always there, each in its band's colour: On, Type, Frequency, Gain and Q. A type without a gain shows no Gain; an off band's controls are faint and still usable. Under the columns, one foot panel shared by the bands shows the selected band's Q mode, gain mode, frequency mode and key, each with the controls of its current choice and no others. A press on a node or in a column selects the band. Dials, bars and toggles look and handle as WFS-DIY's; a value can be typed with its unit.
 - **Listen** as a momentary button on the strip.
 - **Analyser** (optional, off by default): spectrum of the input and of the sidechain, computed off the audio thread from a lock-free tap. It is a display aid and never feeds the DSP.
 - Touch and the Go.dot control surfaces are served by the host parameters; the editor adds nothing a parameter cannot do, except Listen and the list of channels left out of the link.

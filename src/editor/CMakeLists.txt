@@ -32,6 +32,10 @@ target_sources(likyu_editor INTERFACE
     "${CMAKE_CURRENT_SOURCE_DIR}/EditorRoot.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/EditorRoot.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/Palette.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Panels.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Panels.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/ParamControls.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/ParamControls.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/Presentation.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/QGestures.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/ResponseCurve.h")

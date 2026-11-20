@@ -42,6 +42,12 @@ namespace likyu::editor::palette
     inline const juce::Colour staticFill    { 0xff33668c };   // WFS-DIY's accentBlue
     inline const juce::Colour liveLine      { 0xffffb74d };   // the one colour that is not theirs: the live response
     inline const juce::Colour warning       { 0xffe67e22 };
+    inline const juce::Colour accent        { 0xff3498db };   // the instance's own controls
+    inline const juce::Colour selectedColumn { 0xff2a2a2a };
+    inline const juce::Colour foot          { 0xff252525 };   // WFS-DIY's backgroundAlt
+    inline const juce::Colour controlTrack  { 0xff000000 };   // WFS-DIY's sliderTrackBg
+    inline const juce::Colour controlBackground { 0xff2a2a2a };
+    inline const juce::Colour controlBorder { 0xff606060 };   // WFS-DIY's buttonBorder
 
     /** One colour per band, in WFS-DIY's order. */
     inline juce::Colour band (int index) noexcept

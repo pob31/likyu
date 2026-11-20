@@ -25,10 +25,6 @@
     MULTITOUCH (Phase 1, finding 5): JUCE 9 leaves it off on Windows unless
     the editor asks. With it on, every finger reaches the editor and the
     system's pinch gesture no longer does; the curve computes its own.
-
-    TEMPORARY until the strip of devplan 6d: JUCE's generic editor below the
-    curve, the stand-in since Phase 2, so that every parameter stays in
-    reach while the editor is built.
 */
 
 #include "PluginProcessor.h"
@@ -45,7 +41,6 @@ namespace likyu
     {
     public:
         explicit EditorWindow (LikyuProcessor&);
-        ~EditorWindow() override;
 
         bool usesWindowsMultiTouch() const override     { return true; }
 
@@ -55,7 +50,6 @@ namespace likyu
         editor::EditorRoot& editorRoot() noexcept       { return *root; }
 
     private:
-        std::unique_ptr<juce::GenericAudioProcessorEditor> standIn;     // TEMPORARY, until 6d
         std::unique_ptr<editor::EditorRoot> root;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (EditorWindow)

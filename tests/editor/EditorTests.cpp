@@ -37,6 +37,7 @@
 #include <editor/Palette.h>
 #include <editor/QGestures.h>
 
+#include <algorithm>
 #include <cmath>
 #include <map>
 #include <memory>
@@ -262,11 +263,11 @@ TEST_CASE ("editor: the picture, with a band of each kind")
     REQUIRE (image.isValid());
 
     // Each band's colour is somewhere in the curve's part of the picture, and so is the live line's.
-    const auto curveHeight = opened.curve().getHeight();
+    const auto curveArea = opened.curve().getBounds();
 
-    const auto has = [&image, curveHeight] (juce::Colour colour)
+    const auto has = [&image, curveArea] (juce::Colour colour)
     {
-        for (int y = 0; y < curveHeight; ++y)
+        for (int y = curveArea.getY(); y < curveArea.getBottom(); ++y)
             for (int x = 0; x < image.getWidth(); ++x)
                 if (image.getPixelAt (x, y) == colour)
                     return true;
@@ -495,4 +496,78 @@ TEST_CASE ("editor: the wheel sets Q, a double click puts a gain back at 0 dB")
     CHECK (get (processor, band, P::gain) == 0.0);
     CHECK (get (processor, band, P::freq) == doctest::Approx (3000.0));
     CHECK (gestures.open == 0);
+}
+
+TEST_CASE ("editor: a column per band, and a foot that follows the selected band and its modes")
+{
+    Opened opened;
+    auto& processor = opened.processor;
+    auto& root = opened.window->editorRoot();
+
+    const auto footShows = [&root] (int band, P param)
+    {
+        const auto shown = root.footPanel().parameters();
+        return std::find (shown.begin(), shown.end(), dsp::indexOf (band, param)) != shown.end();
+    };
+
+    // A new instance: band 1 selected, a static bell. Its foot holds the mode choices and no more.
+    CHECK (opened.curve().selectedBand() == 0);
+    CHECK (footShows (0, P::gmode));
+    CHECK (footShows (0, P::fmode));
+    CHECK (footShows (0, P::qmode));
+    CHECK_FALSE (footShows (0, P::thresh));
+    CHECK_FALSE (footShows (0, P::key));
+
+    // Eight columns, side by side under the curve, the foot under them.
+    for (int band = 0; band < dsp::numBands; ++band)
+    {
+        const auto bounds = root.bandColumn (band).getBounds();
+        CHECK (bounds.getWidth() == editor::EditorRoot::defaultWidth / dsp::numBands);
+        CHECK (bounds.getX() == band * bounds.getWidth());
+        CHECK (bounds.getY() == opened.curve().getBottom());
+        CHECK (bounds.getBottom() == root.footPanel().getY());
+    }
+
+    // A press in a column selects its band: the curve and the foot follow.
+    auto& column = root.bandColumn (4);
+    column.mouseDown (eventAt (column, { 20.0f, 10.0f }, { 20.0f, 10.0f }));
+    CHECK (opened.curve().selectedBand() == 4);
+    CHECK (footShows (4, P::gmode));
+    CHECK_FALSE (footShows (0, P::gmode));
+
+    // The band's mode changes, from anywhere: the foot shows that mode's controls at the next tick.
+    set (processor, 4, P::gmode, static_cast<double> (dsp::GainMode::dynamic));
+    opened.refresh();
+    for (const auto p : { P::range, P::thresh, P::ratio, P::knee, P::atk, P::rel, P::ddir, P::key, P::dfilt })
+        CHECK (footShows (4, p));
+    CHECK_FALSE (footShows (4, P::tatk));
+    CHECK_FALSE (footShows (4, P::dfreq));
+
+    set (processor, 4, P::dfilt, static_cast<double> (dsp::DetectorFilter::own));
+    set (processor, 4, P::fmode, static_cast<double> (dsp::FrequencyMode::track));
+    opened.refresh();
+    for (const auto p : { P::dtype, P::dfreq, P::dq, P::flo, P::fhi, P::fspeed, P::fconf, P::fhold, P::fcgain })
+        CHECK (footShows (4, p));
+
+    // Every control the foot shows is inside it, at the default size and at the smallest.
+    for (const auto width : { editor::EditorRoot::defaultWidth, editor::EditorRoot::minimumWidth })
+    {
+        opened.window->setSize (width, editor::EditorRoot::minimumHeight);
+        opened.refresh();
+
+        for (auto* child : root.footPanel().getChildren())
+        {
+            INFO ("window width " << width);
+            CHECK (root.footPanel().getLocalBounds().contains (child->getBounds()));
+        }
+    }
+
+    // A press on the curve selects too.
+    opened.window->setSize (editor::EditorRoot::defaultWidth, editor::EditorRoot::defaultHeight);
+    opened.refresh();
+    const auto node = opened.nodeOf (1);
+    opened.curve().mouseDown (eventAt (opened.curve(), node, node));
+    opened.curve().mouseUp (eventAt (opened.curve(), node, node));
+    CHECK (footShows (1, P::gmode));
+    CHECK_FALSE (footShows (4, P::gmode));
 }

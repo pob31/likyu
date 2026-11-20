@@ -70,6 +70,12 @@ namespace likyu::editor
         int selectedBand() const noexcept       { return selected; }
         void selectBand (int band);
 
+        /** A band as the last refresh read it. */
+        const dsp::BandSettings& settingsOf (int band) const noexcept
+        {
+            return settings[static_cast<std::size_t> (band)];
+        }
+
         /** Called when a press selects another band. */
         std::function<void (int band)> onSelect;
 

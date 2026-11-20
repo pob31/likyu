@@ -104,11 +104,11 @@ namespace likyu
         const juce::String getProgramName (int) override            { return {}; }
         void changeProgramName (int, const juce::String&) override  {}
 
-        /*  The editor (EditorWindow.h, around editor/EditorRoot.h). Until its
-            strip exists (devplan 6d) it still carries JUCE's generic editor
-            below the curve, the stand-in since Phase 2: Live lists no
-            parameter of a plugin until something moves it from the plugin's
-            side (Phase 1, finding 6). */
+        /*  The editor (EditorWindow.h, around editor/EditorRoot.h). JUCE's
+            generic editor, the stand-in since Phase 2, is gone with it. The
+            temporary parameters below (Listen, the transient constants) are
+            not in the editor yet: until they are, a host's own parameter view
+            is the way to them. */
         bool hasEditor() const override                             { return true; }
         juce::AudioProcessorEditor* createEditor() override;
 

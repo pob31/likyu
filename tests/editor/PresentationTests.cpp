@@ -550,3 +550,53 @@ TEST_CASE ("presentation: every parameter is reachable, and none is shown twice"
         global.insert (static_cast<int> (p));
     CHECK (global.size() == static_cast<std::size_t> (dsp::numGlobalParams));
 }
+
+TEST_CASE ("presentation: the columns and the foot together are the strip, with Frequency always in its column")
+{
+    for (int type = 0; type < dsp::numBandTypes; ++type)
+        for (int gmode = 0; gmode < dsp::numGainModes; ++gmode)
+            for (int fmode = 0; fmode < dsp::numFrequencyModes; ++fmode)
+                for (int dfilt = 0; dfilt < dsp::numDetectorFilters; ++dfilt)
+                {
+                    dsp::BandSettings s;
+                    s.type = static_cast<dsp::BandType> (type);
+                    s.gmode = static_cast<dsp::GainMode> (gmode);
+                    s.fmode = static_cast<dsp::FrequencyMode> (fmode);
+                    s.dfilt = static_cast<dsp::DetectorFilter> (dfilt);
+
+                    const auto strip = stripOf (s);
+                    const auto foot = footOf (s);
+                    const auto column = columnOf (s);
+
+                    for (const auto& section : foot)
+                        CHECK_FALSE (section.params.empty());
+
+                    for (int i = 0; i < dsp::numBandParams; ++i)
+                    {
+                        const auto p = static_cast<BandParam> (i);
+                        INFO ("type " << type << ", gain mode " << gmode << ", frequency mode " << fmode
+                              << ", detector " << dfilt << ", parameter " << i);
+
+                        // A parameter is in a column or in the foot, never in both.
+                        const auto shownInColumn = inColumn (p) && (p != BandParam::gain || column.showsGain);
+                        CHECK (timesShown (foot, p) == (inColumn (p) ? 0 : timesShown (strip, p)));
+
+                        // What the strip shows, the two show; and Frequency besides, dimmed in Env.
+                        if (shows (strip, p))
+                            CHECK ((shownInColumn || shows (foot, p)));
+
+                        CHECK_FALSE (labelOf (p).empty());
+                    }
+
+                    CHECK (column.showsGain == dsp::hasGain (s.type));
+                    CHECK (column.frequencyInUse == (s.fmode != dsp::FrequencyMode::env));
+                }
+
+    // A static bell's foot: its Q mode, and the two mode choices to leave Static and Fixed by.
+    dsp::BandSettings s;
+    const auto foot = footOf (s);
+    CHECK (shows (foot, BandParam::qmode));
+    CHECK (shows (foot, BandParam::gmode));
+    CHECK (shows (foot, BandParam::fmode));
+    CHECK_FALSE (shows (foot, BandParam::key));
+}

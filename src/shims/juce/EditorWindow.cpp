@@ -37,22 +37,14 @@ namespace likyu
 
     EditorWindow::EditorWindow (LikyuProcessor& processor)
         : juce::AudioProcessorEditor (processor),
-          standIn (std::make_unique<juce::GenericAudioProcessorEditor> (processor)),
           root (std::make_unique<editor::EditorRoot> (hostFor (processor)))
     {
-        root->setStandIn (standIn.get());
         addAndMakeVisible (*root);
 
         setResizable (true, true);
         setResizeLimits (editor::EditorRoot::minimumWidth, editor::EditorRoot::minimumHeight,
                          editor::EditorRoot::maximumWidth, editor::EditorRoot::maximumHeight);
         setSize (editor::EditorRoot::defaultWidth, editor::EditorRoot::defaultHeight);
-    }
-
-    EditorWindow::~EditorWindow()
-    {
-        // The root holds the stand-in as a child: it lets go before either is destroyed.
-        root->setStandIn (nullptr);
     }
 
     void EditorWindow::resized()
