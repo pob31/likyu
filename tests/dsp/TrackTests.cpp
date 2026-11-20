@@ -270,7 +270,7 @@ TEST_CASE ("track: a band at rest is the Fixed band it would be, bit for bit, st
         tracking.gmode = gmode;
         tracking.thresholdDb = -30.0;
 
-        const auto run = [&input, rate] (const BandSettings& s)
+        const auto run = [&input] (const BandSettings& s)
         {
             return render (rate, std::vector<std::vector<double>> { input },
                            { { 0, [s] (Chain& c) { c.setBand (0, s); } } }, fixedBlocks (64));
@@ -296,7 +296,7 @@ TEST_CASE ("track: confidence scales a boost, so it does not fizz on noise, and 
         return sum;
     };
 
-    const auto run = [&input, rate] (BandSettings s)
+    const auto run = [&input] (BandSettings s)
     {
         return render (rate, std::vector<std::vector<double>> { input },
                        { { 0, [s] (Chain& c) { c.setBand (0, s); } } }, fixedBlocks (64))[0];

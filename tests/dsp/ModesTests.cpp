@@ -583,7 +583,7 @@ TEST_CASE ("follow on a moving band: a Dynamic cut on a Track band keeps its det
     const auto length = static_cast<int> (2.0 * rate);
     const auto key = glide (length, 3000.0, 6000.0, 0.5);
 
-    const auto offsetAtEnd = [&key, length] (FrequencyMode fmode)
+    const auto offsetAtEnd = [&key] (FrequencyMode fmode)
     {
         auto s = band (true, BandType::bell, 3000.0, 2.0, 0.0);
         s.fmode = fmode;
