@@ -66,8 +66,8 @@ namespace likyu::editor::geometry
 
     /** The curve's size in a window of the default size, and the room the
         axis labels take around the plot. */
-    inline constexpr double defaultCurveWidth = 1100.0;
-    inline constexpr double defaultCurveHeight = 380.0;
+    inline constexpr double defaultCurveWidth = 1400.0;
+    inline constexpr double defaultCurveHeight = 340.0;
     inline constexpr double marginLeft = 44.0, marginTop = 12.0, marginRight = 16.0, marginBottom = 28.0;
 
     /** The plot inside a curve component of this size. */

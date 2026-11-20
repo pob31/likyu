@@ -127,10 +127,11 @@ TEST_CASE ("geometry: what a press lands on")
     CHECK (hitTest (places, -1, 400.0 + sizes.hit - 0.5, 180.0, sizes).part == Part::node);
 
     // The horizontal arm is frequency only, the vertical arm gain only (PRD).
+    // Half a pixel inside each edge: the sizes are not whole numbers at every plot height.
     CHECK (hitTest (places, -1, 400.0 + sizes.hit + 4.0, 180.0, sizes).part == Part::frequencyArm);
-    CHECK (hitTest (places, -1, 400.0 - sizes.armReach, 180.0 + sizes.armTolerance, sizes).part == Part::frequencyArm);
+    CHECK (hitTest (places, -1, 400.0 - sizes.armReach + 0.5, 180.0 + sizes.armTolerance - 0.5, sizes).part == Part::frequencyArm);
     CHECK (hitTest (places, -1, 400.0, 180.0 - sizes.hit - 4.0, sizes).part == Part::gainArm);
-    CHECK (hitTest (places, -1, 400.0 + sizes.armTolerance, 180.0 + sizes.armReach, sizes).part == Part::gainArm);
+    CHECK (hitTest (places, -1, 400.0 + sizes.armTolerance - 0.5, 180.0 + sizes.armReach - 0.5, sizes).part == Part::gainArm);
 
     // Past an arm's end, or off its line: nothing.
     CHECK (hitTest (places, -1, 400.0 + sizes.armReach + 1.0, 180.0, sizes).part == Part::none);

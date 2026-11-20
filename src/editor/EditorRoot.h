@@ -50,8 +50,9 @@ namespace likyu::editor
         /** The window's sizes, for whoever hosts the root. At the default
             size the curve has the size the geometry's tests hold its hit
             areas at (CurveGeometry.h). */
-        static constexpr int defaultWidth = 1100;
-        static constexpr int defaultHeight = GlobalRow::height + 380 + BandColumn::height + FootPanel::height;
+        static constexpr int defaultWidth = static_cast<int> (geometry::defaultCurveWidth);
+        static constexpr int defaultHeight = GlobalRow::height + static_cast<int> (geometry::defaultCurveHeight)
+                                             + BandColumn::height + FootPanel::height;
         static constexpr int minimumWidth = 880, minimumHeight = 660;
         static constexpr int maximumWidth = 2400, maximumHeight = 1600;
 
