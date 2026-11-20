@@ -728,3 +728,175 @@ TEST_CASE ("sub-block: how far g interpolated over 16 samples bends a glide, mea
         CHECK (topOctave < 5.0);
     }
 }
+
+//==============================================================================
+namespace
+{
+    /*  THE SWITCHES OF PHASE 5, on the same 500 Hz sine: a bell at +6 dB,
+        Q 2, whose frequency mode, direction, key, link or range changes at
+        `switchAt`. An Env band reads the sine through its own band-pass at
+        500 Hz (-6 dB, over the span: at High for Up, Low for Down); a Track
+        band locks on it. The hard control: a static bell switched between
+        the two frequencies the band sits at before and after. */
+    BandSettings fixedBell()
+    {
+        return band (true, BandType::bell, 700.0, 2.0, 6.0);
+    }
+
+    BandSettings envBell (EnvDirection direction = EnvDirection::up, double highHz = 1200.0)
+    {
+        return envBand (BandType::bell, 6.0, 300.0, highHz, -50.0, 30.0, 500.0, direction);
+    }
+
+    BandSettings trackBell (KeySource key = KeySource::self)
+    {
+        auto s = trackBand (BandType::bell, 700.0, 6.0, 300.0, 1200.0, 20.0);
+        s.q = 2.0;
+        s.key = key;
+        return s;
+    }
+
+    struct FrequencySwitch
+    {
+        std::string name;
+        std::vector<double> amplitudes { sineLevel };
+        bool sidechain = false;
+        std::function<void (Chain&)> before, after;
+    };
+
+    struct FrequencyClick
+    {
+        Click soft, hard;
+        double hzBefore = 0.0, hzAfter = 0.0;
+    };
+
+    FrequencyClick switchedFrequency (const FrequencySwitch& f)
+    {
+        const auto length = switchAt + 12000;
+        const auto channels = static_cast<int> (f.amplitudes.size());
+        std::vector<std::vector<double>> audio (f.amplitudes.size(), std::vector<double> (static_cast<std::size_t> (length)));
+
+        for (std::size_t c = 0; c < audio.size(); ++c)
+            for (int n = 0; n < length; ++n)
+                audio[c][static_cast<std::size_t> (n)] = f.amplitudes[c] * std::sin (2.0 * pi * sineHz * n / rate);
+
+        const std::vector<double> silence (static_cast<std::size_t> (length), 0.0);
+
+        Chain chain;
+        chain.prepare (rate, channels);
+        f.before (chain);
+
+        std::vector<double*> pointers (audio.size());
+        FrequencyClick result;
+        const auto measured = channels - 1;
+
+        for (int n = 0; n < length; n += 64)
+        {
+            if (n == switchAt)
+            {
+                result.hzBefore = chain.frequencyHz (0, measured);
+                f.after (chain);
+            }
+
+            for (std::size_t c = 0; c < audio.size(); ++c)
+                pointers[c] = audio[c].data() + n;
+
+            const double* side[] = { silence.data() + n };
+            Key<double> key;
+            key.self = pointers.data();
+            key.selfChannels = channels;
+
+            if (f.sidechain)
+            {
+                key.sidechain = side;
+                key.sidechainChannels = 1;
+            }
+
+            chain.process (pointers.data(), channels, key, std::min (64, length - n));
+        }
+
+        result.hzAfter = chain.frequencyHz (0, measured);
+        result.soft = measure (audio[static_cast<std::size_t> (measured)]);
+
+        const auto at = [] (double hz) { return band (true, BandType::bell, hz, 2.0, 6.0); };
+        result.hard = switchedHard (at (result.hzBefore), at (result.hzAfter));
+        return result;
+    }
+
+    std::vector<FrequencySwitch> frequencySwitches()
+    {
+        const std::vector<double> loudLeft { 2.0, sineLevel };
+        const auto withRange = [] (double lowHz, double highHz) { auto s = envBell(); s.lowHz = lowHz; s.highHz = highHz; return s; };
+        const auto withSpan = [] (double sensitivityDb, double spanDb)
+        {
+            auto s = envBell();
+            s.sensitivityDb = sensitivityDb;
+            s.spanDb = spanDb;
+            return s;
+        };
+
+        return {
+            { "frequency mode, Fixed to Env", { sineLevel }, false,
+              [] (Chain& c) { c.setBand (0, fixedBell()); }, [] (Chain& c) { c.setBand (0, envBell()); } },
+            { "frequency mode, Env to Track", { sineLevel }, false,
+              [] (Chain& c) { c.setBand (0, envBell()); }, [] (Chain& c) { c.setBand (0, trackBell()); } },
+            { "frequency mode, Track to Fixed", { sineLevel }, false,
+              [] (Chain& c) { c.setBand (0, trackBell()); }, [] (Chain& c) { c.setBand (0, fixedBell()); } },
+            { "Env direction, Up to Down", { sineLevel }, false,
+              [] (Chain& c) { c.setBand (0, envBell()); }, [] (Chain& c) { c.setBand (0, envBell (EnvDirection::down)); } },
+            { "Track key, Self to a silent sidechain", { sineLevel }, true,
+              [] (Chain& c) { c.setBand (0, trackBell()); }, [] (Chain& c) { c.setBand (0, trackBell (KeySource::sidechain)); } },
+            { "Track link, Linked to Unlinked", loudLeft, false,
+              [] (Chain& c) { c.setBand (0, trackBell()); c.setBand (1, trackBand (BandType::bell, 300.0, 0.0, 200.0, 400.0)); },
+              [] (Chain& c) { c.setChain ({ false, 0.0, false }); } },
+            { "Env, High stepped from 1200 to 2400 Hz (it ramps)", { sineLevel }, false,
+              [withRange] (Chain& c) { c.setBand (0, withRange (300.0, 1200.0)); },
+              [withRange] (Chain& c) { c.setBand (0, withRange (300.0, 2400.0)); } },
+            { "Env, Sensitivity and Span stepped (they ramp)", { sineLevel }, false,
+              [withSpan] (Chain& c) { c.setBand (0, withSpan (-20.0, 30.0)); },
+              [withSpan] (Chain& c) { c.setBand (0, withSpan (-10.0, 12.0)); } },
+            { "Track, Low and High stepped so that the sine falls outside (they ramp)", { sineLevel }, false,
+              [] (Chain& c) { c.setBand (0, trackBell()); },
+              [] (Chain& c) { auto s = trackBell(); s.lowHz = 800.0; s.highHz = 2000.0; c.setBand (0, s); } },
+        };
+    }
+}
+
+TEST_CASE ("switches: the frequency modes, Env's direction, a Track band's key and link, and their ranges stepped, without a click")
+{
+    for (const auto& f : frequencySwitches())
+    {
+        const auto r = switchedFrequency (f);
+
+        INFO (f.name << ": " << r.hzBefore << " Hz, then " << r.hzAfter << " Hz; through the chain " << r.soft.switchDb
+                     << " dB, steady " << r.soft.steadyDb << " dB; done hard " << r.hard.switchDb << " dB");
+        MESSAGE (f.name << ": " << r.hzBefore << " to " << r.hzAfter << " Hz; " << r.soft.switchDb << " dB through the chain, "
+                        << r.hard.switchDb << " dB hard");
+
+        CHECK (r.soft.switchDb < -70.0);
+    }
+}
+
+TEST_CASE ("modulation safety: silence stays exactly silent through every frequency mode and its switches")
+{
+    std::vector<double> silence (24000, 0.0);
+    std::vector<Event> events;
+
+    for (int i = 0; i < 12; ++i)
+    {
+        events.push_back ({ i * 1700 + 3, [i] (Chain& c)
+        {
+            auto s = i % 3 == 0 ? envBell (i % 2 == 0 ? EnvDirection::up : EnvDirection::down)
+                     : i % 3 == 1 ? trackBell() : fixedBell();
+            s.confidenceScalesGain = i % 4 == 1;
+            s.gmode = static_cast<GainMode> (i % numGainModes);
+            c.setBand (i % numBands, s);
+            c.setChain ({ false, 0.0, i % 5 != 2 });
+        } });
+    }
+
+    const auto output = render (rate, std::vector<std::vector<double>> { silence }, events, fixedBlocks (13));
+
+    for (const auto sample : output[0])
+        REQUIRE (sample == 0.0);
+}

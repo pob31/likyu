@@ -1191,3 +1191,141 @@ TEST_CASE ("processor: the meters say each band's offset and frequency, and that
     CHECK_FALSE (meters.bands[3].keyFellBack);
     CHECK (meters.bands[3].confidence == 0.0f);
 }
+
+//==============================================================================
+namespace
+{
+    /** A band's frequency mode and range, through the host's parameters. */
+    void setFrequencyMode (LikyuProcessor& p, int b, dsp::FrequencyMode fmode, double lowHz, double highHz)
+    {
+        p.setValue (dsp::indexOf (b, dsp::BandParam::fmode), static_cast<double> (fmode));
+        p.setValue (dsp::indexOf (b, dsp::BandParam::flo), lowHz);
+        p.setValue (dsp::indexOf (b, dsp::BandParam::fhi), highHz);
+    }
+}
+
+TEST_CASE ("processor: constant latency with Env and Track bands in every gain mode, on both keys, reported equals measured, bypassed or not")
+{
+    for (const auto fmode : { dsp::FrequencyMode::env, dsp::FrequencyMode::track })
+    {
+        for (const auto gmode : { dsp::GainMode::staticGain, dsp::GainMode::dynamic, dsp::GainMode::transient })
+        {
+            for (int choice = 0; choice < dsp::numLookaheadChoices; ++choice)
+            {
+                for (const auto bypassed : { false, true })
+                {
+                    LikyuProcessor processor;
+                    REQUIRE (processor.setBusesLayout (layout (stereo, stereo)));
+                    setLookahead (processor, choice);
+
+                    for (int b = 0; b < dsp::numBands; ++b)
+                    {
+                        const auto type = static_cast<dsp::BandType> (b % dsp::numBandTypes);
+                        const auto hz = 60.0 * std::pow (2.0, b);
+                        const auto key = b % 2 == 0 ? dsp::KeySource::self : dsp::KeySource::sidechain;
+
+                        if (gmode == dsp::GainMode::transient)
+                            setTransient (processor, b, type, hz, b % 2 == 0 ? -100.0 : 100.0, 60.0, b % 2 == 0 ? -12.0 : 6.0, key);
+                        else
+                            setDynamic (processor, b, type, hz, -60.0, b % 2 == 0 ? -12.0 : 6.0, key);
+
+                        if (gmode == dsp::GainMode::staticGain)
+                            processor.setValue (dsp::indexOf (b, dsp::BandParam::gmode), 0.0);
+
+                        processor.setValue (dsp::indexOf (b, dsp::BandParam::gain), b % 2 == 0 ? 6.0 : -6.0);
+                        setFrequencyMode (processor, b, fmode, hz / 2.0, hz * 2.0);
+                    }
+
+                    processor.setRateAndBufferSizeDetails (48000.0, 64);
+                    processor.prepareToPlay (48000.0, 64);
+
+                    const auto expected = dsp::lookaheadSamples (choice, 48000.0);
+
+                    INFO ((fmode == dsp::FrequencyMode::env ? "Env" : "Track") << ", gain mode " << static_cast<int> (gmode)
+                          << ", lookahead " << choice << ", bypassed " << bypassed);
+                    CHECK (processor.getLatencySamples() == expected);
+                    CHECK (measuredDelay (processor, bypassed) == expected);
+                }
+            }
+        }
+    }
+}
+
+TEST_CASE ("processor: the meters say a Track band's frequency and confidence, and an Env band's frequency")
+{
+    LikyuProcessor processor;
+
+    // Band 1 tracks between 500 Hz and 2 kHz from a rest at 700 Hz; band 3,
+    // in Env, maps the tone's level onto 300 Hz to 3 kHz.
+    setBand (processor, 0, true, dsp::BandType::bell, 700.0, 2.0, 6.0);
+    setFrequencyMode (processor, 0, dsp::FrequencyMode::track, 500.0, 2000.0);
+    setBand (processor, 2, true, dsp::BandType::bell, 1000.0, 1.0, 3.0);
+    setFrequencyMode (processor, 2, dsp::FrequencyMode::env, 300.0, 3000.0);
+    processor.setValue (dsp::indexOf (2, dsp::BandParam::fsens), -60.0);
+    processor.setValue (dsp::indexOf (2, dsp::BandParam::fspan), 60.0);
+
+    processor.setRateAndBufferSizeDetails (48000.0, 256);
+    processor.prepareToPlay (48000.0, 256);
+
+    juce::AudioBuffer<float> buffer (2, 24000);
+    buffer.clear();
+    addTone (buffer, 0, 1100.0, 0.5, 0, 24000);
+    addTone (buffer, 1, 1100.0, 0.5, 0, 24000);
+    processInBlocks (processor, buffer, 256);
+
+    core::Meters meters;
+    REQUIRE (processor.meters().read (meters));
+
+    CHECK (meters.bands[0].frequencyHz == doctest::Approx (1100.0).epsilon (0.005));
+    CHECK (meters.bands[0].confidence > 0.95f);
+
+    // Env reads the tone at -6 dB through its band-pass at 1 kHz: 54 dB into a 60 dB span, near High.
+    CHECK (meters.bands[2].frequencyHz > 1500.0f);
+    CHECK (meters.bands[2].frequencyHz < 3000.0f);
+    CHECK (meters.bands[2].confidence == 0.0f);
+}
+
+TEST_CASE ("processor: 500 blocks of Env and Track bands, a sidechain, their modes and values moving allocate nothing")
+{
+    namespace rt = likyu::dsp::rt;
+    REQUIRE (rt::isCounting());
+
+    LikyuProcessor processor;
+    REQUIRE (processor.setBusesLayout (layout (stereo, stereo)));
+
+    for (int b = 0; b < dsp::numBands; ++b)
+    {
+        const auto hz = 60.0 * std::pow (2.0, b);
+        setDynamic (processor, b, static_cast<dsp::BandType> (b % 3), hz, -50.0, -9.0,
+                    b % 2 == 0 ? dsp::KeySource::self : dsp::KeySource::sidechain);
+        setFrequencyMode (processor, b, b % 2 == 0 ? dsp::FrequencyMode::track : dsp::FrequencyMode::env, hz / 2.0, hz * 2.0);
+    }
+
+    setLookahead (processor, 2);
+    processor.setRateAndBufferSizeDetails (96000.0, 64);
+    processor.prepareToPlay (96000.0, 64);
+
+    auto buffer = noiseBuffer (4, 64, 71);
+    juce::MidiBuffer midi;
+
+    rt::resetCounts();
+
+    for (int block = 0; block < 500; ++block)
+    {
+        if (block % 10 == 0)
+        {
+            // Outside the process call, as a host or the editor does.
+            const auto b = block % dsp::numBands;
+            processor.setValue (dsp::indexOf (dsp::GlobalParam::link), (block / 10) % 2);
+            processor.setValue (dsp::indexOf (b, dsp::BandParam::fmode), (block / 10) % dsp::numFrequencyModes);
+            processor.setValue (dsp::indexOf (b, dsp::BandParam::fhi), 1000.0 + 50.0 * (block % 40));
+            processor.setValue (dsp::indexOf (b, dsp::BandParam::fcgain), (block / 20) % 2);
+            processor.setLinkList ({ processor.currentLayoutName(), 2, static_cast<std::uint64_t> ((block / 20) % 4) });
+        }
+
+        processor.processBlock (buffer, midi);
+    }
+
+    CHECK (rt::regions() == 500);
+    CHECK (rt::violations() == 0);
+}
