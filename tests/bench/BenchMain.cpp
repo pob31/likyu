@@ -20,7 +20,8 @@
     in seconds anywhere, the farm included.
 
       likyu_bench time [--rate 96000] [--block 64] [--channels 2] [--bands 8]
-                       [--scenario static|moving|decay|dynamic|unlinked|transient]
+                       [--scenario static|moving|decay|dynamic|unlinked|transient
+                                   |env|track|trackself|seeding]
                        [--lookahead 0|1|2|3] [--buffers float|double]
                        [--seconds 10] [--warmup 200] [--json out.json]
 
@@ -46,6 +47,18 @@
                    stereo sidechain of noise bursts (40 ms on, 40 ms 60 dB
                    down), linked, so that every shaper attacks, sustains and
                    gates all the time (Phase 4).
+          env      eight bells and shelves in Dynamic and Env, keyed by the
+                   stereo sidechain of noise, linked (Phase 5);
+          track    eight bells and shelves in Dynamic and Track, keyed by the
+                   stereo sidechain, linked: the PRD's budget case (Phase 5).
+                   The sidechain is noise with a partial under each band, so
+                   the eight trackers lock and deflate each other; the
+                   seeding bank runs throughout;
+          trackself the same keyed by the input: with --channels 64 the
+                   trackers run on the mean of 64 channels;
+          seeding  the seeding bank alone (thirty third-octave envelopes) on
+                   one key, without the chain: what it costs per key and
+                   lane, for Phase 7.
 
         --lookahead takes the parameter's choice (Off, 0.25, 1, 3 ms). The
         delay line is the chain's since Phase 4 and runs at every setting, Off
@@ -73,6 +86,7 @@
 #include <dsp/Svf.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -200,6 +214,21 @@ namespace
         return s;
     }
 
+    /** For `env` and `track`: a Dynamic band whose frequency moves. */
+    BandSettings frequencyBand (int b, FrequencyMode fmode, bool sidechain)
+    {
+        auto s = dynamicBand (b, sidechain);
+        s.fmode = fmode;
+        s.lowHz = s.frequency / 2.0;
+        s.highHz = s.frequency * 2.0;
+        s.sensitivityDb = -60.0;
+        s.spanDb = 40.0;
+        s.envAttackMs = 2.0;
+        s.envReleaseMs = 60.0;
+        s.speedMs = 50.0;
+        return s;
+    }
+
     /** For `moving`: a new target every block, so no ramp ever lands. */
     BandSettings movingBand (int b, int block)
     {
@@ -219,10 +248,17 @@ namespace
 
         const auto dynamic = config.scenario == "dynamic", unlinked = config.scenario == "unlinked";
         const auto transient = config.scenario == "transient";
-        const auto keyed = dynamic || transient;   // by the sidechain
+        const auto env = config.scenario == "env", track = config.scenario == "track", trackSelf = config.scenario == "trackself";
+        const auto keyed = dynamic || transient || env || track;   // by the sidechain
+        const auto partials = track || trackSelf;                  // a partial under each band, for the trackers
 
         for (int b = 0; b < config.bands; ++b)
-            chain.setBand (b, transient ? transientBand (b) : dynamic || unlinked ? dynamicBand (b, dynamic) : staticBand (b));
+        {
+            if (env || track || trackSelf)
+                chain.setBand (b, frequencyBand (b, env ? FrequencyMode::env : FrequencyMode::track, ! trackSelf));
+            else
+                chain.setBand (b, transient ? transientBand (b) : dynamic || unlinked ? dynamicBand (b, dynamic) : staticBand (b));
+        }
 
         if (unlinked)
             chain.setChain ({ false, 0.0, false });
@@ -241,6 +277,18 @@ namespace
 
             for (auto& sample : channel)
                 sample = static_cast<Sample> (0.5 * random.bipolar());
+
+            // A partial a little off each band's frequency, so that each tracker has one to lock on.
+            if (partials)
+            {
+                for (int b = 0; b < config.bands; ++b)
+                {
+                    const auto hz = 1.1 * 40.0 * std::pow (2.0, 1.2 * b);
+
+                    for (int n = 0; n < ring; ++n)
+                        channel[static_cast<std::size_t> (n)] += static_cast<Sample> (0.3 * std::sin (2.0 * pi * hz * n / config.rate));
+                }
+            }
         }
 
         std::vector<std::vector<Sample>> buffer (static_cast<std::size_t> (config.channels),
@@ -266,6 +314,13 @@ namespace
 
         std::vector<double> micros;
         micros.reserve (static_cast<std::size_t> (totalBlocks));
+
+        const auto seeding = config.scenario == "seeding";
+        SeedBankCoefficients bankCoefficients;
+        bankCoefficients.prepare (config.rate);
+        SeedBank bank;
+        std::array<float, controlStep> seedKey {};
+        volatile float seedSink = 0.0f;
 
         for (int block = 0; block < totalBlocks; ++block)
         {
@@ -293,6 +348,29 @@ namespace
             if (config.scenario == "moving")
                 for (int b = 0; b < config.bands; ++b)
                     chain.setBand (b, movingBand (b, block));
+
+            // The seeding bank alone, on the first channel, as the chain feeds it: one control step at a time.
+            if (seeding)
+            {
+                const auto t0 = std::chrono::steady_clock::now();
+
+                for (int done = 0; done < config.block; done += controlStep)
+                {
+                    for (int i = 0; i < controlStep; ++i)
+                        seedKey[static_cast<std::size_t> (i)] = static_cast<float> (buffer[0][static_cast<std::size_t> (std::min (done + i, config.block - 1))]);
+
+                    bank.run (seedKey.data(), std::min (controlStep, config.block - done), bankCoefficients, true);
+                }
+
+                const auto t1 = std::chrono::steady_clock::now();
+                micros.push_back (std::chrono::duration<double, std::micro> (t1 - t0).count());
+
+                // Read, so that the bank is not optimised away.
+                for (const auto p : bank.power)
+                    seedSink = seedSink + p;
+
+                continue;
+            }
 
             const auto t0 = std::chrono::steady_clock::now();
             chain.process (pointers.data(), config.channels, key, config.block);
@@ -480,7 +558,8 @@ namespace
     {
         std::fprintf (stderr,
             "usage: likyu_bench time [--rate 96000] [--block 64] [--channels 2] [--bands 8]\n"
-            "                        [--scenario static|moving|decay|dynamic|unlinked|transient]\n"
+            "                        [--scenario static|moving|decay|dynamic|unlinked|transient\n"
+            "                                    |env|track|trackself|seeding]\n"
             "                        [--lookahead 0|1|2|3] [--buffers float|double]\n"
             "                        [--seconds 10] [--warmup 200] [--json out.json]\n"
             "       likyu_bench precision [--seconds 10]\n");
@@ -542,7 +621,9 @@ int main (int argc, char* argv[])
     if (! (config.rate > 0.0) || config.block <= 0 || config.channels <= 0 || config.channels > Chain::maxChannels
         || config.bands < 0 || config.bands > numBands || ! (config.seconds > 0.0) || config.warmup < 0
         || (config.scenario != "static" && config.scenario != "moving" && config.scenario != "decay"
-            && config.scenario != "dynamic" && config.scenario != "unlinked" && config.scenario != "transient")
+            && config.scenario != "dynamic" && config.scenario != "unlinked" && config.scenario != "transient"
+            && config.scenario != "env" && config.scenario != "track" && config.scenario != "trackself"
+            && config.scenario != "seeding")
         || config.lookahead < 0 || config.lookahead >= numLookaheadChoices
         || (config.buffers != "float" && config.buffers != "double"))
     {

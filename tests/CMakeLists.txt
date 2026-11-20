@@ -59,6 +59,9 @@ target_link_libraries(likyu_bench PRIVATE likyu::dsp likyu::warnings)
 add_test(NAME bench.smoke COMMAND likyu_bench time --seconds 0.2 --warmup 10)
 add_test(NAME bench.dynamic.smoke COMMAND likyu_bench time --scenario dynamic --seconds 0.2 --warmup 10)
 add_test(NAME bench.transient.smoke COMMAND likyu_bench time --scenario transient --lookahead 3 --seconds 0.2 --warmup 10)
+add_test(NAME bench.env.smoke COMMAND likyu_bench time --scenario env --seconds 0.2 --warmup 10)
+add_test(NAME bench.track.smoke COMMAND likyu_bench time --scenario track --lookahead 2 --seconds 0.2 --warmup 10)
+add_test(NAME bench.seeding.smoke COMMAND likyu_bench time --scenario seeding --seconds 0.2 --warmup 10)
 add_test(NAME bench.precision.smoke COMMAND likyu_bench precision --seconds 0.5)
 
 # The RTSan job's canary: a violation on purpose, which the sanitizer must die on.
