@@ -190,6 +190,7 @@ namespace likyu::dsp
             detectorLogQ.setLength (smoothing);
             dynamics.prepare (sampleRate, smoothing);
             detectorLf = notANumber;
+            detectorStale = true;
 
             snapPending = true;
         }
@@ -322,6 +323,15 @@ namespace likyu::dsp
             return withFade (designBand (active.type, active.qmode, g, kq, a, sqrtA), w);
         }
 
+        /** The coefficients of samples `from` to `from + n - 1` of the step,
+            into `out`: one loop here, so that the per-sample work is inlined
+            whatever the caller looks like. */
+        void coefficientsFor (int from, int n, SvfCoefficients<double>* out) const noexcept
+        {
+            for (int i = 0; i < n; ++i)
+                out[i] = coefficientsAt (from + i);
+        }
+
         //======================================================================
         /** The shape in effect, which the chain's lanes are built for. */
         const Shape& activeShape() const noexcept           { return active; }
@@ -344,7 +354,15 @@ namespace likyu::dsp
         /** Goes up each time detectorConfig() changes: the states it ran are then stale. */
         int getDetectorRevision() const noexcept            { return detectorRevision; }
 
-        const DetectorCoefficients& detectorCoefficients() const noexcept { return detector; }
+        /** For this step. Made when first asked for in a step, and only then:
+            a band whose detector does not run costs nothing for it. */
+        const DetectorCoefficients& detectorCoefficients() const noexcept
+        {
+            if (detectorStale)
+                makeDetector();
+
+            return detector;
+        }
 
         /** The gain computer's target for a level, at sample `index` of the step. */
         double dynamicTargetAt (double levelDb, int index) const noexcept
@@ -507,8 +525,7 @@ namespace likyu::dsp
             idle = ! active.on && ! fade.isMoving() && exactlyEqual (w1, 0.0);
         }
 
-        /** The detector's coefficients for this step, from the band's own g
-            and 1/Q (Follow, unscaled) or from its detector's ramps (Own). */
+        /** At each grid point: which detector, and that its coefficients are to be made again. */
         void updateDetector() noexcept
         {
             const auto config = detectorConfig();
@@ -519,17 +536,28 @@ namespace likyu::dsp
                 ++detectorRevision;
             }
 
-            const auto own = config.dfilt == DetectorFilter::own;
-            const auto type = own ? config.dtype : DetectorType::bandPass;
-            const auto lf = own ? detectorLogFrequency.getCurrent() : lastLogFrequency;
-            const auto kq = own ? std::exp2 (-detectorLogQ.getCurrent()) : kq1;
+            detectorStale = true;
+        }
 
-            if (exactlyEqual (lf, detectorLf) && exactlyEqual (kq, detectorKq) && type == detector.type)
+        /** The detector's coefficients for this step, from the band's own g
+            and 1/Q (Follow, unscaled) or from its detector's ramps (Own);
+            made again only when what they are made from has moved. */
+        void makeDetector() const noexcept
+        {
+            detectorStale = false;
+
+            const auto own = lastDetectorConfig.dfilt == DetectorFilter::own;
+            const auto type = own ? lastDetectorConfig.dtype : DetectorType::bandPass;
+            const auto lf = own ? detectorLogFrequency.getCurrent() : lastLogFrequency;
+            const auto lq = own ? detectorLogQ.getCurrent() : lastLogQ;
+
+            if (exactlyEqual (lf, detectorLf) && exactlyEqual (lq, detectorLq) && type == detector.type)
                 return;
 
             const auto hz = warp.clamp (std::exp2 (lf));
+            const auto kq = own ? std::exp2 (-lq) : kq1;
             detectorLf = lf;
-            detectorKq = kq;
+            detectorLq = lq;
             detector = makeDetectorCoefficients (type, own ? warp.g (hz) : g1, kq, hz, rate);
         }
 
@@ -551,8 +579,11 @@ namespace likyu::dsp
 
         DetectorConfig lastDetectorConfig;
         int detectorRevision = 0;
-        DetectorCoefficients detector;
-        double detectorLf = notANumber, detectorKq = notANumber;
+
+        // Made on demand (detectorCoefficients()), and what they were made from.
+        mutable DetectorCoefficients detector;
+        mutable double detectorLf = notANumber, detectorLq = notANumber;
+        mutable bool detectorStale = true;
 
         // The step's start (0) and end (1) values.
         double g0 = 0.0, g1 = 0.0;

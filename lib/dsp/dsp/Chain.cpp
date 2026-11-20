@@ -625,9 +625,7 @@ namespace likyu::dsp
             }
 
             std::array<SvfCoefficients<double>, controlStep> moving;
-
-            for (int i = 0; i < n; ++i)
-                moving[static_cast<std::size_t> (i)] = band.coefficientsAt (position + i);
+            band.coefficientsFor (position, n, moving.data());
 
             for (int c = 0; c < numChannels; ++c)
             {
@@ -646,6 +644,23 @@ namespace likyu::dsp
 
             return;
         }
+
+        runBandWithOffsets (b, numChannels, n);
+    }
+
+    void Chain::runBandWithOffsets (int b, int numChannels, int n) noexcept LIKYU_AUDIO_THREAD
+    {
+        const auto index = static_cast<std::size_t> (b);
+        const auto& band = bands[index];
+        double* s1 = ic1.data() + b * channels;
+        double* s2 = ic2.data() + b * channels;
+        const auto all = allSamples (n);
+        const auto stepEnds = position + n == controlStep;
+        const auto snap = [stepEnds] (double& state) noexcept
+        {
+            if (stepEnds && std::abs (state) < stateSnapThreshold)
+                state = 0.0;
+        };
 
         /*  With offsets, lane by lane. A sample whose offset is exactly 0 has
             the Phase 2 coefficients, and is skipped as an identity only where

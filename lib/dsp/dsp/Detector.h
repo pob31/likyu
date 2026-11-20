@@ -98,7 +98,8 @@ namespace likyu::dsp
         d.a2 = static_cast<float> (c.a2);
         d.a3 = static_cast<float> (c.a3);
         d.k = static_cast<float> (k);
-        d.release = sampleRate > 0.0 && hz > 0.0
+        // The follower's release, for the types that have one.
+        d.release = type != DetectorType::bandPass && sampleRate > 0.0 && hz > 0.0
                         ? static_cast<float> (std::exp (-2.0 * hz / (followerPeriods * sampleRate)))
                         : 0.0f;
         return d;

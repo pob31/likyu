@@ -314,6 +314,10 @@ namespace likyu::dsp
         /** One band over the work buffer, marking what it changed. */
         void runBand (int band, int numChannels, int n) noexcept LIKYU_AUDIO_THREAD;
 
+        /** The same for a band with a dynamic offset in the stretch: apart, so
+            that the Phase 2 paths stay as small as they were. */
+        void runBandWithOffsets (int band, int numChannels, int n) noexcept LIKYU_AUDIO_THREAD;
+
         /** The lanes of a band for its shape in effect; offsets back to 0. */
         void buildLanes (int band) noexcept LIKYU_AUDIO_THREAD;
 
