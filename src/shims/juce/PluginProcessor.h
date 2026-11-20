@@ -32,7 +32,7 @@
         (dsp/Chain.h), its output gain and its bypass crossfade.
       - The state chunk, version 1 (core/State.h).
 
-    No editor: a host's generic parameter view is the interface until Phase 6.
+    The editor until Phase 6 is JUCE's generic one (createEditor()).
 
     THREADS. Once per block the audio thread reads every parameter's value
     from its atomic and core::Dispatch hands the chain what moved; it also
@@ -85,8 +85,13 @@ namespace likyu
         const juce::String getProgramName (int) override            { return {}; }
         void changeProgramName (int, const juce::String&) override  {}
 
-        bool hasEditor() const override                             { return false; }
-        juce::AudioProcessorEditor* createEditor() override         { return nullptr; }
+        /*  TEMPORARY, until the editor of Phase 6 replaces it (decided by the
+            author, 2026-11-20): JUCE's generic editor, one control per
+            parameter. Live lists no parameter of a plugin until something
+            moves it from the plugin's side (Phase 1, finding 6), so without
+            an editor a Live user could not reach the EQ at all. */
+        bool hasEditor() const override                             { return true; }
+        juce::AudioProcessorEditor* createEditor() override;
 
         //======================================================================
         bool isBusesLayoutSupported (const BusesLayout&) const override;

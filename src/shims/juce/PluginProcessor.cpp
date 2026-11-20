@@ -166,6 +166,11 @@ namespace likyu
         parameter.setValueNotifyingHost (parameter.convertTo0to1 (static_cast<float> (value)));
     }
 
+    juce::AudioProcessorEditor* LikyuProcessor::createEditor()
+    {
+        return new juce::GenericAudioProcessorEditor (*this);
+    }
+
     juce::AudioProcessorParameter* LikyuProcessor::getBypassParameter() const
     {
         return &parameterAt (dsp::indexOf (dsp::GlobalParam::bypass));

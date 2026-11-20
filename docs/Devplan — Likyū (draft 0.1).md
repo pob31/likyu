@@ -406,7 +406,9 @@ except Listen and the link list.
 - **6f. Analyser**, off by default, from a lock-free tap, last.
 
 **Done when:** every parameter is reachable from the editor; the presentation tests are in CI;
-pluginval passes with the editor open; the temporary Listen parameter is gone.
+pluginval passes with the editor open; the temporary Listen parameter is gone, and so is JUCE's
+generic editor, the stand-in since Phase 2 (decided by the author 2026-11-20, so that Live can
+reach the parameters: Phase 1, finding 6).
 
 **Needs from the author:**
 
