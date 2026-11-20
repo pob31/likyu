@@ -98,7 +98,7 @@
     likyu::core publishes them (core/MeterSnapshot.h).
 
     THREADS. setBand(), setChain(), setLinkExclusions(), setListen(),
-    setLookahead() are called on the audio thread, before process(), with values read from the
+    setLookahead(), setTransientTimes() are called on the audio thread, before process(), with values read from the
     host's atomics once per block (likyu::core does that); they take effect
     at the next grid point. prepare() allocates and belongs to the message
     thread.
@@ -203,6 +203,12 @@ namespace likyu::dsp
 
         /** The longest delay prepare() allocated for. */
         int getMaxLookahead() const noexcept    { return lineDouble.getMaxDelay(); }
+
+        /** The transient shaper's four constants, for every band (dsp/Transient.h).
+            A native client keeps the defaults; the plugin's temporary
+            parameters move them until the listening pass has set them. Takes
+            effect at the next grid point. */
+        void setTransientTimes (const TransientTimes& times) noexcept;
 
         double getSampleRate() const noexcept   { return rate; }
         int getNumChannels() const noexcept     { return channels; }
@@ -396,6 +402,9 @@ namespace likyu::dsp
         Lookahead<double> lineDouble;
         int pendingLookahead = 0;
         bool lookaheadPending = false;
+
+        TransientTimes pendingTimes;
+        bool timesPending = false;
 
         Ramp outputGain, bypassMix;
         ChainSettings pendingChain;

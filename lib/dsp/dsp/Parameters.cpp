@@ -17,6 +17,7 @@
 #include "Parameters.h"
 
 #include "Math.h"
+#include "Transient.h"
 
 #include <algorithm>
 #include <cmath>
@@ -155,6 +156,28 @@ namespace likyu::dsp
         }();
 
         return spec;
+    }
+
+    const std::vector<ParamSpec>& temporaryTransientSpecs()
+    {
+        static const std::vector<ParamSpec> specs = []
+        {
+            const auto temporary = [] (const char* id, const char* name, double minimum, double maximum, double value)
+            {
+                auto spec = logarithmic (id, name, "ms", minimum, maximum, value);
+                spec.automatable = false;
+                return spec;
+            };
+
+            return std::vector<ParamSpec> {
+                temporary ("tmp_tfa", "Transient Fast Attack (temporary)", 0.1, 10.0, transientFastAttackMs),
+                temporary ("tmp_tsa", "Transient Slow Attack (temporary)", 2.0, 100.0, transientSlowAttackMs),
+                temporary ("tmp_tfr", "Transient Fast Release (temporary)", 5.0, 200.0, transientFastReleaseMs),
+                temporary ("tmp_tsr", "Transient Slow Release (temporary)", 50.0, 2000.0, transientSlowReleaseMs),
+            };
+        }();
+
+        return specs;
     }
 
     int indexOfId (std::string_view id)

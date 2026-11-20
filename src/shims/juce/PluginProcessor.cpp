@@ -146,6 +146,17 @@ namespace likyu
         jassert (listenParameter != nullptr);
         addParameter (listen.release());
 
+        // TEMPORARY until the listening pass has set them: the transient shaper's constants, after Listen.
+        const auto& times = dsp::temporaryTransientSpecs();
+
+        for (std::size_t i = 0; i < times.size() && i < transientTimeParameters.size(); ++i)
+        {
+            auto parameter = makeParameter (times[i]);
+            transientTimeParameters[i] = dynamic_cast<juce::AudioParameterFloat*> (parameter.get());
+            jassert (transientTimeParameters[i] != nullptr);
+            addParameter (parameter.release());
+        }
+
         parameterAt (dsp::indexOf (dsp::GlobalParam::lookahead)).addListener (this);
     }
 
@@ -363,6 +374,14 @@ namespace likyu
         chain.setLinkExclusions (linkMask.load (std::memory_order_relaxed));
         chain.setListen (listenParameter != nullptr ? listenParameter->getIndex() - 1 : -1);
         chain.setLookahead (delaySamples.load (std::memory_order_relaxed));
+
+        // TEMPORARY: the transient constants of the listening pass, for every band.
+        dsp::TransientTimes times;
+        times.fastAttackMs = static_cast<double> (transientTimeParameters[0]->get());
+        times.slowAttackMs = static_cast<double> (transientTimeParameters[1]->get());
+        times.fastReleaseMs = static_cast<double> (transientTimeParameters[2]->get());
+        times.slowReleaseMs = static_cast<double> (transientTimeParameters[3]->get());
+        chain.setTransientTimes (times);
 
         /*  The key is the main input itself, undelayed: the chain reads each
             stretch of it before it delays and writes that stretch (PRD,

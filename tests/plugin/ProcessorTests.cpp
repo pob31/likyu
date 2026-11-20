@@ -91,16 +91,32 @@ namespace
     }
 }
 
-TEST_CASE ("processor: the host sees the table, 284 parameters in real units, then the temporary Listen")
+TEST_CASE ("processor: the host sees the table, 284 parameters in real units, then the temporary Listen and transient constants")
 {
     LikyuProcessor processor;
     const auto& table = dsp::parameterTable();
+    const auto& times = dsp::temporaryTransientSpecs();
 
-    // The 284, then Listen until Phase 6 (devplan 3d).
-    REQUIRE (processor.getParameters().size() == static_cast<int> (table.size()) + 1);
+    // The 284, then Listen until Phase 6 (devplan 3d), then the four constants until the listening pass (Phase 4).
+    REQUIRE (processor.getParameters().size() == static_cast<int> (table.size()) + 1 + dsp::numTemporaryTransientTimes);
 
-    auto* listen = processor.getParameters().getLast();
+    auto* listen = processor.getParameters()[static_cast<int> (table.size())];
     REQUIRE (listen == &processor.temporaryListen());
+
+    for (int i = 0; i < dsp::numTemporaryTransientTimes; ++i)
+    {
+        auto& time = processor.temporaryTransientTime (i);
+        const auto& spec = times[static_cast<std::size_t> (i)];
+
+        INFO ("id: " << spec.id);
+        CHECK (processor.getParameters()[static_cast<int> (table.size()) + 1 + i] == &time);
+        CHECK (time.getParameterID().toStdString() == spec.id);
+        CHECK_FALSE (time.isAutomatable());
+        CHECK (static_cast<double> (time.get()) == doctest::Approx (spec.defaultValue).epsilon (1.0e-6));
+        CHECK (static_cast<double> (time.convertFrom0to1 (0.0f)) == doctest::Approx (spec.minimum).epsilon (1.0e-5));
+        CHECK (static_cast<double> (time.convertFrom0to1 (1.0f)) == doctest::Approx (spec.maximum).epsilon (1.0e-5));
+        CHECK (juce::URL::addEscapeChars (juce::String (spec.id), true).toStdString() == spec.id);
+    }
     CHECK (processor.temporaryListen().getParameterID() == "tmp_listen");
     CHECK_FALSE (listen->isAutomatable());
     CHECK (processor.temporaryListen().getIndex() == 0);
@@ -943,6 +959,67 @@ TEST_CASE ("processor: constant latency with Dynamic and Transient bands on both
             }
         }
     }
+}
+
+TEST_CASE ("processor: the temporary transient constants reach every band, leave the latency alone and are not saved")
+{
+    constexpr int onset = 2400, length = 9600;
+
+    // A 3 kHz burst through a Transient bell, attack -100 %: how much of its first 30 ms is cut.
+    const auto cutDb = [] (LikyuProcessor& processor)
+    {
+        juce::AudioBuffer<float> buffer (2, length);
+        buffer.clear();
+
+        for (int n = onset; n < length; ++n)
+            for (int c = 0; c < 2; ++c)
+                buffer.setSample (c, n, static_cast<float> (0.5 * std::sin (2.0 * 3.14159265358979323846 * 3000.0 * (n - onset) / 48000.0)));
+
+        const auto input = buffer;
+        processInBlocks (processor, buffer, 64);
+
+        double in = 0.0, out = 0.0;
+
+        for (int n = onset; n < onset + 1440; ++n)
+        {
+            in += std::pow (static_cast<double> (input.getSample (0, n)), 2.0);
+            out += std::pow (static_cast<double> (buffer.getSample (0, n)), 2.0);
+        }
+
+        return 10.0 * std::log10 (out / in);
+    };
+
+    const auto make = [] (LikyuProcessor& p)
+    {
+        setTransient (p, 5, dsp::BandType::bell, 3000.0, -100.0, 0.0, -30.0);   // a Range that does not clamp it
+        p.setRateAndBufferSizeDetails (48000.0, 64);
+        p.prepareToPlay (48000.0, 64);
+    };
+
+    LikyuProcessor starting, slower;
+    make (starting);
+    make (slower);
+
+    // The slow attack four times longer: the attack signal lasts longer, so more of the burst is cut.
+    auto& slowAttack = slower.temporaryTransientTime (1);
+    slowAttack.setValueNotifyingHost (slowAttack.convertTo0to1 (60.0f));
+    CHECK (static_cast<double> (slowAttack.get()) == doctest::Approx (60.0).epsilon (1.0e-5));
+
+    const auto atStart = cutDb (starting), atSlower = cutDb (slower);
+
+    INFO ("the burst's first 30 ms: " << atStart << " dB with the starting values, " << atSlower << " dB with a 60 ms slow attack");
+    CHECK (atSlower < atStart - 1.0);
+    CHECK (slower.getLatencySamples() == 0);
+
+    // Not saved: the chunk does not name them, and an instance loaded from it keeps its own.
+    juce::MemoryBlock chunk;
+    slower.getStateInformation (chunk);
+    const auto text = juce::String::fromUTF8 (static_cast<const char*> (chunk.getData()), static_cast<int> (chunk.getSize()));
+    CHECK_FALSE (text.contains ("tmp_"));
+
+    LikyuProcessor loaded;
+    loaded.setStateInformation (chunk.getData(), static_cast<int> (chunk.getSize()));
+    CHECK (static_cast<double> (loaded.temporaryTransientTime (1).get()) == doctest::Approx (dsp::transientSlowAttackMs).epsilon (1.0e-6));
 }
 
 TEST_CASE ("processor: lookahead effect: a burst through a Transient bell with a negative attack: with 1 ms its leading edge is cut as a static cut would; without, it passes")

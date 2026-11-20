@@ -88,6 +88,32 @@ TEST_CASE ("parameters: the temporary Listen is outside the table, a choice of O
     CHECK (listen.defaultValue == 0.0);
 }
 
+TEST_CASE ("parameters: the temporary transient constants are outside the table, in ms, log, not automatable, at the PRD's starting values")
+{
+    const auto& specs = temporaryTransientSpecs();
+    REQUIRE (specs.size() == static_cast<std::size_t> (numTemporaryTransientTimes));
+
+    const char* const ids[] = { "tmp_tfa", "tmp_tsa", "tmp_tfr", "tmp_tsr" };
+    const double defaults[] = { 1.0, 15.0, 20.0, 200.0 };   // PRD, Gain modes: Transient
+
+    for (std::size_t i = 0; i < specs.size(); ++i)
+    {
+        const auto& spec = specs[i];
+
+        INFO ("id: " << spec.id);
+        CHECK (spec.id == ids[i]);
+        CHECK (isSymbol (spec.id));
+        CHECK (indexOfId (spec.id) < 0);
+        CHECK (spec.kind == ParamKind::continuous);
+        CHECK (spec.skew == ParamSkew::logarithmic);
+        CHECK (spec.unit == "ms");
+        CHECK_FALSE (spec.automatable);
+        CHECK (spec.defaultValue == defaults[i]);
+        CHECK (spec.minimum < spec.defaultValue);
+        CHECK (spec.maximum > spec.defaultValue);
+    }
+}
+
 TEST_CASE ("parameters: the per-instance IDs, in order")
 {
     const auto& table = parameterTable();

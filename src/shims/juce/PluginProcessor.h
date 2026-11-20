@@ -40,6 +40,9 @@
       - TEMPORARY until Phase 6: one more host parameter after the 284,
         Listen (dsp/Parameters.h, temporaryListenSpec), not automatable and
         not saved. It puts one band's detector on the output.
+      - TEMPORARY until the Phase 4 listening pass has set them: four more,
+        the transient shaper's time constants (temporaryTransientSpecs), not
+        automatable and not saved, read every block for every band.
       - The meters (core/MeterSnapshot.h), published after every block for
         the editor of Phase 6; meters() reads them.
 
@@ -63,6 +66,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include <array>
 #include <atomic>
 #include <cstdint>
 #include <vector>
@@ -152,6 +156,13 @@ namespace likyu
         /** The temporary Listen parameter, after the 284 (removed in Phase 6). */
         juce::AudioParameterChoice& temporaryListen() const noexcept    { return *listenParameter; }
 
+        /** The temporary transient constants, after Listen, in the order of
+            dsp::temporaryTransientSpecs() (removed once the PRD has its values). */
+        juce::AudioParameterFloat& temporaryTransientTime (int index) const
+        {
+            return *transientTimeParameters[static_cast<std::size_t> (index)];
+        }
+
         /** The meters of the last block. Its one reader: the editor, or a test. */
         core::MeterSnapshot& meters() noexcept                          { return meterSnapshot; }
 
@@ -190,6 +201,9 @@ namespace likyu
         std::vector<juce::RangedAudioParameter*> parameters;   // owned by the base class, table order
         std::vector<Reader> readers;                           // the same, by kind
         juce::AudioParameterChoice* listenParameter = nullptr; // owned by the base class, after them
+
+        // Owned by the base class, after Listen. TEMPORARY: the listening pass's.
+        std::array<juce::AudioParameterFloat*, dsp::numTemporaryTransientTimes> transientTimeParameters {};
 
         core::MeterSnapshot meterSnapshot;
         std::uint64_t blocksPublished = 0;

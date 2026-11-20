@@ -145,6 +145,12 @@ namespace likyu::dsp
         lookaheadPending = true;
     }
 
+    void Chain::setTransientTimes (const TransientTimes& times) noexcept
+    {
+        pendingTimes = times;
+        timesPending = true;
+    }
+
     BandMeter Chain::bandMeter (int band) const noexcept
     {
         BandMeter m;
@@ -270,10 +276,17 @@ namespace likyu::dsp
 
         selfKeyed = sidechainKeyed = false;
 
+        const auto newTimes = timesPending;
+        timesPending = false;
+
         for (int b = 0; b < numBands; ++b)
         {
             auto& band = bands[static_cast<std::size_t> (b)];
             band.setContext (context);
+
+            if (newTimes)
+                band.setTransientTimes (pendingTimes);
+
             band.beginStep();
 
             if (band.hasOffset() && ! band.isIdle())

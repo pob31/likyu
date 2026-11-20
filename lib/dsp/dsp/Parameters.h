@@ -134,6 +134,16 @@ namespace likyu::dsp
         removed in Phase 6, when Listen becomes the editor's button. */
     const ParamSpec& temporaryListenSpec();
 
+    /*  TEMPORARY, devplan Phase 4: the transient shaper's four time constants
+        as host parameters, so that the author's listening pass can set them
+        by ear (decided by the author 2026-11-20). In ms, logarithmic, not
+        automatable, NOT IN THE TABLE and not saved, like tmp_listen; their
+        defaults are the PRD's starting values (dsp/Transient.h). In order:
+        fast attack, slow attack, fast release, slow release. Never frozen;
+        removed once the PRD's values are decided. */
+    inline constexpr int numTemporaryTransientTimes = 4;
+    const std::vector<ParamSpec>& temporaryTransientSpecs();
+
     //==========================================================================
     /*  A HOST'S 0 TO 1, AND BACK. Linear, or logarithmic (equal steps of the
         host's range are equal ratios of the value); a choice's index spread
