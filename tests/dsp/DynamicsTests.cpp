@@ -330,6 +330,7 @@ TEST_CASE ("dynamic curve: a stepped-level tone through a dynamic bell reads the
         const auto attackMeasured = 1000.0 * attackAt / rate, releaseMeasured = 1000.0 * releaseAt / rate;
 
         INFO ("attack " << attackMs << " ms measured " << attackMeasured << " ms; release " << releaseMs << " ms measured " << releaseMeasured << " ms");
+        MESSAGE ("dynamic curve: attack " << attackMs << " ms measured " << attackMeasured << " ms; release " << releaseMs << " ms measured " << releaseMeasured << " ms");
         CHECK (std::abs (attackMeasured - attackMs) < 0.1 * attackMs);
         CHECK (std::abs (releaseMeasured - releaseMs) < 0.1 * releaseMs);
     }

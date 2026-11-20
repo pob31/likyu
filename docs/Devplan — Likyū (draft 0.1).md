@@ -365,6 +365,61 @@ speaks.
   2026-11-20 by the author:* state in the chunk, applied only to the layout it was made for; 284
   parameters stay.
 
+**Record, 2026-11-20: built in one session, after Phase 2.** Handoff:
+[`docs/handoffs/2026-11-20-phase3.md`](handoffs/2026-11-20-phase3.md); bench note:
+[`docs/bench/2026-11-20-phase3.md`](bench/2026-11-20-phase3.md).
+
+- *Done.* 3a to 3d, in eight commits to `main`.
+  - `lib/dsp`: `FastLog.h`, `Detector.h`, `Dynamics.h`. `Band` carries the detector and the
+    Dynamic values. `Chain` reads a `Key` (the input undelayed, the sidechain) and keeps the
+    detectors, the lanes and their offsets, Listen and the meters.
+  - `likyu::core`: `LinkList`, the state chunk's `link_out`, `MeterSnapshot`, and `Dispatch` with
+    the new fields and the link.
+  - The shim:
+    - chunks of 256 samples, with the key copied before the lookahead;
+    - the sidechain bus, and the link list with its mask;
+    - the temporary Listen parameter;
+    - the meters, published after every block.
+  - `likyu_bench`: the `dynamic` and `unlinked` scenarios.
+- *Rows green on Windows and in CI:*
+  - detection: quadrature envelope, detector rejection, dynamic curve;
+  - exact bypass, return; gain limit, now with real offsets;
+  - keys and linking: sidechain fallback (status included), channel linking, linked maximum, link
+    exclusion, layouts;
+  - again with the new modes: realtime, block-size invariance, constant latency;
+  - modulation safety for every new switch and for Listen.
+- *Not as planned.*
+  - 3b and 3c share their DSP commit: the lanes that make a band dynamic are the same lanes that
+    link it.
+  - The lookahead stays in the processor, and the key is a copy taken before it. Moving the
+    lookahead into the chain is Phase 4's.
+  - The dynamic curve is read twice: on the offset itself, and on the band's gain at its centre.
+- *Added beyond the plan.*
+  - The offset is kept in double: in float it stalls 0.37 dB short at 192 kHz with a 2 s release.
+  - Threshold, knee, ratio and Range ramp over 20 ms.
+  - A mask per channel of the samples written back, with rule A: an offset of exactly 0 is Phase
+    2's path, so the bits do not depend on the host's cut, -0 and denormals included.
+  - Fixed 256-sample chunks in the shim, whatever block size the host announced.
+  - The detector's coefficients are made on demand.
+- *Found on the way.*
+  - A detector's first sample after silence reads −120 dB, so a Below band acts for an instant at
+    a start.
+  - On a noise key the quadrature envelope dips to 0 for an instant, so a Below band acts by
+    hundredths of a dB now and then.
+  - MSVC stopped inlining the band's per-sample coefficients once `Band` had grown, and the static
+    EQ with every ramp running cost 40 % more; corrected.
+  - Unlinked at 64 channels takes 1.5 cores: one set of coefficients per channel per band, every
+    sample.
+  - Eight dynamic bands on a stereo sidechain take 2.0 % of a core, before Track.
+  - The static paths cost 8 to 12 % more than in Phase 2.
+- *Decided by the author the same day:*
+  - the link list is state;
+  - it applies only to its own layout;
+  - the HP/LP follower releases over 4 periods, as written;
+  - attack is the offset moving away from 0, in Above and Below alike.
+- *Done-when.* The rows are green. **Not yet:** the listening pass and the reference use case's
+  first half in REAPER, which need the author.
+
 ---
 
 ## Phase 4 — Transient and lookahead · M
