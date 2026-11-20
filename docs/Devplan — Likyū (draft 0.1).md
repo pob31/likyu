@@ -442,6 +442,61 @@ constants and `ttime` range are amended and no longer marked *tune*.
 **Needs from the author:** the listening pass itself; the decision on the constants (PRD open
 decision).
 
+**Record, 2026-11-20: built in one session, after Phase 3.** Handoff:
+[`docs/handoffs/2026-11-20-phase4.md`](handoffs/2026-11-20-phase4.md); bench note:
+[`docs/bench/2026-11-20-phase4.md`](bench/2026-11-20-phase4.md).
+
+- *Done.* 4a to 4c, in five commits to `main`, this record's included.
+  - `lib/dsp`:
+    - `Transient.h`, the transient shaper;
+    - `Band`'s shape carries the gain mode in effect;
+    - `Chain` keeps a Transient lane's envelopes beside its offset, and owns the lookahead's
+      delay line, one per sample type, run in place one stretch at a time after the stretch's
+      key is read;
+    - `Lookahead` gains a stretch overload.
+  - `likyu::core`: `Dispatch` reads `tatk`, `tsus`, `ttime`, `tfloor`.
+  - The shim:
+    - drops its lookahead, the key's copy and the 256-sample chunks;
+    - hands the chain the host's block whole, keyed by itself;
+    - adds four temporary parameters for the time constants.
+  - `likyu_bench`: the `transient` scenario and `--lookahead`.
+- *Rows green on Windows and in CI:*
+  - transient: sign and timing against the analytic one-poles, within 0.0002 dB and 0.5 %;
+  - transient after silence: the first burst within 0.002 dB of the later ones, the same
+    duration;
+  - lookahead effect: with 1 ms, cut exactly as by a static bell at the full cut;
+  - constant latency over every gain mode, type and key, per lookahead, bypassed or not, in the
+    DSP and through the processor;
+  - exact bypass with Transient idle, and with a lookahead (the input delayed, bit for bit);
+  - exact bypass, return: Transient's half, within its stated time;
+  - gain limit with Transient offsets;
+  - again with the new mode: block-size invariance (the delay changed mid-step included),
+    channel linking, layouts, realtime, modulation safety for every new switch.
+- *Not as planned.*
+  - The lookahead's move and its rows are one commit: the rows are what proves the move.
+  - The lookahead effect is read against a static bell at the full cut, the most a lookahead can
+    give, because a bell cut by 12 dB still lets a sudden sine through for a few samples.
+- *Added beyond the plan.*
+  - The four time constants as temporary host parameters (decided by the author).
+  - The envelopes kept in double.
+  - Envelopes that start at the first level they read.
+  - A unit test that the amounts and the floor ramp.
+- *Found on the way.*
+  - Static to Transient is the loudest switch so far, −85 dB: the detector starts cold and the
+    note the band enters on reads as an onset under the fade in.
+  - The return's stated time comes from the gate, not from the signals: 169 ms stated, 159 ms
+    measured.
+  - Transient costs what Dynamic costs, 2.1 % for eight bands.
+  - The lookahead's line costs some 4 % of the static EQ, at every setting.
+  - Unlinked at 64 channels measured one core today, from Phase 3's build and this one alike,
+    where Phase 3's note gave 1.5.
+- *Decided by the author the same day:*
+  - the attack pair releases at the fast release, so three envelopes;
+  - the gate reads the fast envelope;
+  - temporary parameters for the constants.
+- *Done-when.* The rows are green. **Not yet:** the listening pass, the notes from it, and the PRD's
+  constants and `ttime` range amended and no longer *tune*, which need the author.
+
 ---
 
 ## Phase 5 — Frequency modes · L
@@ -602,7 +657,7 @@ for.
 | 1 | Time at each host; the farm; a Go.dot build | Yes |
 | 2 | The performance budget, after the first figure | No |
 | 3 | Form of the link list | Decided 2026-11-20 |
-| 4 | Listening pass; the transient time constants | Yes |
+| 4 | Listening pass; the transient time constants (temporary parameters in place, 2026-11-20) | Yes |
 | 5 | Freeze of the parameter IDs; band-pass as a band type | Yes, at the end |
 | 6 | Listen guard mechanism; a look at the first curve | Yes, for 6d |
 | 7 | Oldest processor supported; signing identities | Yes |
