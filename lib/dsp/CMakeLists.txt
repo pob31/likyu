@@ -26,15 +26,21 @@ add_library(likyu_dsp STATIC
     dsp/Denormals.h
     dsp/Detector.h
     dsp/Dynamics.h
+    dsp/Env.h
     dsp/FastLog.h
+    dsp/Frequency.h
     dsp/Gain.h
     dsp/Lookahead.h
     dsp/Math.h
     dsp/Parameters.h
     dsp/Parameters.cpp
+    dsp/Response.h
+    dsp/SeedBank.h
     dsp/Smoother.h
     dsp/Svf.h
     dsp/Tan.h
+    dsp/Tracker.h
+    dsp/Transient.h
     dsp/rt/RtCheck.h)
 add_library(likyu::dsp ALIAS likyu_dsp)
 

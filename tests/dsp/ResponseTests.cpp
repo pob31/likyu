@@ -39,6 +39,7 @@
 
 #include <dsp/BandCoefficients.h>
 #include <dsp/Gain.h>
+#include <dsp/Response.h>
 #include <dsp/Svf.h>
 #include <dsp/Tan.h>
 
@@ -351,4 +352,68 @@ TEST_CASE ("static response: a stepped sine reads what the impulse response says
         INFO (hz << " Hz");
         CHECK (std::abs (dB (stepped) - dB (magnitudeAt (h, hz, rate))) < 0.001);
     }
+}
+
+TEST_CASE ("the picture's response: what the impulse response says, for every type, with either tan")
+{
+    // 44.1 kHz runs the rational tan, 96 kHz the polynomial (dsp/Tan.h).
+    for (const auto rate : { 44100.0, 96000.0 })
+    {
+        Warp warp;
+        warp.prepare (rate);
+
+        for (const auto& set : settingsFor (rate))
+        {
+            const auto c = coefficientsFor (set, warp);
+            const auto h = impulseResponse (c);
+
+            for (int i = 0; i <= 24; ++i)
+            {
+                const auto hz = 20.0 * std::pow (0.45 * rate / 20.0, i / 24.0);
+                const auto measured = magnitudeAt (h, hz, rate);
+
+                if (measured < 1.0e-5)
+                    continue;
+
+                INFO ("rate " << rate << ", " << nameOf (set.type) << ", " << set.hz << " Hz, at " << hz << " Hz");
+                CHECK (std::abs (svfMagnitudeDb (c, hz, rate) - dB (measured)) < 1.0e-6);
+            }
+        }
+    }
+}
+
+TEST_CASE ("the picture's response: a band at rest is the chain's, and its edges are safe")
+{
+    Warp warp;
+    warp.prepare (48000.0);
+
+    // The same coefficients as the tests' own builder, bit for bit.
+    const Setting set { BandType::highShelf, QMode::proportional, 3000.0, 0.9, 7.5 };
+    const auto mine = staticBandCoefficients (set.type, set.qmode, set.hz, set.q, set.gainDb, warp);
+    const auto theirs = coefficientsFor (set, warp);
+    CHECK (mine.a1 == theirs.a1);
+    CHECK (mine.a2 == theirs.a2);
+    CHECK (mine.m0 == theirs.m0);
+    CHECK (mine.m1 == theirs.m1);
+    CHECK (mine.m2 == theirs.m2);
+
+    // A bell at 0 dB is the identity: 0 dB everywhere, exactly.
+    const auto flat = staticBandCoefficients (BandType::bell, QMode::proportional, 1000.0, 1.0, 0.0, warp);
+    CHECK (svfMagnitudeDb (flat, 50.0, 48000.0) == 0.0);
+    CHECK (svfMagnitudeDb (flat, 1000.0, 48000.0) == 0.0);
+
+    // A type without a gain ignores one; a gain beyond the limit is the limit.
+    const auto low = staticBandCoefficients (BandType::lowPass, QMode::proportional, 1000.0, 0.707, 18.0, warp);
+    CHECK (svfMagnitudeDb (low, 20.0, 48000.0) == doctest::Approx (0.0).epsilon (0.001));
+
+    const auto loud = staticBandCoefficients (BandType::bell, QMode::proportional, 1000.0, 1.0, 90.0, warp);
+    CHECK (svfMagnitudeDb (loud, 1000.0, 48000.0) == doctest::Approx (30.0).epsilon (0.001));
+
+    // A notch's centre, Nyquist and beyond, no rate: finite, never a NaN.
+    const auto notch = staticBandCoefficients (BandType::notch, QMode::proportional, 1000.0, 4.0, 0.0, warp);
+    CHECK (svfMagnitudeDb (notch, 1000.0, 48000.0) < -60.0);
+    CHECK (svfMagnitudeDb (notch, 1000.0, 48000.0) >= responseFloorDb);
+    CHECK (std::isfinite (svfMagnitudeDb (notch, 24000.0, 48000.0)));
+    CHECK (std::isfinite (svfMagnitudeDb (notch, 96000.0, 48000.0)));
+    CHECK (svfMagnitudeDb (notch, 1000.0, 0.0) == 0.0);
 }
