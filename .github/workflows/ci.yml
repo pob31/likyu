@@ -118,6 +118,11 @@ jobs:
       - name: Test (Debug, C and fr_FR)
         run: ctest --preset ci-linux
 
+      # Information, not a gate (devplan 2d): the noise floor of float and double against
+      # long double, which is 80-bit here and no wider than double on MSVC.
+      - name: Precision of the audio path (information)
+        run: build/ci-linux/tests/Debug/likyu_bench precision --seconds 10
+
       - name: Build the plugins (Release)
         run: cmake --build --preset ci-linux-release --target likyu_plugin_All likyu_plugin_lv2_mono_All
 
