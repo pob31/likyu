@@ -256,7 +256,7 @@ TEST_CASE ("modulation safety: gain, Q and frequency stepped at audio rate, on a
                 REQUIRE (audio[0] == 0.0);
         }
 
-        INFO ("on " << (onSilence ? "silence" : "a sine") << ", peak " << peak);
+        INFO ("on " << std::string (onSilence ? "silence" : "a sine") << ", peak " << peak);
         CHECK (peak < 50.0);    // +30 dB is 31.6 times; nothing grows past what the gains allow
     }
 }
@@ -379,7 +379,7 @@ TEST_CASE ("sub-block: how far g interpolated over 16 samples bends a glide, mea
         one 20 ms ramp (each step then covers 0.18 octave, some 217 cents),
         the bend reaches 44 cents near 20 kHz at 44.1 kHz (measured
         2026-11-20): a fifth of a step that lasts a third of a millisecond. On
-        a one-octave move it is a hundredth of a cent. These bounds hold the
+        a one-octave move at 1 kHz it is under 0.04 cent. These bounds hold the
         measured figures; the 16-sample constant itself is confirmed by the
         modulation-safety tests above, which is what the PRD asks of it. */
     const auto worstBend = [] (double r, double fromHz, double toHz)

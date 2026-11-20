@@ -269,9 +269,10 @@ the procedure for each row: [`docs/spikes/phase1-hosts.md`](spikes/phase1-hosts.
 **Goal:** `lib/dsp` is an eight-band parametric EQ that nulls at 0 dB, headless and under test,
 and the plugin plays it.
 
-- **2a. The filter.** The TPT SVF as the PRD writes it; `g` by the rational approximation below
-  0.25 π and the polynomial above; the 16-sample sub-block with a counter that runs across calls.
-  *Rows:* tan approximation.
+- **2a. The filter.** The TPT SVF as the PRD writes it; `g` by the odd polynomial where the
+  argument stays under 0.25 π (fs ≥ 88.2 kHz) and by the rational form below that rate (corrected
+  2026-11-20 to the PRD: this line had the two the wrong way round); the 16-sample sub-block with
+  a counter that runs across calls. *Rows:* tan approximation.
 - **2b. Types and gain.** The eight rows of the coefficient table, proportional and constant Q,
   the dB-to-A conversion exact at 0 dB, the effective gain limit. Reference curves are computed in
   the test, in double, from each type's transfer function on the unit circle. *Rows:* exact
@@ -294,6 +295,41 @@ view; `docs/bench/` has the precision note and the first timing.
 
 **Needs from the author:** confirm or replace the **1 % budget** once 2f gives a number (PRD open
 decision). Nothing blocking.
+
+**Record, 2026-11-20: built in one session, beside Phase 1.** Handoff:
+[`docs/handoffs/2026-11-20-phase2.md`](handoffs/2026-11-20-phase2.md); bench note:
+[`docs/bench/2026-11-20-phase2.md`](bench/2026-11-20-phase2.md).
+
+- *Done.* 2a to 2f, in seven commits to `main`. `lib/dsp`: `Tan.h`, `Svf.h`, `BandCoefficients.h`,
+  `Gain.h`, `Smoother.h`, `Band.h`, `Denormals.h`, `Chain.h`. `likyu::core`: `Dispatch`,
+  `ValueText`, `State` (chunk version 1, fixtures in `tests/state/`); `ProvisionalState` is gone.
+  The shim plays the chain behind the lookahead. `tests/bench/BenchMain.cpp` is the bench runner,
+  `likyu_bench`, with a `time` and a `precision` mode.
+- *Rows green on Windows and in CI:* tan approximation, exact bypass (noise through eight bells
+  and shelves at 0 dB, -0 and denormals included, and again after a move away and back), static
+  response, gain limit (on the function; Phase 3 re-runs it with real offsets), modulation safety,
+  block-size invariance (bit for bit, the PRD's proposal confirmed), denormals, state, layouts,
+  realtime, constant latency over every band type and bypass.
+- *Not as planned.* The chain came in 2c, not 2e: the block-size, exact-bypass and switch tests
+  need it. The static response is measured from each band's impulse response, which for a static
+  band is what a swept sine gives once settled; a stepped sine at three frequencies agrees. The
+  devplan's 2a line had the tan forms reversed (corrected above).
+- *Added beyond the plan.* Value text with units on every continuous parameter (Phase 1, finding
+  6), and a host range whose snap makes every default map to itself (auval's 18 warnings). JUCE's
+  generic editor as a stand-in until Phase 6 (decided by the author 2026-11-20, so that Live can
+  reach the parameters). The lookahead's `prepare`, like the chain's, keeps everything when called
+  again at the same size. CI's Linux job prints the precision table, since only GCC's 80-bit long
+  double can measure double.
+- *Found on the way.* A cached coefficient set that did not record the band's type sent a band
+  back to its old type when a fade-in ended: the switch tests' negative control caught it. A
+  linear crossfade sprayed −52 dB above 8 kHz; a smoothstep, −81 dB. Flush-to-zero alone leaves
+  the TPT state cycling at 1.6e-307 after a decay; tiny states are now set to 0 at sub-block
+  boundaries. auval on CI gave 32 new warnings once the host range used the table's mapping: a
+  minimum of 0.1 is not a float, and the end did not read back as 0. The range now maps between
+  its float bounds, and a processor test does what auval does.
+- *Done-when.* The rows are green; the bench note has the precision and the first timing. **Not
+  yet checked by ear in a host:** the plugin as a usable static EQ from REAPER's generic view and
+  from Live through the stand-in editor, which needs the author.
 
 ---
 
