@@ -310,21 +310,45 @@ namespace likyu::editor
         g.setColour (palette::controlTrack);
         g.fillRect (area);
 
+        /*  The thumb: a white line between two black ones, so that it reads
+            on any band's colour (white alone was lost on the yellow). */
+        const auto thumb = [&g, &area] (float centre)
+        {
+            const auto x = std::clamp (centre - 1.0f, area.getX() + 1.0f, area.getRight() - 3.0f);
+
+            g.setColour (juce::Colours::black);
+            g.fillRect (x - 1.0f, area.getY(), 4.0f, area.getHeight());
+            g.setColour (palette::textPrimary);
+            g.fillRect (x, area.getY(), 2.0f, area.getHeight());
+        };
+
         if (marker)
         {
             /*  The same amount of colour wherever the value is: the bar
-                tinted from end to end, and a block of the full colour at
-                the value. A fill from the left gave a band at 14 kHz a bar
-                of colour and a band at 30 Hz almost none. */
-            constexpr float block = 14.0f;
-            const auto left = std::clamp (at - 0.5f * block, area.getX(), area.getRight() - block);
+                tinted from end to end, and the full colour round the value,
+                fading out either side. A fill from the left gave a band at
+                14 kHz a bar of colour and a band at 30 Hz almost none. */
+            const auto reach = std::min (36.0f, 0.3f * area.getWidth());
 
-            g.setColour (accent.withMultipliedAlpha (0.3f));
+            g.setColour (accent.withMultipliedAlpha (0.25f));
             g.fillRect (area);
-            g.setColour (accent);
-            g.fillRect (left, area.getY(), block, area.getHeight());
-            g.setColour (palette::textPrimary);
-            g.fillRect (left + 0.5f * block - 1.0f, area.getY(), 2.0f, area.getHeight());
+
+            if (reach > 2.0f)
+            {
+                juce::ColourGradient glow (accent.withAlpha (0.0f), at - reach, 0.0f,
+                                           accent.withAlpha (0.0f), at + reach, 0.0f, false);
+                // The full colour over the inner half either side of the thumb,
+                // fading over the outer half to the track's own tint.
+                glow.addColour (0.25, accent);
+                glow.addColour (0.75, accent);
+
+                const juce::Graphics::ScopedSaveState state (g);
+                g.reduceClipRegion (area.getSmallestIntegerContainer());
+                g.setGradientFill (glow);
+                g.fillRect (at - reach, area.getY(), 2.0f * reach, area.getHeight());
+            }
+
+            thumb (at);
             return;
         }
 
@@ -335,8 +359,7 @@ namespace likyu::editor
         g.setColour (accent);
         g.fillRect (std::min (from, at), area.getY(), std::abs (at - from), area.getHeight());
 
-        g.setColour (palette::textPrimary);
-        g.fillRect (std::clamp (at - 1.0f, area.getX(), area.getRight() - 2.0f), area.getY(), 2.0f, area.getHeight());
+        thumb (at);
     }
 
     void ParamBar::mouseDown (const juce::MouseEvent& e)
