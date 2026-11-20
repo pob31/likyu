@@ -42,7 +42,7 @@ Each instance owns **8 bands**, numbered 1 to 8, processed in series in that ord
 | Band field | Values | Notes |
 | --- | --- | --- |
 | Type | Bell, Low shelf, High shelf, High-pass, Low-pass, Notch, Band-pass | One 12 dB/oct TPT SVF |
-| Frequency, Q, Gain | 20 Hz to 20 kHz, 0.1 to 40, −30 to +30 dB | Frequency is the rest value in Env and Track |
+| Frequency, Q, Gain | 20 Hz to 20 kHz, 0.1 to 40, −30 to +30 dB | Frequency is the rest value in Track; Env rests at the start of its mapping (decided 2026-11-20) |
 | Q mode | Proportional (default), Constant | Bell only |
 | Gain mode | Static, Dynamic, Transient | Bell and shelves only; other types are Static |
 | Frequency mode | Fixed, Env, Track | All types |
@@ -179,7 +179,7 @@ Frequency is a second axis, independent of the gain mode, and applies to every b
 
 **Fixed.** The band sits at its Frequency.
 
-**Env.** The key's level, between a Sensitivity threshold and that threshold plus a Span, maps onto the range from Low to High (direction Up) or High to Low (Down), in log frequency. Its attack and release (`fatk`, `frel`) smooth the level before the mapping and are the only smoothing in Env; Speed belongs to Track.
+**Env.** The key's level, between a Sensitivity threshold and that threshold plus a Span, maps onto the range from Low to High (direction Up) or High to Low (Down), in log frequency. Its attack and release (`fatk`, `frel`) smooth the level before the mapping and are the only smoothing in Env; Speed belongs to Track. Under Sensitivity the band rests at the start of its mapping, Low for Up and High for Down; the band's Frequency is not used in Env (*decided 2026-11-20 by the author*: the Band model's note had read "the rest value in Env and Track", which the mapping contradicted).
 
 **Range rules** (decided 2026-11-16), for Env and Track: if Low is above High the two are swapped; in Track, the rest frequency is the band's Frequency clamped into \[Low, High\].
 
@@ -265,7 +265,7 @@ The parameter list is declared in one table in `lib/dsp` (ID, name, unit, range,
 | `fdir` | Up, Down | Up | Env |
 | `fsens`, `fspan` | −80 to 0 dB, 6 to 60 dB | −40, 30 | Env |
 | `fatk`, `frel` | as `atk`, `rel` | 5, 120 | Env |
-| `fconf` | 0 to 100 % | 50 | Track |
+| `fconf` | 0 to 100 % | 30 | Track |
 | `fhold` | 0 to 2000 ms | 200 | Track |
 | `fcgain` | off, on (confidence scales gain) | off | Track |
 
@@ -415,12 +415,12 @@ Nothing blocks Phase 0 any more. The three identity items are decided; they are 
 - [x] **Link list, form:** a per-instance list in the state chunk, set in the editor, not host parameters (*decided 2026-11-20 by the author*); applied only to the layout it was made for, every channel in the link in any other (amended the same day).
 - [ ] **Listen guard, mechanism:** how the plugin knows it is in a live host and what the guard is. *Proposed:* guarded when the host identifies itself as Go.dot, or when a per-machine preference says so; the guard is an Arm switch on the strip that must be on before Listen acts, off each time the editor opens. Settled with the Go.dot integration at the latest.
 - [x] **Quadrature envelope:** confirmed by the Phase 0 spike (2026-11-16).
-- [ ] **Deflation form:** extraction from the raw key, confirmed on synthetic signals with two trackers; to hold on recordings and with eight.
-- [ ] **Confidence threshold:** as defined, confidence reads 0.51 for a sine in noise at 0 dB SNR, which is the default `fconf` of 50 % and the level the *Track, lock* row asks a lock at. Either the default comes down (*proposed:* 30 %), or confidence is measured against the key's power inside \[Low, High\] and not over the whole spectrum.
+- [ ] **Deflation form:** extraction from the raw key, confirmed on synthetic signals with two trackers; to hold on recordings and with eight. *Accepted provisionally 2026-11-20 by the author*: Phase 5 builds on it; it stays open until the spike has run on the recordings.
+- [x] **Confidence threshold:** as defined, confidence reads 0.51 for a sine in noise at 0 dB SNR, which was the default `fconf` of 50 % and the level the *Track, lock* row asks a lock at. Either the default comes down (*proposed:* 30 %), or confidence is measured against the key's power inside \[Low, High\] and not over the whole spectrum. *Decided 2026-11-20 by the author:* the default comes down to 30 %; confidence stays measured over the whole key.
 - [ ] **Speed and close low pairs:** two sines 110 Hz apart wobble a tracker by 109 cents at Speed 20 ms, 46 at 50 ms, 23 at 100 ms. Whether the low end of `fspeed` (1 ms) stays, with that as documented behaviour, or the range is narrowed.
 - [ ] **Main bus width in REAPER** (raised by the Phase 1 host bench, 2026-11-17, `docs/spikes/phase1-hosts.md`): because the plugin accepts any main layout, REAPER gives a four-channel track's channels 3 and 4 to the main bus and puts the sidechain after them, so a hand-made send to 3/4 is processed as audio and keys nothing. Dragging the key track's routing onto the plugin's window does feed the sidechain. To decide once two more measurements are in: leave it and document REAPER's gesture, or restrict what the plugin accepts. Both are in since 2026-11-18: REAPER's default pin map is one to one, so a plugin of any width needs the user to re-wire its sidechain in the pin connector, and a control build with a fixed stereo main gets the send to 3/4 with no such step (finding 2 of the bench). Added 2026-11-18, same bench: the AU in REAPER on macOS is silent on a four-channel track; REAPER gives it four inputs and two outputs (its saved pin map), the plugin refuses unequal widths at initialisation, and REAPER then renders nothing and says nothing; on a two-channel track it runs (finding 9 of the bench).
 - [x] **LFE reported on a plain four-channel track** (raised by the Phase 1 bench, 2026-11-17): **decided 2026-11-18 by the author**: no channel is left out of the link by default; the user leaves out the LFE, or any channel, by hand. REAPER names a layout from the channel count alone (four channels L R C Lfe, six 5.1), hexaphonic and octophonic files have no LFE, and what the channels hold cannot be known in most cases.
-- [ ] **Tracker estimator:** the gradient notch, chosen by the Phase 0 spike on synthetic signals (2026-11-16); confirmed or not when the spike runs on the author's recordings.
+- [ ] **Tracker estimator:** the gradient notch, chosen by the Phase 0 spike on synthetic signals (2026-11-16); confirmed or not when the spike runs on the author's recordings. *Accepted provisionally 2026-11-20 by the author*: Phase 5 builds on it meanwhile.
 - [ ] **Transient time constants and the Time range**, settled by the Phase 4 listening pass, before those IDs' ranges freeze. *2026-11-20:* built with the starting values; for the pass, the four are temporary host parameters (`tmp_tfa`, `tmp_tsa`, `tmp_tfr`, `tmp_tsr`) beside Time.
 - [x] **Performance budget**: *decided 2026-11-20 by the author*: no fixed figure; optimised as much as possible, since detection on every band takes some computing. The figures below stay as the record. Was: confirm or replace the proposed 1 % figure once Phase 2 gives a first measurement. *First figure, 2026-11-20* (`docs/bench/2026-11-20-phase2.md`): eight static bands, stereo, 96 kHz, 64-sample blocks, 0.36 % of one core at the median (0.89 % with every band's ramps running), Intel Core Ultra 7 255H, the DSP alone. No detection yet: the budget's case is Phase 7's. *Second figure, 2026-11-20* (`docs/bench/2026-11-20-phase3.md`): eight bands in Dynamic on a stereo sidechain, linked, 2.0 % (1.0 % at 48 kHz); keyed by the input, Unlinked, 3.3 %; still before Track. *Third figure, 2026-11-20* (`docs/bench/2026-11-20-phase4.md`): eight bands in Transient on a stereo sidechain of bursts, linked, 2.1 %, about what Dynamic costs; the lookahead's line in the chain adds some 4 % to the static EQ (0.41 %) and nothing measurable to the dynamic paths.
 - [ ] **Band-pass as a band type** in a series EQ: kept for envelope-filter use; drop it if it proves a trap in practice.
@@ -460,3 +460,6 @@ Nothing blocks Phase 0 any more. The three identity items are decided; they are 
 | 2026-11-20 | Transient: the attack pair releases at the fast release and the sustain pair attacks at the fast attack, so three envelopes run; the floor gate reads the fast envelope, not L |
 | 2026-11-20 | The four Transient time constants are temporary host parameters until the listening pass has set them |
 | 2026-11-20 | No fixed performance budget: the proposed 1 % becomes "optimised as much as possible"; the bench keeps measuring |
+| 2026-11-20 | The spike's estimator (gradient notch) and deflation (from the raw key) accepted provisionally for Phase 5, until the spike has run on recordings |
+| 2026-11-20 | Confidence threshold: `fconf` defaults to 30 %; confidence stays measured over the whole key |
+| 2026-11-20 | Env rests at the start of its mapping (Low for Up, High for Down); Frequency is the rest value in Track only |

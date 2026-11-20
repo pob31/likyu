@@ -525,7 +525,8 @@ resonance).
 
 **Needs from the author:**
 
-- The spike's result accepted (Phase 0).
+- The spike's result accepted (Phase 0). *Decided 2026-11-20 by the author:* accepted provisionally; the
+  estimator and the deflation form stay open in the PRD until the spike has run on recordings.
 - **Parameter IDs frozen here.** *Proposed:* with every parameter now implemented, the author
   declares the 284 IDs frozen at the end of this phase; from then on sessions may be saved and
   chunk version 1 is a shipped version. Ranges marked *tune* stay movable until the beta, as the
@@ -661,7 +662,7 @@ for.
 | 2 | The performance budget, after the first figure | Decided 2026-11-20: optimised as much as possible |
 | 3 | Form of the link list | Decided 2026-11-20 |
 | 4 | Listening pass; the transient time constants (temporary parameters in place, 2026-11-20) | Yes |
-| 5 | Freeze of the parameter IDs; band-pass as a band type | Yes, at the end |
+| 5 | The spike's result (accepted provisionally 2026-11-20); freeze of the parameter IDs; band-pass as a band type | Yes, at the end |
 | 6 | Listen guard mechanism; a look at the first curve | Yes, for 6d |
 | 7 | Oldest processor supported; signing identities | Yes |
 | 8 | Whether the beta waits for Phase 9 | Yes, at the end |

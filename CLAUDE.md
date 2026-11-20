@@ -41,7 +41,7 @@ Each instance owns **8 bands**, numbered 1 to 8, processed in series in that ord
 | Band field | Values | Notes |
 | --- | --- | --- |
 | Type | Bell, Low shelf, High shelf, High-pass, Low-pass, Notch, Band-pass | One 12 dB/oct TPT SVF |
-| Frequency, Q, Gain | 20 Hz to 20 kHz, 0.1 to 40, −30 to +30 dB | Frequency is the rest value in Env and Track |
+| Frequency, Q, Gain | 20 Hz to 20 kHz, 0.1 to 40, −30 to +30 dB | Frequency is the rest value in Track; Env rests at the start of its mapping (decided 2026-11-20) |
 | Q mode | Proportional (default), Constant | Bell only |
 | Gain mode | Static, Dynamic, Transient | Bell and shelves only; other types are Static |
 | Frequency mode | Fixed, Env, Track | All types |

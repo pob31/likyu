@@ -210,7 +210,7 @@ TEST_CASE ("parameters: the PRD's ranges and defaults, band 3 as the sample")
     check (BandParam::fspeed, 1, 1000, 50);
     check (BandParam::fsens, -80, 0, -40);
     check (BandParam::fspan, 6, 60, 30);
-    check (BandParam::fconf, 0, 100, 50);
+    check (BandParam::fconf, 0, 100, 30);
     check (BandParam::fhold, 0, 2000, 200);
 
     CHECK (band (2, BandParam::type).choices.size() == 7);

@@ -60,6 +60,11 @@ namespace
             { "b4_on", 1 }, { "b4_qmode", 1 }, { "b4_gain", 9 },
             { "b5_atk", 0.5 }, { "b6_gmode", 2 }, { "b2_fspeed", 12 },
             { "b8_on", 1 }, { "b8_type", 4 }, { "b8_freq", 16000 },
+
+            // The fixtures were written while fconf defaulted to 50 %; it is
+            // 30 % since 2026-11-20 (PRD). A chunk keeps what it says.
+            { "b1_fconf", 50 }, { "b2_fconf", 50 }, { "b3_fconf", 50 }, { "b4_fconf", 50 },
+            { "b5_fconf", 50 }, { "b6_fconf", 50 }, { "b7_fconf", 50 }, { "b8_fconf", 50 },
         };
 
         return changes;

@@ -114,7 +114,7 @@ namespace likyu::dsp
             table.push_back (linear (id ("fspan"), name ("Env Span"), "dB", 6.0, 60.0, 30.0));
             table.push_back (logarithmic (id ("fatk"), name ("Env Attack"), "ms", 0.05, 200.0, 5.0));
             table.push_back (logarithmic (id ("frel"), name ("Env Release"), "ms", 5.0, 2000.0, 120.0));
-            table.push_back (linear (id ("fconf"), name ("Track Confidence"), "%", 0.0, 100.0, 50.0));
+            table.push_back (linear (id ("fconf"), name ("Track Confidence"), "%", 0.0, 100.0, 30.0));
             table.push_back (linear (id ("fhold"), name ("Track Hold"), "ms", 0.0, 2000.0, 200.0));
             table.push_back (toggle (id ("fcgain"), name ("Confidence Scales Gain"), false));
         }
