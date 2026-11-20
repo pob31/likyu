@@ -45,4 +45,13 @@ namespace likyu::dsp
     {
         return (T (1) - t) * a + t * b;
     }
+
+    /** 3u^2 - 2u^3: from 0 to 1 with a flat start and a flat end, exactly 0
+        at 0 and exactly 1 at 1. A crossfade shaped by it has no corner, and a
+        corner is what a linear crossfade sprays above the signal. */
+    template <typename T>
+    constexpr T smoothstep (T u) noexcept
+    {
+        return u * u * (T (3) - T (2) * u);
+    }
 }

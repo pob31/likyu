@@ -28,8 +28,11 @@
 # ---------------------------------------------------------------------------
 add_executable(likyu_dsp_tests
     dsp/DspTestMain.cpp
+    dsp/DspTestSupport.h
+    dsp/ChainTests.cpp
     dsp/ParameterTableTests.cpp
     dsp/LookaheadTests.cpp
+    dsp/MovementTests.cpp
     dsp/ResponseTests.cpp
     dsp/SvfTests.cpp
     dsp/TanTests.cpp

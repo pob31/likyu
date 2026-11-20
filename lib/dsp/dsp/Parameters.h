@@ -45,6 +45,13 @@ namespace likyu::dsp
     inline constexpr double minFrequency = 20.0;
     inline constexpr double maxFrequency = 20000.0;
 
+    /** The range of every Q parameter (PRD: 0.1 to 40). */
+    inline constexpr double minQ = 0.1;
+    inline constexpr double maxQ = 40.0;
+
+    /** The range of the output gain (PRD: -24 to +24 dB). */
+    inline constexpr double maxOutputGainDb = 24.0;
+
     enum class ParamKind { toggle, choice, continuous };
 
     /** How a continuous parameter is laid along a host's 0 to 1. */

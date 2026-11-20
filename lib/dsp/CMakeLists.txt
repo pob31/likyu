@@ -19,12 +19,17 @@
 # bands and the chain. Detectors arrive in Phase 3.
 
 add_library(likyu_dsp STATIC
-    dsp/Parameters.h
-    dsp/Parameters.cpp
+    dsp/Band.h
     dsp/BandCoefficients.h
+    dsp/Chain.h
+    dsp/Chain.cpp
+    dsp/Denormals.h
     dsp/Gain.h
     dsp/Lookahead.h
     dsp/Math.h
+    dsp/Parameters.h
+    dsp/Parameters.cpp
+    dsp/Smoother.h
     dsp/Svf.h
     dsp/Tan.h
     dsp/rt/RtCheck.h)

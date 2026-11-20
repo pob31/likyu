@@ -72,7 +72,7 @@ namespace likyu::dsp
             table.push_back (choice (id ("type"), name ("Type"),
                                      { "Bell", "Low shelf", "High shelf", "High-pass", "Low-pass", "Notch", "Band-pass" }, 0));
             table.push_back (logarithmic (id ("freq"), name ("Frequency"), "Hz", minFrequency, maxFrequency, frequency));
-            table.push_back (logarithmic (id ("q"), name ("Q"), "", 0.1, 40.0, 1.0));
+            table.push_back (logarithmic (id ("q"), name ("Q"), "", minQ, maxQ, 1.0));
             table.push_back (linear (id ("gain"), name ("Gain"), "dB", -30.0, 30.0, 0.0));
             table.push_back (choice (id ("qmode"), name ("Q Mode"), { "Proportional", "Constant" }, 0));
             table.push_back (choice (id ("gmode"), name ("Gain Mode"), { "Static", "Dynamic", "Transient" }, 0));
@@ -83,7 +83,7 @@ namespace likyu::dsp
             table.push_back (choice (id ("dfilt"), name ("Detector Filter"), { "Follow", "Own" }, 0));
             table.push_back (choice (id ("dtype"), name ("Detector Type"), { "Band-pass", "High-pass", "Low-pass" }, 0));
             table.push_back (logarithmic (id ("dfreq"), name ("Detector Frequency"), "Hz", minFrequency, maxFrequency, 1000.0));
-            table.push_back (logarithmic (id ("dq"), name ("Detector Q"), "", 0.1, 40.0, 1.0));
+            table.push_back (logarithmic (id ("dq"), name ("Detector Q"), "", minQ, maxQ, 1.0));
 
             // Dynamic (range also limits Transient).
             table.push_back (linear (id ("range"), name ("Range"), "dB", -30.0, 30.0, -6.0));
@@ -121,7 +121,7 @@ namespace likyu::dsp
 
             // Per instance. Lookahead and link are choices of the instance, not automatable.
             table.push_back (toggle ("bypass", "Bypass", false));
-            table.push_back (linear ("out_gain", "Output Gain", "dB", -24.0, 24.0, 0.0));
+            table.push_back (linear ("out_gain", "Output Gain", "dB", -maxOutputGainDb, maxOutputGainDb, 0.0));
             table.push_back (choice ("lookahead", "Lookahead", { "Off", "0.25 ms", "1 ms", "3 ms" }, 0, false));
             table.push_back (choice ("link", "Link", { "Linked", "Unlinked" }, 0, false));
 
