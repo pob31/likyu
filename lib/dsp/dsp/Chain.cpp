@@ -36,6 +36,52 @@ namespace likyu::dsp
         {
             return std::max (1, channels);
         }
+
+        /** Bit i: sample i's coefficients are the identity mix (1, 0, 0). */
+        std::uint32_t identities (const SvfCoefficients<double>* k, int n) noexcept
+        {
+            std::uint32_t skip = 0;
+
+            for (int i = 0; i < n; ++i)
+                if (isIdentity (k[i]))
+                    skip |= 1u << i;
+
+            return skip;
+        }
+
+        /** One channel through per-sample coefficients; a sample marked in
+            `skip` only advances the state, and is not written. The state and
+            each sample's coefficients are copied into locals first, so that
+            a store to `w` cannot be taken for a store to them. */
+        void tickOrAdvance (double* w, int n, double& state1, double& state2, const SvfCoefficients<double>* k,
+                            std::uint32_t skip) noexcept
+        {
+            auto x1 = state1, x2 = state2;
+
+            if (skip == 0)
+            {
+                for (int i = 0; i < n; ++i)
+                {
+                    const auto c = k[i];
+                    w[i] = svfTick (w[i], x1, x2, c);
+                }
+            }
+            else
+            {
+                for (int i = 0; i < n; ++i)
+                {
+                    const auto c = k[i];
+
+                    if ((skip >> i) & 1u)
+                        svfAdvance (w[i], x1, x2, c);
+                    else
+                        w[i] = svfTick (w[i], x1, x2, c);
+                }
+            }
+
+            state1 = x1;
+            state2 = x2;
+        }
     }
 
     void Chain::prepare (double sampleRate, int numChannels)
@@ -678,19 +724,22 @@ namespace likyu::dsp
             std::array<SvfCoefficients<double>, controlStep> moving;
             band.coefficientsFor (position, n, moving.data());
 
+            // A moving band whose mix is the identity (a bell or a shelf at
+            // 0 dB whose g or k moves) is not written either.
+            const auto skip = identities (moving.data(), n);
+
             for (int c = 0; c < numChannels; ++c)
             {
                 double* w = work.data() + c * controlStep;
                 auto x1 = s1[c], x2 = s2[c];
 
-                for (int i = 0; i < n; ++i)
-                    w[i] = svfTick (w[i], x1, x2, moving[static_cast<std::size_t> (i)]);
+                tickOrAdvance (w, n, x1, x2, moving.data(), skip);
 
                 snap (x1);
                 snap (x2);
                 s1[c] = x1;
                 s2[c] = x2;
-                touched[static_cast<std::size_t> (c)] |= all;
+                touched[static_cast<std::size_t> (c)] |= all & ~skip;
             }
 
             return;
@@ -714,9 +763,9 @@ namespace likyu::dsp
         };
 
         /*  With offsets, lane by lane. A sample whose offset is exactly 0 has
-            the Phase 2 coefficients, and is skipped as an identity only where
-            Phase 2 would skip it, in a constant step: whichever path a
-            stretch takes, the bits are the same. */
+            the Phase 2 coefficients, and a sample whose mix is the identity
+            is skipped, on this path as on Phase 2's: whichever path a stretch
+            takes, the bits are the same. */
         const auto& l = lanes[index];
         const auto constant = band.isConstant();
         std::array<SvfCoefficients<double>, controlStep> coefficients;
@@ -730,31 +779,18 @@ namespace likyu::dsp
                 continue;
 
             const double* o = laneOffsets.data() + lane * controlStep;
-            std::uint32_t skip = 0;
 
             for (int i = 0; i < n; ++i)
             {
                 auto& k = coefficients[static_cast<std::size_t> (i)];
 
                 if (exactlyEqual (o[i], 0.0))
-                {
-                    if (constant)
-                    {
-                        k = band.constantCoefficients();
-
-                        if (isIdentity (k))
-                            skip |= 1u << i;
-                    }
-                    else
-                    {
-                        k = band.coefficientsAt (position + i);
-                    }
-                }
+                    k = constant ? band.constantCoefficients() : band.coefficientsAt (position + i);
                 else
-                {
                     k = band.coefficientsAt (position + i, o[i]);
-                }
             }
+
+            const auto skip = identities (coefficients.data(), n);
 
             for (auto j = from; j < to; ++j)
             {
@@ -766,15 +802,7 @@ namespace likyu::dsp
                 double* w = work.data() + c * controlStep;
                 auto x1 = s1[c], x2 = s2[c];
 
-                for (int i = 0; i < n; ++i)
-                {
-                    const auto& k = coefficients[static_cast<std::size_t> (i)];
-
-                    if ((skip >> i) & 1u)
-                        svfAdvance (w[i], x1, x2, k);
-                    else
-                        w[i] = svfTick (w[i], x1, x2, k);
-                }
+                tickOrAdvance (w, n, x1, x2, coefficients.data(), skip);
 
                 snap (x1);
                 snap (x2);

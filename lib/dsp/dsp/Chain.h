@@ -47,8 +47,11 @@
     written back to the host's buffer: the output is the input, bit for bit,
     -0 and denormals included, whatever the flush-to-zero mode did to the
     work copy. Each stage marks the samples it changed, per channel, and
-    only those are written. Bands at 0 dB still run their state, so that a
-    gain moving away from 0 finds it warm.
+    only those are written. A sample whose band mix is exactly the identity
+    (1, 0, 0) is not written on any path, whether or not the band's g and k
+    move: a bell or a shelf at 0 dB is the input even while its frequency
+    moves (Phase 5, Env and Track). Bands at 0 dB still run their state, so
+    that a gain moving away from 0 finds it warm.
 
     TINY STATES ARE SNAPPED TO ZERO at the end of each control step, below
     1e-20 (-400 dB), the detectors' with the bands'. Flush-to-zero alone does
@@ -82,9 +85,9 @@
 
     A DYNAMIC OFFSET OF EXACTLY 0 IS PHASE 2. A sample whose offset is 0 is
     computed with the band's own Phase 2 coefficients, and an identity is
-    skipped only in a step where the band is constant, exactly as Phase 2
-    skips it; so which path a stretch of samples takes changes no bit, and
-    a band whose offsets have all returned to 0 is again the exact bypass.
+    skipped wherever it falls, as on Phase 2's paths; so which path a
+    stretch of samples takes changes no bit, and a band whose offsets have
+    all returned to 0 is again the exact bypass.
 
     LISTEN (PRD, Detection; Phase 3d): one band's detector output replaces
     the chain's output, a solo in place. Self: each channel hears its own

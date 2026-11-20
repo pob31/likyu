@@ -153,6 +153,34 @@ TEST_CASE_TEMPLATE ("exact bypass: noise through 8 bell and shelf bands at 0 dB 
     }
 }
 
+TEST_CASE_TEMPLATE ("exact bypass: bells and shelves at 0 dB whose frequency and Q keep moving are the input, bit for bit", Sample, float, double)
+{
+    /*  Their mix is the identity whatever g and k are, so nothing of them is
+        written, although the step is not constant: an Env or Track band at
+        0 dB moves its g all the time (Phase 5). Written, 1 x + 0 v1 + 0 v2
+        turns -0 into +0, and a denormal into 0 under denormals-are-zero. */
+    const auto input = awkwardNoise<Sample> (20000);
+    std::vector<Event> events = idleAtZero();
+
+    for (int at = 1000; at < 20000; at += 1500)
+        events.push_back ({ at, [at] (Chain& c)
+                            {
+                                const BandType types[] = { BandType::bell, BandType::lowShelf, BandType::highShelf };
+
+                                for (int b = 0; b < numBands; ++b)
+                                    c.setBand (b, band (true, types[b % 3], 60.0 * std::pow (2.0, b) * (1.0 + 0.0001 * at),
+                                                        0.5 + 0.0003 * at, 0.0));
+                            } });
+
+    for (const auto& sizes : { fixedBlocks (64), fixedBlocks (1), randomBlocks (6) })
+    {
+        const auto output = render (rate, input, events, sizes);
+
+        for (std::size_t c = 0; c < input.size(); ++c)
+            CHECK (sameBits (output[c], input[c]));
+    }
+}
+
 TEST_CASE ("exact bypass: a band moved away from 0 dB and back is the input again once its ramp ends")
 {
     const auto input = stereoNoise (24000);
