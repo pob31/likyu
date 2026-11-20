@@ -21,6 +21,8 @@
 add_library(likyu_dsp STATIC
     dsp/Parameters.h
     dsp/Parameters.cpp
+    dsp/BandCoefficients.h
+    dsp/Gain.h
     dsp/Lookahead.h
     dsp/Math.h
     dsp/Svf.h

@@ -30,6 +30,7 @@ add_executable(likyu_dsp_tests
     dsp/DspTestMain.cpp
     dsp/ParameterTableTests.cpp
     dsp/LookaheadTests.cpp
+    dsp/ResponseTests.cpp
     dsp/SvfTests.cpp
     dsp/TanTests.cpp
     support/RtAllocCounter.cpp)
