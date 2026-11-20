@@ -636,8 +636,51 @@ reach the parameters: Phase 1, finding 6).
 **Needs from the author:**
 
 - **Listen guard, mechanism** (PRD open decision): how a live host is recognised, and the Arm
-  switch as proposed or another form.
-- A look at the first curve before the strip is built: sizes, colours, what is too much.
+  switch as proposed or another form. *Decided 2026-11-20 by the author:* a long press, in every
+  host.
+- A look at the first curve before the strip is built: sizes, colours, what is too much. *Given
+  2026-11-20, through the phase*: the layout, the colours and the grouping are the author's.
+
+**Record, 2026-11-20: built in one session, after Phase 5.** Handoff:
+[`docs/handoffs/2026-11-20-phase6.md`](handoffs/2026-11-20-phase6.md); bench note:
+[`docs/bench/2026-11-20-phase6.md`](bench/2026-11-20-phase6.md).
+
+- *Decided by the author during the phase*, each in the PRD with the date:
+  - the layout of WFS-DIY's output EQ: the instance's row, the curve, a column per band, and a foot
+    for the selected band on a fixed grid (6d, in place of one strip);
+  - a band applies to a set of channels (the Band model amended, CLAUDE.md copied), and the list of
+    channels left out of the link is retired;
+  - the Listen guard is a long press in every host; Reset band and Flatten behind it too;
+  - the transient's temporary constants in a sliding panel; the ghost node and Shift; the analyser
+    behind a toggle.
+- *Done.* 6a to 6f, in nineteen commits to `main`, this record's included.
+  - `lib/dsp`: `Response.h`, the filter's own response for the picture; `Chain::setBandChannels`;
+    the link's exclusions gone.
+  - `likyu::core`: `BandChannels` (`band_out` in the state), `AnalyserTap`; `LinkList` gone.
+  - `likyu::editor`, new: the presentation functions, the geometry, the Q gestures, the two lines,
+    the spectrum, all without JUCE; `EditorRoot`, `CurveView`, the columns, the foot, the controls,
+    the long-press button.
+  - The processor: `EditorWindow` with multitouch on; gestures; `setListen`; the band channels;
+    the tap. JUCE's generic editor and `tmp_listen` are gone.
+- *Done-when, all held:* every parameter reachable from the editor (a test over every combination
+  of modes); the presentation tests in CI; pluginval at strictness 10 with the editor open, on the
+  three platforms at every commit; the temporary Listen parameter and the generic editor gone.
+- *Not as planned.*
+  - Not one strip but columns and a foot (the author, on seeing the first curve).
+  - No host is recognised: the long press made the Arm switch and its host detection unneeded.
+    Go.dot's silent-sidechain warning waits for Phase 8, behind `hostFeedsSilence`.
+  - The link list was not given its row of cells: the channels of each band replaced it.
+- *Added beyond the plan:* a band's channels, from the LFE case (a change to the Band model, not
+  to the editor); Q shown as a width on the bar and the dial; Reset band and Flatten; the editor
+  under a validator's random values as a test.
+- *Found on the way.*
+  - A frequency bar filled from the left shows a 14 kHz band as a bar of colour and a 30 Hz band as
+    almost none; a marker with a glow shows them alike.
+  - A drag taken from the published value adds its own movement again at each refresh (Go.dot's
+    lesson, kept): every drag here is from the value at the press.
+  - Pushing while a CI run is going cancels its Windows job.
+- *Not yet, and the author's:* the hosts and touch on the three machines; the listening passes;
+  Band-pass; the freeze; the look of the analyser.
 
 ---
 
@@ -736,7 +779,7 @@ for.
 | 3 | Form of the link list | Decided 2026-11-20 |
 | 4 | Listening pass; the transient time constants (temporary parameters in place, 2026-11-20) | Yes |
 | 5 | The spike's result (accepted provisionally 2026-11-20); the listening pass; freeze of the parameter IDs; band-pass as a band type | Yes, at the end |
-| 6 | Listen guard mechanism; a look at the first curve | Yes, for 6d |
+| 6 | Listen guard mechanism; a look at the first curve | Decided 2026-11-20: a long press; the look given through the phase |
 | 7 | Oldest processor supported; signing identities | Yes |
 | 8 | Whether the beta waits for Phase 9 | Yes, at the end |
 
