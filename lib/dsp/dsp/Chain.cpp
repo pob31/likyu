@@ -118,8 +118,12 @@ namespace likyu::dsp
         laneFrequencies.assign (stride * numBands, LaneFrequency {});
         envStates.assign (stride * numBands, EnvState {});
         laneDetectors.assign (stride * numBands, DetectorCoefficients {});
+        trackers.assign (stride * numBands, TrackerState {});
+        laneConfidence.assign (stride * numBands * controlStep, 1.0);
         modulated.fill (false);
         perLaneDetector.fill (false);
+        scaled.fill (false);
+        anyTrack = false;
         lanes = {};
         lanesBuiltFor.fill (-1);
         detectorBuiltFor.fill (-1);
@@ -153,8 +157,11 @@ namespace likyu::dsp
         std::fill (envelopes.begin(), envelopes.end(), TransientEnvelopes {});
         std::fill (laneFrequencies.begin(), laneFrequencies.end(), LaneFrequency {});
         std::fill (envStates.begin(), envStates.end(), EnvState {});
+        std::fill (trackers.begin(), trackers.end(), TrackerState {});
         modulated.fill (false);
         perLaneDetector.fill (false);
+        scaled.fill (false);
+        anyTrack = false;
         stateInUse.fill (false);
         detectorInUse.fill (false);
         lanesBuiltFor.fill (-1);
@@ -229,6 +236,9 @@ namespace likyu::dsp
         const auto hz = channels > 0 ? frequencyHz (band, l.count > 0 ? static_cast<int> (l.channelsByLane[0]) : 0)
                                      : b.frequencyHz();
         m.frequencyHz = std::isfinite (hz) ? hz : 0.0;
+
+        if (b.frequencyMode() == FrequencyMode::track && l.count > 0)
+            m.confidence = trackers[static_cast<std::size_t> (band * stride)].confidence;
         m.keyFellBack = b.keyFellBack();
         return m;
     }
@@ -366,6 +376,7 @@ namespace likyu::dsp
         const BandContext context { sidechainChannels, linked, excluded & prepared64 };
 
         selfKeyed = sidechainKeyed = false;
+        anyTrack = false;
 
         const auto newTimes = timesPending;
         timesPending = false;
@@ -422,6 +433,7 @@ namespace likyu::dsp
         std::fill (envelopes.begin() + b * stride, envelopes.begin() + (b + 1) * stride, TransientEnvelopes {});
         std::fill (laneFrequencies.begin() + b * stride, laneFrequencies.begin() + (b + 1) * stride, LaneFrequency {});
         std::fill (envStates.begin() + b * stride, envStates.begin() + (b + 1) * stride, EnvState {});
+        std::fill (trackers.begin() + b * stride, trackers.begin() + (b + 1) * stride, TrackerState {});
 
         const auto& shape = band.activeShape();
 
@@ -491,6 +503,7 @@ namespace likyu::dsp
 
         modulated[index] = false;
         perLaneDetector[index] = false;
+        scaled[index] = false;
 
         if (! band.hasFrequencyMode() || band.isIdle() || l.count == 0)
             return;
@@ -499,6 +512,13 @@ namespace likyu::dsp
         const auto env = band.frequencyMode() == FrequencyMode::env;
         const auto follow = band.detectorConfig().dfilt == DetectorFilter::follow;
         const auto own = band.ownLogFrequency();
+        const auto& tracker = band.trackerComputer();
+
+        if (! env)
+        {
+            anyTrack = true;
+            scaled[index] = band.confidenceScales();
+        }
 
         for (int lane = 0; lane < l.count; ++lane)
         {
@@ -506,10 +526,22 @@ namespace likyu::dsp
             auto& f = laneFrequencies[i];
 
             // Env: the follower's frequency, or the start of the mapping
-            // before it has read anything. Track (until Phase 5b): at rest,
-            // the band's Frequency clamped into [Low, High].
-            const auto target = env ? (f.hasOutput ? f.logHz : band.envRestLogFrequency())
-                                    : band.frequencyRange().clampInto (own, 1.0);
+            // before it has read anything. Track: the tracker's output, or
+            // its rest, the band's Frequency clamped into [Low, High], as it
+            // is now.
+            double target = 0.0;
+
+            if (env)
+            {
+                target = f.hasOutput ? f.logHz : band.envRestLogFrequency();
+            }
+            else
+            {
+                auto& s = trackers[i];
+                tracker.beginStep (s);
+                target = s.atRest ? tracker.current().rest : s.output;
+            }
+
             const auto atOwn = ! env && exactlyEqual (target, own);
             const auto g = atOwn ? band.gEnd() : band.warpG (target);
 
@@ -550,6 +582,9 @@ namespace likyu::dsp
 
         if (mixing)
             std::copy (work.begin(), work.begin() + numChannels * controlStep, dry.begin());
+
+        if (anyTrack)
+            track (n);
 
         for (int b = 0; b < numBands; ++b)
         {
@@ -641,6 +676,67 @@ namespace likyu::dsp
                 return true;
 
         return false;
+    }
+
+    void Chain::laneKey (int b, int lane, int n, float* out) const noexcept LIKYU_AUDIO_THREAD
+    {
+        const auto& l = lanes[static_cast<std::size_t> (b)];
+        std::fill (out, out + n, 0.0f);
+
+        // The sidechain's channels, or the channels of this lane.
+        const auto sidechain = bands[static_cast<std::size_t> (b)].activeShape().key == KeySource::sidechain;
+        const auto from = sidechain ? 0 : static_cast<int> (l.firstOfLane[static_cast<std::size_t> (lane)]);
+        const auto to = sidechain ? sidechainChannels : static_cast<int> (l.firstOfLane[static_cast<std::size_t> (lane) + 1]);
+
+        if (to <= from)
+            return;
+
+        for (int j = from; j < to; ++j)
+        {
+            const auto slot = sidechain ? channels + j : static_cast<int> (l.channelsByLane[static_cast<std::size_t> (j)]);
+            const float* k = keys.data() + slot * controlStep;
+
+            for (int i = 0; i < n; ++i)
+                out[i] += k[i];
+        }
+
+        if (to - from > 1)
+        {
+            const auto scale = 1.0f / static_cast<float> (to - from);
+
+            for (int i = 0; i < n; ++i)
+                out[i] *= scale;
+        }
+    }
+
+    void Chain::track (int n) noexcept LIKYU_AUDIO_THREAD
+    {
+        const auto stride = laneStride (channels);
+
+        for (int b = 0; b < numBands; ++b)
+        {
+            const auto index = static_cast<std::size_t> (b);
+            const auto& band = bands[index];
+            const auto& l = lanes[index];
+
+            if (band.frequencyMode() != FrequencyMode::track || band.isIdle() || l.count == 0)
+                continue;
+
+            const auto& tracker = band.trackerComputer();
+
+            for (int lane = 0; lane < l.count; ++lane)
+            {
+                const auto i = static_cast<std::size_t> (b * stride + lane);
+                laneKey (b, lane, n, trackKey.data());
+
+                auto& s = trackers[i];
+                tracker.run (trackKey.data(), n, s, scaled[index] ? laneConfidence.data() + i * controlStep : nullptr);
+
+                auto& f = laneFrequencies[i];
+                f.logHz = s.output;
+                f.hasOutput = true;
+            }
+        }
     }
 
     void Chain::detect (int b, int numChannels, int n) noexcept LIKYU_AUDIO_THREAD
@@ -805,7 +901,7 @@ namespace likyu::dsp
                 state = 0.0;
         };
 
-        if (! anyOffset[index] && ! modulated[index])
+        if (! anyOffset[index] && ! modulated[index] && ! scaled[index])
         {
             // Phase 2: one set of coefficients for the step, or one per sample.
             if (band.isConstant())
@@ -891,6 +987,7 @@ namespace likyu::dsp
         const auto constant = band.isConstant();
         const auto withOffsets = anyOffset[index];
         const auto withFrequencies = modulated[index];
+        const auto withScale = scaled[index];
         const auto stride = laneStride (channels);
         std::array<SvfCoefficients<double>, controlStep> coefficients;
 
@@ -903,9 +1000,28 @@ namespace likyu::dsp
                 continue;
 
             const double* o = withOffsets ? laneOffsets.data() + lane * controlStep : nullptr;
-            const auto& f = laneFrequencies[static_cast<std::size_t> (b * stride + lane)];
+            const auto i0 = static_cast<std::size_t> (b * stride + lane);
+            const auto& f = laneFrequencies[i0];
 
-            if (! withFrequencies || f.own)
+            if (withScale)
+            {
+                // Confidence scales the gain: the lane's own g, or the band's.
+                const auto* confidence = laneConfidence.data() + i0 * controlStep;
+                const auto own = ! withFrequencies || f.own;
+                const auto g0 = own ? band.gStart() : f.g0;
+                const auto g1 = own ? band.gEnd() : f.g1;
+                const auto gMoving = ! exactlyEqual (g0, g1);
+
+                for (int i = 0; i < n; ++i)
+                {
+                    const auto t = static_cast<double> (position + i + 1) / controlStep;
+                    const auto g = gMoving ? lerpExact (g0, g1, t) : g1;
+                    const auto scale = 1.0 - band.confidenceWeightAt (t) * (1.0 - confidence[i]);
+                    coefficients[static_cast<std::size_t> (i)]
+                        = band.coefficientsWithG (position + i, g, o != nullptr ? o[i] : 0.0, scale);
+                }
+            }
+            else if (! withFrequencies || f.own)
             {
                 for (int i = 0; i < n; ++i)
                 {

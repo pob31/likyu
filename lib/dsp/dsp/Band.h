@@ -99,6 +99,7 @@
 #include "Smoother.h"
 #include "Svf.h"
 #include "Tan.h"
+#include "Tracker.h"
 #include "Transient.h"
 
 #include <algorithm>
@@ -259,6 +260,8 @@ namespace likyu::dsp
             transient.prepare (sampleRate, smoothing);
             range.setLength (smoothing);
             env.prepare (sampleRate, smoothing);
+            track.prepare (sampleRate);
+            confidenceWeight.setLength (smoothing);
             detectorLf = notANumber;
             detectorStale = true;
 
@@ -305,10 +308,13 @@ namespace likyu::dsp
                 transient.finish();
                 range.finish();
                 env.finish();
+                confidenceWeight.finish();
+                cw0 = cw1 = confidenceWeight.getCurrent();
                 active = target;
                 ++shapeRevision;
                 fade.jumpTo (active.on ? 1.0 : 0.0);
                 startOver();
+                track.step (range, lastLogFrequency);
                 updateDetector();
                 return;
             }
@@ -346,6 +352,9 @@ namespace likyu::dsp
             transient.step();
             range.step();
             env.step();
+            track.step (range, lastLogFrequency);
+            cw0 = cw1;
+            cw1 = confidenceWeight.step();
             updateDetector();
         }
 
@@ -491,6 +500,24 @@ namespace likyu::dsp
         /** Env's follower, on the grid (dsp/Env.h). */
         const EnvComputer& envComputer() const noexcept     { return env; }
 
+        /** Track's trackers, on the grid (dsp/Tracker.h). */
+        const TrackerComputer& trackerComputer() const noexcept     { return track; }
+
+        /** Track: how much confidence scales the gain (PRD: fcgain), 0 to 1 at
+            `t` of the step; it ramps, so turning fcgain on or off is not a
+            step in the gain. The scale is then 1 - weight (1 - confidence). */
+        double confidenceWeightAt (double t) const noexcept
+        {
+            return exactlyEqual (cw0, cw1) ? cw1 : lerpExact (cw0, cw1, t);
+        }
+
+        /** In this step, confidence scales the gain of a Track band with a gain. */
+        bool confidenceScales() const noexcept
+        {
+            return active.fmode == FrequencyMode::track && hasGain (active.type)
+                && ! (exactlyEqual (cw0, 0.0) && exactlyEqual (cw1, 0.0));
+        }
+
         /** Env: the log2 frequency a follower's level maps to at `t` of the step. */
         double envLogFrequency (double levelDb, double t) const noexcept
         {
@@ -618,6 +645,8 @@ namespace likyu::dsp
                                  pending.transientTime, pending.transientFloorDb);
             range.setTarget (pending.lowHz, pending.highHz);
             env.setTarget (pending.sensitivityDb, pending.spanDb, pending.envAttackMs, pending.envReleaseMs);
+            track.setTarget (pending.speedMs, pending.confidencePercent, pending.holdMs);
+            confidenceWeight.setTarget (pending.confidenceScalesGain ? 1.0 : 0.0);
 
             if (std::isfinite (pending.frequency))
                 logFrequency.setTarget (std::log2 (std::clamp (pending.frequency, minFrequency, maxFrequency)));
@@ -750,6 +779,9 @@ namespace likyu::dsp
         TransientComputer transient;
         FrequencyRange range;
         EnvComputer env;
+        TrackerComputer track;
+        Ramp confidenceWeight;
+        double cw0 = 0.0, cw1 = 0.0;
         double rate = 0.0;
 
         BandSettings pending, latched;

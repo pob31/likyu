@@ -226,6 +226,18 @@ namespace likyutest::dsp
         return s;
     }
 
+    /** A band in Track mode (Static gain), resting at `restHz`, tracking in [lowHz, highHz]. */
+    inline likyu::dsp::BandSettings trackBand (likyu::dsp::BandType type, double restHz, double gainDb, double lowHz,
+                                               double highHz, double speedMs = 50.0)
+    {
+        auto s = band (true, type, restHz, 2.0, gainDb);
+        s.fmode = likyu::dsp::FrequencyMode::track;
+        s.lowHz = lowHz;
+        s.highHz = highHz;
+        s.speedMs = speedMs;
+        return s;
+    }
+
     /** A sine of peak `amplitude`. */
     template <typename Sample>
     std::vector<Sample> tone (int length, double hz, double amplitude, double rate, double phase = 0.0)

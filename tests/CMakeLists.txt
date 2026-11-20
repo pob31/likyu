@@ -40,6 +40,7 @@ add_executable(likyu_dsp_tests
     dsp/ResponseTests.cpp
     dsp/SvfTests.cpp
     dsp/TanTests.cpp
+    dsp/TrackTests.cpp
     dsp/TransientTests.cpp
     support/RtAllocCounter.cpp)
 
