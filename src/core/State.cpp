@@ -27,6 +27,7 @@ namespace likyu::core
     {
         const juce::Identifier versionKey { "version" };
         const juce::Identifier parametersKey { "parameters" };
+        const juce::Identifier linkKey { "link_out" };
 
         bool isNumber (const juce::var& v)
         {
@@ -65,7 +66,7 @@ namespace likyu::core
         return values;
     }
 
-    juce::String StateChunk::write (const std::vector<double>& values) const
+    juce::String StateChunk::write (const std::vector<double>& values, const LinkList& link) const
     {
         const auto& table = dsp::parameterTable();
 
@@ -89,6 +90,9 @@ namespace likyu::core
         root->setProperty (versionKey, version);
         root->setProperty (parametersKey, juce::var (parameters.get()));
 
+        if (link.excluded != 0)
+            root->setProperty (linkKey, toVar (link));
+
         for (const auto& kept : keptTop)
             root->setProperty (kept.name, kept.value);
 
@@ -96,6 +100,12 @@ namespace likyu::core
     }
 
     bool StateChunk::read (const juce::String& text, std::vector<double>& values)
+    {
+        LinkList ignored;
+        return read (text, values, ignored);
+    }
+
+    bool StateChunk::read (const juce::String& text, std::vector<double>& values, LinkList& link)
     {
         juce::var root;
 
@@ -135,10 +145,16 @@ namespace likyu::core
         }
 
         for (const auto& property : root.getDynamicObject()->getProperties())
-            if (property.name != versionKey && property.name != parametersKey)
+            if (property.name != versionKey && property.name != parametersKey && property.name != linkKey)
                 unknownTop.set (property.name, property.value);
 
+        LinkList list;
+
+        if (! fromVar (root.getProperty (linkKey, juce::var()), list))
+            list = {};
+
         values = std::move (result);
+        link = list;
         keptInParameters = std::move (unknownParameters);
         keptTop = std::move (unknownTop);
         return true;

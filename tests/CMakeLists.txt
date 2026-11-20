@@ -73,6 +73,7 @@ if(LIKYU_BUILD_PLUGINS)
         TestSupport.h
         LocaleTests.cpp
         core/DispatchTests.cpp
+        core/LinkListTests.cpp
         core/StateTests.cpp
         core/ValueTextTests.cpp
         plugin/ProcessorTests.cpp

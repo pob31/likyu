@@ -361,7 +361,9 @@ speaks.
 
 - Phase 1's findings (the fallback row).
 - **Form of the link list** (PRD open decision): state set in the editor, as proposed, or host
-  parameters. It decides 3c's interface and whether the parameter count stays at 284.
+  parameters. It decides 3c's interface and whether the parameter count stays at 284. *Decided
+  2026-11-20 by the author:* state in the chunk, applied only to the layout it was made for; 284
+  parameters stay.
 
 ---
 
@@ -544,7 +546,7 @@ for.
 | 0 | Copyright line; mono LV2 name | Decided 2026-11-16 |
 | 1 | Time at each host; the farm; a Go.dot build | Yes |
 | 2 | The performance budget, after the first figure | No |
-| 3 | Form of the link list | Yes, for 3c |
+| 3 | Form of the link list | Decided 2026-11-20 |
 | 4 | Listening pass; the transient time constants | Yes |
 | 5 | Freeze of the parameter IDs; band-pass as a band type | Yes, at the end |
 | 6 | Listen guard mechanism; a look at the first curve | Yes, for 6d |
