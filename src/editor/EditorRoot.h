@@ -50,9 +50,9 @@ namespace likyu::editor
         /** The window's sizes, for whoever hosts the root. At the default
             size the curve has the size the geometry's tests hold its hit
             areas at (CurveGeometry.h). */
-        static constexpr int defaultWidth = 960;
+        static constexpr int defaultWidth = 1100;
         static constexpr int defaultHeight = GlobalRow::height + 380 + BandColumn::height + FootPanel::height;
-        static constexpr int minimumWidth = 800, minimumHeight = 600;
+        static constexpr int minimumWidth = 880, minimumHeight = 660;
         static constexpr int maximumWidth = 2400, maximumHeight = 1600;
 
         /** The meter snapshot's reader runs at about this rate (PRD, Detection). */
@@ -83,6 +83,8 @@ namespace likyu::editor
         {
             Look();
             juce::Font getComboBoxFont (juce::ComboBox&) override;
+            void drawComboBox (juce::Graphics&, int width, int height, bool isButtonDown,
+                               int buttonX, int buttonY, int buttonW, int buttonH, juce::ComboBox&) override;
             void positionComboBoxText (juce::ComboBox&, juce::Label&) override;
         };
 

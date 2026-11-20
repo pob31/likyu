@@ -166,19 +166,19 @@ namespace likyu::editor
 
     void BandColumn::resized()
     {
-        auto area = getLocalBounds().reduced (6, 0);
-        area.removeFromTop (24);                                    // the name
+        auto area = getLocalBounds().reduced (10, 0);
+        area.removeFromTop (28);                                    // the name
 
         auto head = area.removeFromTop (24);
         on.setBounds (head.removeFromLeft (20).withSizeKeepingCentre (18, 18));
-        head.removeFromLeft (5);
+        head.removeFromLeft (6);
         type.setBounds (head);
 
-        area.removeFromTop (8);
-        frequency.setBounds (area.removeFromTop (36));
+        area.removeFromTop (12);
+        frequency.setBounds (area.removeFromTop (38));
 
-        area.removeFromTop (4);
-        area.removeFromBottom (4);
+        area.removeFromTop (10);
+        area.removeFromBottom (8);
 
         // Gain and Q side by side; Q alone in the middle for a type without a gain.
         if (column.showsGain)
@@ -206,17 +206,17 @@ namespace likyu::editor
 
         g.setColour (column.on ? colour : colour.withMultipliedAlpha (0.55f));
         g.setFont (fontOf (13.0f, selected));
-        g.drawText ("Band " + juce::String (band + 1), juce::Rectangle<int> (8, 4, getWidth() - 16, 18),
+        g.drawText ("Band " + juce::String (band + 1), juce::Rectangle<int> (10, 6, getWidth() - 20, 18),
                     juce::Justification::centredLeft, false);
     }
 
     //==========================================================================
     namespace
     {
-        constexpr int footTitleHeight = 22;
-        constexpr int blockTitleHeight = 16;
-        constexpr int cellWidth = 84, cellHeight = 66;
-        constexpr int blockGap = 14;
+        constexpr int footTitleHeight = 26;
+        constexpr int blockTitleHeight = 20;
+        constexpr int cellWidth = 92, cellHeight = 76;
+        constexpr int blockGap = 22;
         constexpr int rows = 2;
 
         int columnsFor (std::size_t count)
@@ -321,10 +321,10 @@ namespace likyu::editor
             return;
 
         // Cells at their own width where there is room; narrower, all alike, where there is not.
-        const auto room = getWidth() - 20 - blockGap * static_cast<int> (blocks.size() - 1);
+        const auto room = getWidth() - 24 - blockGap * static_cast<int> (blocks.size() - 1);
         const auto cell = std::clamp (room / columns, 48, cellWidth);
 
-        auto x = 10;
+        auto x = 12;
         const auto top = footTitleHeight + blockTitleHeight;
 
         for (auto& block : blocks)
@@ -337,7 +337,7 @@ namespace likyu::editor
                 // Down the first column, then the next: a mode's choice sits above its first control.
                 const auto column = static_cast<int> (i) / rows, row = static_cast<int> (i) % rows;
                 controls[block.first + i]->setBounds (juce::Rectangle<int> (x + column * cell, top + row * cellHeight, cell, cellHeight)
-                                                          .reduced (3, 2));
+                                                          .reduced (5, 4));
             }
 
             x += wide * cell + blockGap;

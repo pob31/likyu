@@ -46,7 +46,7 @@ namespace likyu::editor
     class GlobalRow final : public juce::Component
     {
     public:
-        static constexpr int height = 40;
+        static constexpr int height = 44;
 
         explicit GlobalRow (Host& host);
 
@@ -66,7 +66,7 @@ namespace likyu::editor
     class BandColumn final : public juce::Component
     {
     public:
-        static constexpr int height = 168;
+        static constexpr int height = 196;
 
         BandColumn (Host& host, int band);
         ~BandColumn() override;
@@ -100,7 +100,7 @@ namespace likyu::editor
     class FootPanel final : public juce::Component
     {
     public:
-        static constexpr int height = 172;
+        static constexpr int height = 204;
 
         explicit FootPanel (Host& host);
 

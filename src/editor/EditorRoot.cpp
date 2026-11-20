@@ -36,12 +36,42 @@ namespace likyu::editor
         return juce::Font (juce::FontOptions (12.5f));
     }
 
-    /*  The text up to the arrow, and squeezed before it is cut: "High shelf"
-        and "Proportional" are read whole in a column an eighth of the window
-        wide. */
+    namespace
+    {
+        /** The room a combo box keeps at its right for its chevron. */
+        constexpr int chevronZone = 20;
+    }
+
+    /*  The box with a small chevron in a zone of its own, which the text
+        never enters (JUCE's own arrow is wider than the room it leaves the
+        text in a narrow box). */
+    void EditorRoot::Look::drawComboBox (juce::Graphics& g, int width, int height, bool,
+                                         int, int, int, int, juce::ComboBox& box)
+    {
+        const auto area = juce::Rectangle<float> (0.0f, 0.0f, static_cast<float> (width), static_cast<float> (height)).reduced (0.5f);
+
+        g.setColour (box.findColour (juce::ComboBox::backgroundColourId));
+        g.fillRoundedRectangle (area, 3.0f);
+        g.setColour (box.findColour (juce::ComboBox::outlineColourId));
+        g.drawRoundedRectangle (area, 3.0f, 1.0f);
+
+        const auto x = static_cast<float> (width) - 0.5f * static_cast<float> (chevronZone);
+        const auto y = 0.5f * static_cast<float> (height);
+
+        juce::Path chevron;
+        chevron.startNewSubPath (x - 4.0f, y - 2.0f);
+        chevron.lineTo (x, y + 2.5f);
+        chevron.lineTo (x + 4.0f, y - 2.0f);
+
+        g.setColour (box.findColour (juce::ComboBox::arrowColourId).withAlpha (box.isEnabled() ? 0.9f : 0.3f));
+        g.strokePath (chevron, juce::PathStrokeType (1.6f));
+    }
+
+    /*  The text up to the chevron's zone, and squeezed before it is cut:
+        "High shelf" and "Proportional" are read whole in a narrow box. */
     void EditorRoot::Look::positionComboBoxText (juce::ComboBox& box, juce::Label& label)
     {
-        label.setBounds (4, 1, box.getWidth() - 28, box.getHeight() - 2);
+        label.setBounds (3, 1, box.getWidth() - 3 - chevronZone, box.getHeight() - 2);
         label.setFont (getComboBoxFont (box));
         label.setMinimumHorizontalScale (0.6f);
     }

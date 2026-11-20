@@ -522,8 +522,9 @@ TEST_CASE ("editor: a column per band, and a foot that follows the selected band
     for (int band = 0; band < dsp::numBands; ++band)
     {
         const auto bounds = root.bandColumn (band).getBounds();
-        CHECK (bounds.getWidth() == editor::EditorRoot::defaultWidth / dsp::numBands);
-        CHECK (bounds.getX() == band * bounds.getWidth());
+        const auto width = editor::EditorRoot::defaultWidth / dsp::numBands;
+        CHECK (bounds.getWidth() >= width);     // the last one takes the pixels left over
+        CHECK (bounds.getX() == band * width);
         CHECK (bounds.getY() == opened.curve().getBottom());
         CHECK (bounds.getBottom() == root.footPanel().getY());
     }
