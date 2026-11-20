@@ -336,6 +336,42 @@ TEST_CASE ("dynamic curve: a stepped-level tone through a dynamic bell reads the
     }
 }
 
+TEST_CASE ("quadrature envelope, end to end: a dynamic bell at 60 Hz with the shortest times does not ripple, at its centre or half an octave off")
+{
+    /*  The row's "1 ms time constants": the attack at 1 ms; the release can
+        go no shorter than 5 ms (PRD, Parameters). Every tone is 26 to 28 dB over
+        the threshold, so the offset sits on the slope of the curve, where a
+        ripple of the level would show in it. */
+    constexpr double centre = 60.0, thresholdDb = -40.0, ratio = 4.0;
+    const auto length = static_cast<int> (1.0 * rate);
+    double worst = 0.0;
+
+    for (const auto hz : { centre, centre / std::sqrt (2.0), centre * std::sqrt (2.0) })
+    {
+        const auto input = tone<double> (length, hz, 0.25, rate);
+        const std::vector<Event> events { { 0, [] (Chain& c)
+        {
+            c.setBand (0, dynamicBand (BandType::bell, centre, 1.0, 0.0, thresholdDb, -30.0, ratio, 1.0, 5.0));
+        } } };
+
+        const auto t = trace ({ input }, events, 0);
+        double lowest = 1.0e9, highest = -1.0e9;
+
+        for (int n = length / 2; n < length; ++n)
+        {
+            lowest = std::min (lowest, t.offsets[0][static_cast<std::size_t> (n)]);
+            highest = std::max (highest, t.offsets[0][static_cast<std::size_t> (n)]);
+        }
+
+        INFO (hz << " Hz: offset from " << lowest << " to " << highest << " dB");
+        CHECK (highest < -3.0);
+        CHECK (highest - lowest < 0.1);
+        worst = std::max (worst, highest - lowest);
+    }
+
+    MESSAGE ("quadrature envelope, end to end: worst offset ripple " << worst << " dB");
+}
+
 //==============================================================================
 TEST_CASE_TEMPLATE ("exact bypass, return: dynamic bands at 0 dB, a loud passage, then a key under the threshold: the input again, bit for bit", Sample, float, double)
 {
