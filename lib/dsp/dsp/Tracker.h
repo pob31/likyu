@@ -83,6 +83,40 @@
     1e-6, and a Speed of 1 s at 192 kHz moves the estimate by about that
     much per sample, so a float estimate would stall.
 
+    SEVERAL TRACKERS ON ONE KEY (PRD, Exclusion between Track bands): the
+    Track bands that share a key source run together, sample by sample. Each
+    adapts on the key less the components of the others that are locked or
+    held, each component extracted from the raw key by a second SVF at its
+    tracker's estimate (the same coefficients as its adapting filter): no
+    delay, and no loop between trackers. Built 2026-11-20:
+
+      - A TRACKER'S WEIGHT in the others' deflation (the PRD's lock_j) is 1
+        while it is locked, and its confidence over the threshold, at most
+        1, otherwise, smoothed over trackWeightMs. Confidence is measured
+        over the whole key (decided by the author 2026-11-20), so with only
+        the locked deflated, eight equal sines leave every tracker at 1/8,
+        under any useful threshold, and none ever locks; graded, each
+        tracker on its own sine removes part of it from the others, they
+        all gain, and all lock.
+      - THE FIRST KEEPS ITS COMPONENT. A lock is refused within
+        trackSpacingCents of a tracker that is locked or held, and of two
+        locked or held trackers that come that close, the one locked the
+        more recently is released: the first to lock on a component keeps
+        it, and the other, which deflation then leaves without it, is
+        seeded elsewhere. Two trackers acquiring one sine together otherwise
+        both locked, the second from 235 cents away while the first's
+        extraction was still off centre, and the spacing then held them
+        straddling it, 130 cents apart.
+
+      - THE SPACING PUSHES ONLY THE RELEASED. A released tracker closer than
+        trackSpacingCents to another is pushed away from it, at its own
+        Speed; a tie goes to band order. A tracker that is locked or held is
+        not pushed: a released one acquiring the same sine pushed the locked
+        one 70 cents off it, before any onset.
+    Identity comes from continuity, not from loudness: a tracker keeps its
+    component when two trade levels. The seeding of released trackers is
+    the chain's (dsp/SeedBank.h).
+
     ON THE GRID. Speed, the threshold and the Hold take effect at the next
     grid point; so does the confidence's smoothing, made from the estimate
     there. Low, High and the rest are the band's at the step's end.
@@ -100,12 +134,13 @@
 #include "Tan.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 
 namespace likyu::dsp
 {
-    /** The adapting filter's Q (Phase 0 spike: unbiased from 1 to 16). */
+    /** The adapting and extraction filters' Q (Phase 0 spike: unbiased from 1 to 16). */
     inline constexpr double trackerQ = 4.0;
 
     /** Confidence's powers are smoothed over this many periods of the estimate (spike)... */
@@ -130,6 +165,12 @@ namespace likyu::dsp
     /** Within this of the rest, a released output is the rest. */
     inline constexpr double trackRestCents = 0.01;
 
+    /** A tracker's lock weight in the others' deflation moves over this (built 2026-11-20). */
+    inline constexpr double trackWeightMs = 5.0;
+
+    /** Two trackers closer than this repel (PRD: start at 2 semitones). */
+    inline constexpr double trackSpacingCents = 200.0;
+
     /** Keeps the loop's normalisation finite on silence: far under any key. */
     inline constexpr float trackerEpsilon = 1.0e-20f;
 
@@ -141,16 +182,19 @@ namespace likyu::dsp
     struct TrackerState
     {
         float s1 = 0.0f, s2 = 0.0f;         // the adapting filter
+        float x1 = 0.0f, x2 = 0.0f;         // the extraction filter, on the raw key
         double estimate = 0.0;              // log2 Hz: where the notch sits
         double output = 0.0;                // log2 Hz: the band's frequency
         double inputPower = 0.0, notchPower = 0.0;
         double fastPower = 0.0;             // the input's power over one period
         double confidence = 0.0;
+        double weight = 0.0;                // 0 to 1: how much the others remove of this one's component
         double smoothing = 0.0;             // the powers' one-pole, from the estimate at the last grid point
         double fastSmoothing = 1.0;         // the same over one period
         bool jumping = false;               // the input jumped, and the powers are following
         int holdLeft = 0;
         int confirmed = 0;                  // samples confident in a row, released
+        int lockedFor = 0;                  // samples locked or held, saturating
         TrackPhase phase = TrackPhase::released;
         bool fresh = true;                  // start at rest
         bool atRest = true;                 // the output is the rest, exactly
@@ -160,16 +204,27 @@ namespace likyu::dsp
     struct TrackerStep
     {
         double mu = 0.0;            // log2 Hz per sample per unit of normalised gradient
+        double repel = 0.0;         // the spacing's one-pole, per sample
         double glide = 0.0;         // the output's one-pole coefficient
+        double weight = 0.0;        // the lock weight's one-pole coefficient
         double threshold = 0.3;     // confidence, 0 to 1
         int holdSamples = 0;
         int confirmSamples = 0;
         double low = 0.0, high = 0.0, rest = 0.0;   // log2 Hz
     };
 
+    /** A tracker's filter coefficients at its estimate, shared by its
+        adapting and its extraction filter. */
+    struct TrackerCoefficients
+    {
+        float a1 = 1.0f, a2 = 0.0f, a3 = 0.0f;
+    };
+
     class TrackerComputer
     {
     public:
+        static constexpr float k = static_cast<float> (1.0 / trackerQ);
+
         void prepare (double sampleRate) noexcept
         {
             rate = sampleRate;
@@ -202,7 +257,9 @@ namespace likyu::dsp
                 pending = false;
                 const auto samples = speedMs * 0.001 * rate;
                 now.mu = rate > 0.0 ? (1.0 / trackerQ) / (samples * lnOf2) : 0.0;
+                now.repel = samples > 0.0 ? 1.0 / samples : 0.0;
                 now.glide = onePole (trackGlideFraction * speedMs, rate);
+                now.weight = 1.0 - onePole (trackWeightMs, rate);
                 now.threshold = threshold;
                 now.holdSamples = static_cast<int> (std::lround (holdMs * 0.001 * rate));
                 now.confirmSamples = static_cast<int> (std::lround (trackConfirmFraction * samples));
@@ -233,120 +290,262 @@ namespace likyu::dsp
             s.fastSmoothing = rate > 0.0 ? 1.0 - std::exp (-hz / rate) : 1.0;
         }
 
-        /** `n` samples of one lane's tracker on its input `x`: the state
-            carried in `s`. When `confidence` is given, each sample's
-            confidence is written there. */
-        void run (const float* x, int n, TrackerState& s, double* confidence) const noexcept
+        /** The filter coefficients at the tracker's estimate now. */
+        TrackerCoefficients coefficients (const TrackerState& s) const noexcept
         {
-            constexpr auto k = static_cast<float> (1.0 / trackerQ);
-            const auto snap = trackRestCents / 1200.0;
-            const auto jumpRatio = std::pow (10.0, trackJumpDb / 10.0);
-            const auto settledRatio = std::pow (10.0, trackSettledDb / 10.0);
+            const auto g = static_cast<float> (warp.g (std::exp2 (s.estimate)));
+            TrackerCoefficients c;
+            c.a1 = 1.0f / (1.0f + g * (g + k));
+            c.a2 = g * c.a1;
+            c.a3 = g * c.a2;
+            return c;
+        }
 
-            for (int i = 0; i < n; ++i)
+        /** One sample of the extraction filter on the raw key: the unity-peak
+            band-pass at the estimate, which the other trackers remove. */
+        static float extract (float key, TrackerState& s, const TrackerCoefficients& c) noexcept
+        {
+            const auto v3 = key - s.x2;
+            const auto v1 = c.a1 * s.x1 + c.a2 * v3;
+            const auto v2 = s.x2 + c.a2 * s.x1 + c.a3 * v3;
+            s.x1 = 2.0f * v1 - s.x1;
+            s.x2 = 2.0f * v2 - s.x2;
+            return k * v1;
+        }
+
+        /** One sample of the tracker on its input (the key, less the other
+            trackers' components). It locks only when `mayLock`: no other
+            tracker of its key is locked or held within the spacing. */
+        void tick (float in, TrackerState& s, const TrackerCoefficients& c, bool mayLock) const noexcept
+        {
+            const auto v3 = in - s.s2;
+            const auto v1 = c.a1 * s.s1 + c.a2 * v3;
+            const auto v2 = s.s2 + c.a2 * s.s1 + c.a3 * v3;
+            s.s1 = 2.0f * v1 - s.s1;
+            s.s2 = 2.0f * v2 - s.s2;
+
+            const auto bp = k * v1;
+            const auto q = k * v2;
+            const auto e = in - bp;
+
+            // Confidence: 1 - notch power / input power; 0 on silence. A jump
+            // of the input makes the two follow at one period, until they are
+            // within trackSettledDb of the input's power over one period.
+            const auto inPower = static_cast<double> (in) * static_cast<double> (in);
+            const auto ePower = static_cast<double> (e) * static_cast<double> (e);
+            s.fastPower += s.fastSmoothing * (inPower - s.fastPower);
+
+            if (s.jumping)
+                s.jumping = ! (s.fastPower * settledRatio >= s.inputPower && s.fastPower <= s.inputPower * settledRatio);
+            else
+                s.jumping = s.fastPower * jumpRatio < s.inputPower || s.fastPower > s.inputPower * jumpRatio;
+
+            const auto smoothing = s.jumping ? s.fastSmoothing : s.smoothing;
+            s.inputPower += smoothing * (inPower - s.inputPower);
+            s.notchPower += smoothing * (ePower - s.notchPower);
+            s.confidence = s.inputPower > static_cast<double> (powerFloor)
+                               ? std::max (0.0, 1.0 - s.notchPower / s.inputPower) : 0.0;
+
+            // The states.
+            const auto confident = s.confidence >= now.threshold;
+
+            switch (s.phase)
             {
-                const auto g = static_cast<float> (warp.g (std::exp2 (s.estimate)));
-                const auto a1 = 1.0f / (1.0f + g * (g + k));
-                const auto a2 = g * a1;
-                const auto a3 = g * a2;
+                case TrackPhase::released:
+                    s.confirmed = confident ? s.confirmed + 1 : 0;
 
-                const auto in = x[i];
-                const auto v3 = in - s.s2;
-                const auto v1 = a1 * s.s1 + a2 * v3;
-                const auto v2 = s.s2 + a2 * s.s1 + a3 * v3;
-                s.s1 = 2.0f * v1 - s.s1;
-                s.s2 = 2.0f * v2 - s.s2;
+                    if (s.confirmed > now.confirmSamples && mayLock)
+                    {
+                        s.phase = TrackPhase::locked;
+                        s.confirmed = 0;
+                    }
+                    break;
 
-                const auto bp = k * v1;
-                const auto q = k * v2;
-                const auto e = in - bp;
+                case TrackPhase::locked:
+                    if (! confident)
+                    {
+                        s.phase = TrackPhase::holding;
+                        s.holdLeft = now.holdSamples;
+                    }
+                    break;
 
-                // Confidence: 1 - notch power / input power; 0 on silence. A
-                // jump of the input makes the two follow at one period.
-                const auto inPower = static_cast<double> (in) * static_cast<double> (in);
-                const auto ePower = static_cast<double> (e) * static_cast<double> (e);
-                s.fastPower += s.fastSmoothing * (inPower - s.fastPower);
-
-                // A jump starts at trackJumpDb apart and lasts until the two
-                // are within trackSettledDb: the smoothed powers follow all
-                // the way, not only back to within the jump.
-                if (s.jumping)
-                    s.jumping = ! (s.fastPower * settledRatio >= s.inputPower && s.fastPower <= s.inputPower * settledRatio);
-                else
-                    s.jumping = s.fastPower * jumpRatio < s.inputPower || s.fastPower > s.inputPower * jumpRatio;
-
-                const auto jumped = s.jumping;
-                const auto smoothing = jumped ? s.fastSmoothing : s.smoothing;
-                s.inputPower += smoothing * (inPower - s.inputPower);
-                s.notchPower += smoothing * (ePower - s.notchPower);
-                s.confidence = s.inputPower > static_cast<double> (powerFloor)
-                                   ? std::max (0.0, 1.0 - s.notchPower / s.inputPower) : 0.0;
-
-                // The states.
-                const auto confident = s.confidence >= now.threshold;
-
-                switch (s.phase)
-                {
-                    case TrackPhase::released:
-                        s.confirmed = confident ? s.confirmed + 1 : 0;
-
-                        if (s.confirmed > now.confirmSamples)
-                        {
-                            s.phase = TrackPhase::locked;
-                            s.confirmed = 0;
-                        }
-                        break;
-
-                    case TrackPhase::locked:
-                        if (! confident)
-                        {
-                            s.phase = TrackPhase::holding;
-                            s.holdLeft = now.holdSamples;
-                        }
-                        break;
-
-                    case TrackPhase::holding:
-                        if (confident)
-                            s.phase = TrackPhase::locked;
-                        else if (--s.holdLeft < 0)
-                        {
-                            // Released: the estimate starts again from the rest.
-                            s.phase = TrackPhase::released;
-                            s.estimate = now.rest;
-                        }
-                        break;
-                }
-
-                // The loop: released, or locked while the input does not jump.
-                const auto released = s.phase == TrackPhase::released;
-
-                if (released || (s.phase == TrackPhase::locked && ! jumped))
-                {
-                    const auto gradient = static_cast<double> (e * q) / static_cast<double> (bp * bp + q * q + trackerEpsilon);
-                    s.estimate = std::clamp (s.estimate - now.mu * gradient, now.low, now.high);
-                }
-
-                // The band's frequency glides to the estimate, or back to rest.
-                const auto target = released ? now.rest : s.estimate;
-                s.output = target + now.glide * (s.output - target);
-
-                if (released && std::abs (s.output - now.rest) < snap)
-                    s.output = now.rest;
-
-                s.atRest = released && exactlyEqual (s.output, now.rest);
-
-                if (confidence != nullptr)
-                    confidence[i] = s.confidence;
+                case TrackPhase::holding:
+                    if (confident)
+                    {
+                        s.phase = TrackPhase::locked;
+                    }
+                    else if (--s.holdLeft < 0)
+                    {
+                        // Released: the estimate starts again from the rest.
+                        s.phase = TrackPhase::released;
+                        s.estimate = now.rest;
+                    }
+                    break;
             }
+
+            // The loop: released, or locked while the input does not jump.
+            const auto released = s.phase == TrackPhase::released;
+            s.lockedFor = released ? 0 : std::min (s.lockedFor + 1, maxLockedFor);
+
+            if (released || (s.phase == TrackPhase::locked && ! s.jumping))
+            {
+                const auto gradient = static_cast<double> (e * q) / static_cast<double> (bp * bp + q * q + trackerEpsilon);
+                s.estimate = std::clamp (s.estimate - now.mu * gradient, now.low, now.high);
+            }
+
+            // The others remove this one's component: all of it while it is
+            // locked, as much as its confidence says otherwise.
+            const auto weight = s.phase == TrackPhase::locked ? 1.0
+                                : now.threshold > 0.0 ? std::min (1.0, s.confidence / now.threshold) : 1.0;
+            s.weight += now.weight * (weight - s.weight);
+
+            // The band's frequency glides to the estimate, or back to rest.
+            const auto target = released ? now.rest : s.estimate;
+            s.output = target + now.glide * (s.output - target);
+
+            if (released && std::abs (s.output - now.rest) < restSnap)
+                s.output = now.rest;
+
+            s.atRest = released && exactlyEqual (s.output, now.rest);
+        }
+
+        /** Whether two estimates are closer than the spacing. */
+        static bool tooClose (double a, double b) noexcept
+        {
+            return std::abs (a - b) < spacing;
+        }
+
+        /** Released at once, its estimate back at rest, to be seeded again. */
+        void release (TrackerState& s) const noexcept
+        {
+            s.phase = TrackPhase::released;
+            s.estimate = now.rest;
+            s.confirmed = 0;
+            s.lockedFor = 0;
+        }
+
+        /** The spacing: `s` pushed away from an estimate closer than
+            trackSpacingCents, by its own rate. */
+        void repel (TrackerState& s, double otherLogHz, bool below) const noexcept
+        {
+            const auto gap = std::abs (s.estimate - otherLogHz);
+
+            if (gap >= spacing)
+                return;
+
+            const auto push = (spacing - gap) * now.repel;
+            s.estimate = std::clamp (s.estimate + (below ? -push : push), now.low, now.high);
         }
 
         double getSpeedMs() const noexcept      { return speedMs; }
 
     private:
+        static constexpr double spacing = trackSpacingCents / 1200.0;
+        static constexpr int maxLockedFor = 1 << 30;
+        static constexpr double restSnap = trackRestCents / 1200.0;
+
+        // 10^(dB / 10), written out: std::pow is not constexpr.
+        static constexpr double jumpRatio = 10.0;           // trackJumpDb
+        static constexpr double settledRatio = 1.2589254117941673;   // trackSettledDb
+        static_assert (exactlyEqual (trackJumpDb, 10.0) && exactlyEqual (trackSettledDb, 1.0), "the ratios above are written for these");
+
         Warp warp;
         double rate = 0.0;
         double speedMs = 50.0, threshold = 0.3, holdMs = 200.0;
         bool pending = true;
         TrackerStep now;
     };
+
+    /** One tracker of a group: its band's computer, its lane's state, and
+        where its confidence goes, sample by sample (or nowhere). */
+    struct TrackerMember
+    {
+        const TrackerComputer* computer = nullptr;
+        TrackerState* state = nullptr;
+        double* confidence = nullptr;
+    };
+
+    inline constexpr int maxTrackerGroup = 8;
+
+    /** `n` samples of the trackers that share one key (PRD: Track bands with
+        the same key source exclude each other), in band order. Each adapts
+        on the key less the components the others are locked or held on,
+        each of those extracted from the raw key: symmetric deflation, no
+        delay, no loop between them (PRD, decided 2026-11-16). */
+    inline void runTrackerGroup (const float* key, int n, TrackerMember* members, int count) noexcept
+    {
+        count = std::min (count, maxTrackerGroup);
+        std::array<TrackerCoefficients, maxTrackerGroup> c;
+        std::array<float, maxTrackerGroup> component {};
+
+        for (int i = 0; i < n; ++i)
+        {
+            const auto x = key[i];
+            auto removed = 0.0f;
+
+            for (int j = 0; j < count; ++j)
+            {
+                auto& s = *members[j].state;
+                c[static_cast<std::size_t> (j)] = members[j].computer->coefficients (s);
+
+                if (count > 1)
+                {
+                    component[static_cast<std::size_t> (j)] = static_cast<float> (s.weight)
+                                                              * TrackerComputer::extract (x, s, c[static_cast<std::size_t> (j)]);
+                    removed += component[static_cast<std::size_t> (j)];
+                }
+            }
+
+            for (int j = 0; j < count; ++j)
+            {
+                auto& m = members[j];
+                const auto input = count > 1 ? x - (removed - component[static_cast<std::size_t> (j)]) : x;
+
+                // No lock beside one that is locked or held.
+                auto mayLock = true;
+
+                for (int o = 0; o < count && mayLock; ++o)
+                {
+                    const auto& other = *members[o].state;
+                    mayLock = o == j || other.phase == TrackPhase::released
+                              || ! TrackerComputer::tooClose (m.state->estimate, other.estimate);
+                }
+
+                m.computer->tick (input, *m.state, c[static_cast<std::size_t> (j)], mayLock);
+
+                if (m.confidence != nullptr)
+                    m.confidence[i] = m.state->confidence;
+            }
+
+            // The spacing, between every pair; a tie goes to band order. Of
+            // two locked or held this close, the more recent lets go.
+            for (int a = 0; a < count; ++a)
+            {
+                for (int b = a + 1; b < count; ++b)
+                {
+                    auto& sa = *members[a].state;
+                    auto& sb = *members[b].state;
+
+                    if (sa.phase != TrackPhase::released && sb.phase != TrackPhase::released
+                        && TrackerComputer::tooClose (sa.estimate, sb.estimate))
+                    {
+                        if (sb.lockedFor <= sa.lockedFor)
+                            members[b].computer->release (sb);
+                        else
+                            members[a].computer->release (sa);
+                    }
+
+                    // Only the released are pushed.
+                    const auto aBelow = sa.estimate <= sb.estimate;
+                    const auto ea = sa.estimate, eb = sb.estimate;
+
+                    if (sa.phase == TrackPhase::released)
+                        members[a].computer->repel (sa, eb, aBelow);
+
+                    if (sb.phase == TrackPhase::released)
+                        members[b].computer->repel (sb, ea, ! aBelow);
+                }
+            }
+        }
+    }
 }

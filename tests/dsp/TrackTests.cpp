@@ -350,3 +350,275 @@ TEST_CASE ("track: a sine gone for less than the Hold and back finds its band wh
         CHECK (worst < 5.0);
     }
 }
+
+//==============================================================================
+// Several trackers on one key (devplan 5c).
+
+namespace
+{
+    /** A chain run one control step at a time, every band's frequency read after each. */
+    std::vector<std::vector<double>> traceBands (double rate, std::vector<double> key, const std::vector<BandSettings>& settings)
+    {
+        Chain chain;
+        chain.prepare (rate, 1);
+
+        for (std::size_t b = 0; b < settings.size(); ++b)
+            chain.setBand (static_cast<int> (b), settings[b]);
+
+        std::vector<std::vector<double>> hz (settings.size());
+
+        for (std::size_t n = 0; n + static_cast<std::size_t> (controlStep) <= key.size(); n += static_cast<std::size_t> (controlStep))
+        {
+            double* p = key.data() + n;
+            chain.process (&p, 1, controlStep);
+
+            for (std::size_t b = 0; b < settings.size(); ++b)
+                hz[b].push_back (chain.frequencyHz (static_cast<int> (b), 0));
+        }
+
+        return hz;
+    }
+
+    std::size_t stepAt (double seconds, double rate)
+    {
+        return static_cast<std::size_t> (seconds * rate / controlStep);
+    }
+
+    /** Sines whose levels in dB move linearly between breakpoints: one
+        (time, level of each sine) per breakpoint. */
+    std::vector<double> sines (double rate, const std::vector<double>& hz,
+                               const std::vector<std::pair<double, std::vector<double>>>& breakpoints)
+    {
+        const auto length = static_cast<std::size_t> (breakpoints.back().first * rate);
+        std::vector<double> out (length, 0.0);
+
+        for (std::size_t n = 0; n < length; ++n)
+        {
+            const auto t = static_cast<double> (n) / rate;
+            std::size_t k = 0;
+
+            while (k + 2 < breakpoints.size() && t >= breakpoints[k + 1].first)
+                ++k;
+
+            const auto& [t0, l0] = breakpoints[k];
+            const auto& [t1, l1] = breakpoints[k + 1];
+            const auto u = std::clamp ((t - t0) / (t1 - t0), 0.0, 1.0);
+
+            for (std::size_t s = 0; s < hz.size(); ++s)
+            {
+                const auto db = l0[s] + u * (l1[s] - l0[s]);
+                out[n] += std::pow (10.0, db / 20.0) * std::sin (2.0 * pi * hz[s] * t + 0.7 * static_cast<double> (s));
+            }
+        }
+
+        return out;
+    }
+
+    /** Which of `targets` a frequency is on, within `tolerance` cents; -1 for none. */
+    int onWhich (double hz, const std::vector<double>& targets, double tolerance)
+    {
+        for (std::size_t i = 0; i < targets.size(); ++i)
+            if (std::abs (cents (hz, targets[i])) < tolerance)
+                return static_cast<int> (i);
+
+        return -1;
+    }
+}
+
+TEST_CASE ("track, no swap: two sines a fifth apart, locked at equal levels, then traded by +-12 dB: neither band moves by more than 50 cents")
+{
+    for (const auto rate : { 44100.0, 96000.0 })
+    {
+        for (const auto low : { 220.0, 6000.0 })
+        {
+            const auto high = low * 1.5;
+            INFO ("rate " << rate << ", " << low << " and " << high << " Hz");
+
+            // Equal for 1 s, then over 1 s A to +12 and B to -12, over 3 s the other way, held 0.5 s (the spike's protocol).
+            const auto key = sines (rate, { low, high }, { { 0.0, { -12.0, -12.0 } }, { 1.0, { -12.0, -12.0 } },
+                                                           { 2.0, { 0.0, -24.0 } }, { 5.0, { -24.0, 0.0 } }, { 5.5, { -24.0, 0.0 } } });
+
+            // Each band's range an octave either side of one sine; their rests a little off.
+            const auto hz = traceBands (rate, key, { trackBand (BandType::bell, low * 0.9, 3.0, low / 2.0, low * 2.0),
+                                                     trackBand (BandType::bell, high * 1.1, 3.0, high / 2.0, high * 2.0) });
+
+            const auto locked = stepAt (0.99, rate);
+            const auto a = onWhich (hz[0][locked], { low, high }, 20.0);
+            const auto b = onWhich (hz[1][locked], { low, high }, 20.0);
+            REQUIRE (a >= 0);
+            REQUIRE (b >= 0);
+            CHECK (a != b);
+
+            double worst = 0.0;
+
+            for (auto s = locked; s < hz[0].size(); ++s)
+            {
+                worst = std::max (worst, std::abs (cents (hz[0][s], hz[0][locked])));
+                worst = std::max (worst, std::abs (cents (hz[1][s], hz[1][locked])));
+            }
+
+            MESSAGE ("rate " << rate << ", " << low << " and " << high << " Hz: the bands settle on sines " << a << " and " << b
+                     << "; through the trade, the larger departure is " << worst << " cents");
+            CHECK (worst < 50.0);
+        }
+    }
+}
+
+TEST_CASE ("track, exclusion: two bands released, then re-seeded, settle on different sines")
+{
+    constexpr double rate = 48000.0, a = 300.0, b = 450.0;
+
+    // The sines, then nothing for longer than the Hold, then the sines again.
+    auto key = sines (rate, { a, b }, { { 0.0, { -12.0, -12.0 } }, { 3.0, { -12.0, -12.0 } } });
+    const auto gapFrom = static_cast<std::size_t> (1.0 * rate), gapTo = static_cast<std::size_t> (1.8 * rate);
+
+    for (auto n = gapFrom; n < gapTo; ++n)
+        key[n] = 0.0;
+
+    // Both bands rest at the same frequency and cover both sines.
+    const auto hz = traceBands (rate, key, { trackBand (BandType::bell, 370.0, 3.0, 200.0, 700.0),
+                                             trackBand (BandType::bell, 370.0, 3.0, 200.0, 700.0) });
+
+    for (const auto at : { 0.95, 2.95 })
+    {
+        const auto s = stepAt (at, rate);
+        const auto first = onWhich (hz[0][s], { a, b }, 20.0), second = onWhich (hz[1][s], { a, b }, 20.0);
+        MESSAGE ("at " << at << " s: band 1 on sine " << first << " (" << hz[0][s] << " Hz), band 2 on sine " << second
+                 << " (" << hz[1][s] << " Hz)");
+        CHECK (first >= 0);
+        CHECK (second >= 0);
+        CHECK (first != second);
+    }
+
+    // Released during the gap: both back at rest.
+    const auto released = stepAt (1.75, rate);
+    CHECK (hz[0][released] == doctest::Approx (370.0).epsilon (1.0e-12));
+    CHECK (hz[1][released] == doctest::Approx (370.0).epsilon (1.0e-12));
+}
+
+TEST_CASE ("track, lock, seeded: from a rest at either end of the range, a sine at 0 dB SNR is found within Speed x 5")
+{
+    constexpr double rate = 48000.0, speedMs = 50.0;
+
+    for (const auto hz : { 220.0, 1000.0, 6000.0 })
+    {
+        for (const auto rest : { hz / 2.0, hz * 2.0 })
+        {
+            const auto key = sineInNoise (rate, 1.5, hz, 1.0, zeroDbNoise, 17);
+            const auto t = trace (rate, key, { trackBand (BandType::bell, rest, 6.0, hz / 2.0, hz * 2.0, speedMs) });
+            const auto [lock, worst] = lockOf (t, hz, 20.0, 1.0);
+            MESSAGE (hz << " Hz from a rest at " << rest << " Hz: within 20 cents after " << 1000.0 * lock << " ms, worst after "
+                     << worst << " cents");
+            CHECK (lock < 5.0 * speedMs / 1000.0);
+            CHECK (worst < 20.0);
+        }
+    }
+}
+
+TEST_CASE ("track, eight bands on one key: eight sines, eight bands over the whole range, one each")
+{
+    constexpr double rate = 48000.0;
+    const std::vector<double> targets { 150.0, 260.0, 450.0, 780.0, 1350.0, 2350.0, 4100.0, 7100.0 };
+    const auto key = sines (rate, targets, { { 0.0, std::vector<double> (8, -20.0) }, { 2.0, std::vector<double> (8, -20.0) } });
+
+    std::vector<BandSettings> settings;
+
+    for (int b = 0; b < numBands; ++b)
+        settings.push_back (trackBand (BandType::bell, 1000.0, 2.0, 100.0, 10000.0));
+
+    const auto hz = traceBands (rate, key, settings);
+    const auto s = stepAt (1.95, rate);
+    std::vector<int> on;
+    std::string list;
+
+    for (std::size_t b = 0; b < hz.size(); ++b)
+    {
+        on.push_back (onWhich (hz[b][s], targets, 20.0));
+        list += " " + std::to_string (static_cast<int> (std::lround (hz[b][s])));
+    }
+
+    auto distinct = 0;
+
+    for (std::size_t i = 0; i < targets.size(); ++i)
+        distinct += std::count (on.begin(), on.end(), static_cast<int> (i)) > 0 ? 1 : 0;
+
+    MESSAGE ("eight bands, eight sines: the bands end at" << list << " Hz; " << distinct << " of the 8 sines have a band");
+    CHECK (distinct == 8);
+}
+
+TEST_CASE ("track, onset: a loud sine appearing beside a quiet tracked one does not take its band (spike, finding 5)")
+{
+    for (const auto rate : { 44100.0, 48000.0 })
+    {
+        for (const auto low : { 220.0, 1000.0 })
+        {
+            const auto high = low * 1.5;
+
+            // The quiet one alone for 1 s; then the loud one, 24 dB over it, at once.
+            const auto key = sines (rate, { low, high }, { { 0.0, { -30.0, -200.0 } }, { 1.0, { -30.0, -200.0 } },
+                                                           { 1.0001, { -30.0, -6.0 } }, { 2.5, { -30.0, -6.0 } } });
+
+            const auto hz = traceBands (rate, key, { trackBand (BandType::bell, low, 3.0, low / 2.0, low * 2.0),
+                                                     trackBand (BandType::bell, high * 1.2, 3.0, high / 2.0, high * 2.0) });
+
+            double worst = 0.0;
+
+            for (auto s = stepAt (0.9, rate); s < hz[0].size(); ++s)
+                worst = std::max (worst, std::abs (cents (hz[0][s], low)));
+
+            const auto second = hz[1].back();
+            MESSAGE ("rate " << rate << ": " << low << " Hz quiet, " << high << " Hz appearing 24 dB over it: the quiet one's band strays "
+                     << worst << " cents; the other band ends at " << second << " Hz");
+            CHECK (worst < 50.0);
+        }
+    }
+}
+
+TEST_CASE ("track, crossing glides, for information: the PRD accepts an exchange at the crossing")
+{
+    constexpr double rate = 48000.0;
+    const auto length = static_cast<int> (3.5 * rate);
+    std::vector<double> key (static_cast<std::size_t> (length));
+    double up = 0.0, down = 0.0;
+
+    for (int n = 0; n < length; ++n)
+    {
+        const auto u = std::clamp ((static_cast<double> (n) / rate - 0.5) / 3.0, 0.0, 1.0);
+        up += 2.0 * pi * 300.0 * std::pow (2.0, u) / rate;
+        down += 2.0 * pi * 600.0 * std::pow (0.5, u) / rate;
+        key[static_cast<std::size_t> (n)] = 0.25 * (std::sin (up) + std::sin (down));
+    }
+
+    const auto hz = traceBands (rate, key, { trackBand (BandType::bell, 300.0, 3.0, 200.0, 900.0),
+                                             trackBand (BandType::bell, 600.0, 3.0, 200.0, 900.0) });
+
+    MESSAGE ("two glides crossing, 300 to 600 Hz and 600 to 300 Hz over 3 s: band 1 starts at " << hz[0][stepAt (0.45, rate)]
+             << " Hz and ends at " << hz[0].back() << " Hz; band 2 starts at " << hz[1][stepAt (0.45, rate)] << " and ends at "
+             << hz[1].back() << " Hz");
+    CHECK (std::abs (cents (hz[0].back(), hz[1].back())) > 600.0);
+}
+
+TEST_CASE ("track, Speed against a close low pair, for information (PRD, open decision): 220 and 330 Hz traded by +-12 dB")
+{
+    constexpr double rate = 44100.0;
+    const auto key = sines (rate, { 220.0, 330.0 }, { { 0.0, { -12.0, -12.0 } }, { 1.0, { -12.0, -12.0 } },
+                                                      { 2.0, { 0.0, -24.0 } }, { 5.0, { -24.0, 0.0 } }, { 5.5, { -24.0, 0.0 } } });
+
+    for (const auto speed : { 20.0, 50.0, 100.0, 200.0 })
+    {
+        const auto hz = traceBands (rate, key, { trackBand (BandType::bell, 200.0, 3.0, 110.0, 440.0, speed),
+                                                 trackBand (BandType::bell, 360.0, 3.0, 165.0, 660.0, speed) });
+
+        const auto locked = stepAt (1.0, rate);
+        double worst = 0.0;
+
+        for (auto s = locked; s < hz[0].size(); ++s)
+        {
+            worst = std::max (worst, std::abs (cents (hz[0][s], hz[0][locked])));
+            worst = std::max (worst, std::abs (cents (hz[1][s], hz[1][locked])));
+        }
+
+        MESSAGE ("Speed " << speed << " ms: the larger departure through the trade is " << worst << " cents");
+    }
+}
+

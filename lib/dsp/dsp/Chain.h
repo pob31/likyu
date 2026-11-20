@@ -97,7 +97,11 @@
     TRACK reads the raw key, not the band's detector: each Track lane's
     tracker (dsp/Tracker.h) runs on the mean of the lane's key channels (PRD:
     the estimators run on the mean when linked), in a pass of its own before
-    the bands, and its confidence can scale the band's gain.
+    the bands, and its confidence can scale the band's gain. The Track bands
+    with the same key in effect, Self or Sidechain, exclude each other lane
+    by lane (PRD, Band model): they run together, each on the key less the
+    others' components, and a bank of third-octave envelopes per key and
+    lane (dsp/SeedBank.h) seeds the released ones at each grid point.
 
     A DYNAMIC OFFSET OF EXACTLY 0 IS PHASE 2. A sample whose offset is 0 is
     computed with the band's own Phase 2 coefficients, and an identity is
@@ -131,6 +135,7 @@
 #include "FastLog.h"
 #include "Lookahead.h"
 #include "Parameters.h"
+#include "SeedBank.h"
 #include "Smoother.h"
 #include "rt/RtCheck.h"
 
@@ -403,8 +408,17 @@ namespace likyu::dsp
             the end of the step before, and its Follow detector. */
         void updateFrequencies (int band) noexcept LIKYU_AUDIO_THREAD;
 
-        /** The Track lanes' trackers over the key, before the bands. */
+        /** The Track lanes' trackers over the key, before the bands: the
+            bands of one key source together, lane by lane. */
         void track (int n) noexcept LIKYU_AUDIO_THREAD;
+
+        /** At a grid point: the released trackers placed in the strongest
+            region of their range that the others of their key have not claimed. */
+        void seedTrackers() noexcept LIKYU_AUDIO_THREAD;
+
+        /** The Track bands in effect with key source `source`, in band order;
+            returns how many, and the most lanes any of them has. */
+        int trackMembers (int source, std::array<int, numBands>& members, int& laneCount) const noexcept;
 
         /** The mean of the key channels of `band`'s lane `lane`, into `out`. */
         void laneKey (int band, int lane, int n, float* out) const noexcept LIKYU_AUDIO_THREAD;
@@ -457,6 +471,8 @@ namespace likyu::dsp
         std::vector<TrackerState> trackers;          // the same: a Track lane's tracker
         std::vector<double> laneConfidence;          // (band * stride + lane) * controlStep + sample
         std::array<float, controlStep> trackKey {};  // one lane's key, the mean of its channels
+        std::vector<SeedBank> banks;                 // key source * stride + lane
+        SeedBankCoefficients bankCoefficients;
         std::array<bool, numBands> modulated {};     // this step, some lane is off the band's own frequency
         std::array<bool, numBands> scaled {};        // this step, confidence scales the band's gain
         bool anyTrack = false;                       // this step, some band tracks

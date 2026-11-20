@@ -120,6 +120,8 @@ namespace likyu::dsp
         laneDetectors.assign (stride * numBands, DetectorCoefficients {});
         trackers.assign (stride * numBands, TrackerState {});
         laneConfidence.assign (stride * numBands * controlStep, 1.0);
+        banks.assign (stride * numKeySources, SeedBank {});
+        bankCoefficients.prepare (rate);
         modulated.fill (false);
         perLaneDetector.fill (false);
         scaled.fill (false);
@@ -158,6 +160,7 @@ namespace likyu::dsp
         std::fill (laneFrequencies.begin(), laneFrequencies.end(), LaneFrequency {});
         std::fill (envStates.begin(), envStates.end(), EnvState {});
         std::fill (trackers.begin(), trackers.end(), TrackerState {});
+        std::fill (banks.begin(), banks.end(), SeedBank {});
         modulated.fill (false);
         perLaneDetector.fill (false);
         scaled.fill (false);
@@ -411,6 +414,9 @@ namespace likyu::dsp
             updateFrequencies (b);
         }
 
+        if (anyTrack)
+            seedTrackers();
+
         if (listenBand >= 0)
         {
             if (bands[static_cast<std::size_t> (listenBand)].detectorConfig().key == KeySource::sidechain)
@@ -436,6 +442,14 @@ namespace likyu::dsp
         std::fill (trackers.begin() + b * stride, trackers.begin() + (b + 1) * stride, TrackerState {});
 
         const auto& shape = band.activeShape();
+
+        // A Track band's key starts again: its key's seeding banks with it.
+        if (shape.fmode == FrequencyMode::track)
+        {
+            const auto first = static_cast<std::size_t> (shape.key == KeySource::sidechain ? stride : 0);
+            std::fill (banks.begin() + static_cast<std::ptrdiff_t> (first),
+                       banks.begin() + static_cast<std::ptrdiff_t> (first) + stride, SeedBank {});
+        }
 
         if (! shape.readsKey() || channels <= 0)
             return;
@@ -709,32 +723,155 @@ namespace likyu::dsp
         }
     }
 
-    void Chain::track (int n) noexcept LIKYU_AUDIO_THREAD
+    int Chain::trackMembers (int source, std::array<int, numBands>& members, int& laneCount) const noexcept
     {
-        const auto stride = laneStride (channels);
+        auto count = 0;
+        laneCount = 0;
 
         for (int b = 0; b < numBands; ++b)
         {
             const auto index = static_cast<std::size_t> (b);
             const auto& band = bands[index];
-            const auto& l = lanes[index];
 
-            if (band.frequencyMode() != FrequencyMode::track || band.isIdle() || l.count == 0)
+            if (band.frequencyMode() != FrequencyMode::track || band.isIdle() || lanes[index].count == 0
+                || static_cast<int> (band.activeShape().key) != source)
                 continue;
 
-            const auto& tracker = band.trackerComputer();
+            members[static_cast<std::size_t> (count++)] = b;
+            laneCount = std::max (laneCount, lanes[index].count);
+        }
 
-            for (int lane = 0; lane < l.count; ++lane)
+        return count;
+    }
+
+    void Chain::track (int n) noexcept LIKYU_AUDIO_THREAD
+    {
+        const auto stride = laneStride (channels);
+        const auto stepEnds = position + n == controlStep;
+        std::array<int, numBands> members {};
+
+        for (int source = 0; source < numKeySources; ++source)
+        {
+            auto laneCount = 0;
+            const auto count = trackMembers (source, members, laneCount);
+
+            for (int lane = 0; lane < laneCount; ++lane)
             {
-                const auto i = static_cast<std::size_t> (b * stride + lane);
-                laneKey (b, lane, n, trackKey.data());
+                // The members with this lane; the key from the first of them.
+                std::array<TrackerMember, maxTrackerGroup> group {};
+                auto size = 0, first = -1;
 
-                auto& s = trackers[i];
-                tracker.run (trackKey.data(), n, s, scaled[index] ? laneConfidence.data() + i * controlStep : nullptr);
+                for (int m = 0; m < count; ++m)
+                {
+                    const auto b = members[static_cast<std::size_t> (m)];
+                    const auto index = static_cast<std::size_t> (b);
 
-                auto& f = laneFrequencies[i];
-                f.logHz = s.output;
-                f.hasOutput = true;
+                    if (lane >= lanes[index].count)
+                        continue;
+
+                    first = first < 0 ? b : first;
+                    const auto i = static_cast<std::size_t> (b * stride + lane);
+                    group[static_cast<std::size_t> (size++)]
+                        = { &bands[index].trackerComputer(), &trackers[i],
+                            scaled[index] ? laneConfidence.data() + i * controlStep : nullptr };
+                }
+
+                if (size == 0)
+                    continue;
+
+                laneKey (first, lane, n, trackKey.data());
+                banks[static_cast<std::size_t> (source * stride + lane)].run (trackKey.data(), n, bankCoefficients, stepEnds);
+                runTrackerGroup (trackKey.data(), n, group.data(), size);
+
+                for (int m = 0; m < size; ++m)
+                {
+                    auto& f = laneFrequencies[static_cast<std::size_t> (group[static_cast<std::size_t> (m)].state - trackers.data())];
+                    f.logHz = group[static_cast<std::size_t> (m)].state->output;
+                    f.hasOutput = true;
+                }
+            }
+        }
+    }
+
+    void Chain::seedTrackers() noexcept LIKYU_AUDIO_THREAD
+    {
+        const auto stride = laneStride (channels);
+        std::array<int, numBands> members {};
+
+        for (int source = 0; source < numKeySources; ++source)
+        {
+            auto laneCount = 0;
+            const auto count = trackMembers (source, members, laneCount);
+
+            for (int lane = 0; lane < laneCount; ++lane)
+            {
+                const auto& bank = banks[static_cast<std::size_t> (source * stride + lane)];
+                std::array<bool, numSeedRegions> claimed {};
+
+                const auto stateOf = [this, stride, lane] (int b) -> TrackerState&
+                {
+                    return trackers[static_cast<std::size_t> (b * stride + lane)];
+                };
+
+                // The locked and held claim their regions first; they do not move.
+                for (int m = 0; m < count; ++m)
+                {
+                    const auto b = members[static_cast<std::size_t> (m)];
+
+                    if (lane < lanes[static_cast<std::size_t> (b)].count && stateOf (b).phase != TrackPhase::released)
+                        claimed[static_cast<std::size_t> (bankCoefficients.regionOf (stateOf (b).estimate))] = true;
+                }
+
+                // Then the released, in band order, each claiming where it ends.
+                for (int m = 0; m < count; ++m)
+                {
+                    const auto b = members[static_cast<std::size_t> (m)];
+
+                    if (lane >= lanes[static_cast<std::size_t> (b)].count || stateOf (b).phase != TrackPhase::released)
+                        continue;
+
+                    auto& s = stateOf (b);
+                    const auto& step = bands[static_cast<std::size_t> (b)].trackerComputer().current();
+                    const auto inRange = [&step] (int r)
+                    {
+                        const auto lf = seedRegionLogHz (r);
+                        return lf >= step.low && lf <= step.high;
+                    };
+
+                    auto current = bankCoefficients.regionOf (s.estimate);
+                    auto best = -1;
+                    auto bestLevel = levelFloorDb - 1.0f;
+
+                    for (int r = 0; r < bankCoefficients.count; ++r)
+                    {
+                        if (claimed[static_cast<std::size_t> (r)] || ! inRange (r))
+                            continue;
+
+                        const auto level = bank.levelDb (r);
+
+                        if (level > bestLevel)
+                        {
+                            best = r;
+                            bestLevel = level;
+                        }
+                    }
+
+                    if (best >= 0)
+                    {
+                        const auto currentFree = ! claimed[static_cast<std::size_t> (current)] && inRange (current);
+                        const auto stay = currentFree
+                                          && static_cast<double> (bank.levelDb (current)) + seedHysteresisDb >= static_cast<double> (bestLevel);
+
+                        if (! stay)
+                        {
+                            s.estimate = std::clamp (seedRegionLogHz (best), step.low, step.high);
+                            s.confirmed = 0;
+                            current = best;
+                        }
+                    }
+
+                    claimed[static_cast<std::size_t> (current)] = true;
+                }
             }
         }
     }
