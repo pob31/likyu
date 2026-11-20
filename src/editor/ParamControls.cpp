@@ -262,15 +262,37 @@ namespace likyu::editor
     }
 
     //==========================================================================
+    namespace
+    {
+        constexpr float besideTextWidth = 62.0f;
+        constexpr float besideBarHeight = 16.0f;
+    }
+
+    void ParamBar::setTextBeside (bool beside)
+    {
+        textBeside = beside;
+        resized();
+    }
+
     juce::Rectangle<float> ParamBar::barArea() const
     {
-        return getLocalBounds().toFloat().withTrimmedBottom (textHeight + 2.0f);
+        const auto area = getLocalBounds().toFloat();
+
+        if (textBeside)
+            return area.withTrimmedRight (besideTextWidth).withSizeKeepingCentre (area.getWidth() - besideTextWidth, besideBarHeight)
+                       .withX (area.getX());
+
+        return area.withTrimmedBottom (textHeight + 4.0f);
     }
 
     void ParamBar::resized()
     {
         text.setJustificationType (juce::Justification::centredRight);
-        text.setBounds (getLocalBounds().removeFromBottom (static_cast<int> (textHeight)));
+
+        if (textBeside)
+            text.setBounds (getLocalBounds().removeFromRight (static_cast<int> (besideTextWidth)));
+        else
+            text.setBounds (getLocalBounds().removeFromBottom (static_cast<int> (textHeight)));
     }
 
     void ParamBar::paint (juce::Graphics& g)

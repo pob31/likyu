@@ -66,7 +66,7 @@ namespace likyu::editor
     class BandColumn final : public juce::Component
     {
     public:
-        static constexpr int height = 196;
+        static constexpr int height = 232;
 
         BandColumn (Host& host, int band);
         ~BandColumn() override;

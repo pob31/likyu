@@ -45,6 +45,8 @@ namespace likyu::editor
           lookahead (host, dsp::indexOf (dsp::GlobalParam::lookahead), "Lookahead", palette::accent, false),
           link (host, dsp::indexOf (dsp::GlobalParam::link), "Link", palette::accent, false)
     {
+        outputGain.setTextBeside (true);
+
         addAndMakeVisible (bypass);
         addAndMakeVisible (outputGain);
         addAndMakeVisible (lookahead);
@@ -69,7 +71,7 @@ namespace likyu::editor
         bypass.setBounds (area.removeFromLeft (22).withSizeKeepingCentre (20, 20));
 
         area.removeFromLeft (70);                                   // "Output"
-        outputGain.setBounds (area.removeFromLeft (150));
+        outputGain.setBounds (area.removeFromLeft (212));
 
         area.removeFromLeft (90);                                   // "Lookahead"
         lookahead.setBounds (area.removeFromLeft (92).withSizeKeepingCentre (92, 24));
@@ -166,19 +168,19 @@ namespace likyu::editor
 
     void BandColumn::resized()
     {
-        auto area = getLocalBounds().reduced (10, 0);
-        area.removeFromTop (28);                                    // the name
+        auto area = getLocalBounds().reduced (12, 0);
+        area.removeFromTop (30);                                    // the name
 
         auto head = area.removeFromTop (24);
         on.setBounds (head.removeFromLeft (20).withSizeKeepingCentre (18, 18));
         head.removeFromLeft (6);
         type.setBounds (head);
 
-        area.removeFromTop (12);
-        frequency.setBounds (area.removeFromTop (38));
+        area.removeFromTop (18);
+        frequency.setBounds (area.removeFromTop (42));
 
-        area.removeFromTop (10);
-        area.removeFromBottom (8);
+        area.removeFromTop (18);
+        area.removeFromBottom (10);
 
         // Gain and Q side by side; Q alone in the middle for a type without a gain.
         if (column.showsGain)
@@ -206,7 +208,7 @@ namespace likyu::editor
 
         g.setColour (column.on ? colour : colour.withMultipliedAlpha (0.55f));
         g.setFont (fontOf (13.0f, selected));
-        g.drawText ("Band " + juce::String (band + 1), juce::Rectangle<int> (10, 6, getWidth() - 20, 18),
+        g.drawText ("Band " + juce::String (band + 1), juce::Rectangle<int> (12, 7, getWidth() - 24, 18),
                     juce::Justification::centredLeft, false);
     }
 

@@ -123,6 +123,10 @@ namespace likyu::editor
     public:
         using ContinuousControl::ContinuousControl;
 
+        /** The value to the right of the bar, on its line, instead of under
+            it: for a row of controls. */
+        void setTextBeside (bool beside);
+
         void paint (juce::Graphics&) override;
         void resized() override;
         void mouseDown (const juce::MouseEvent&) override;
@@ -130,6 +134,8 @@ namespace likyu::editor
 
     private:
         juce::Rectangle<float> barArea() const;
+
+        bool textBeside = false;
 
         double fromNormalised = 0.0;
         float pressX = 0.0f;
