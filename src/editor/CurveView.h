@@ -37,7 +37,9 @@
       - the selected band's ghost node, where its Own detector listens,
         drags the detector's frequency, and the wheel over it sets the
         detector's Q. The other bands' ghosts are drawn faint and take no
-        press (decided by the author 2026-11-20);
+        press (decided by the author 2026-11-20). Under a node, where it
+        cannot be pressed, a press with Shift takes the ghost and not the
+        node; that drag is not a fine one, Shift being what took it;
       - each pointer has its own drag, keyed by kind and index (JUCE numbers
         the mouse 0 and the first finger 0), so several nodes move at once;
       - a second finger on a node a finger holds, or on nothing while one
@@ -122,6 +124,9 @@ namespace likyu::editor
             double fromHz = 0.0, fromDb = 0.0, fromLow = 0.0, fromHigh = 0.0, fromDetectorHz = 0.0;
 
             bool movesFrequency = false, movesRange = false, movesGain = false, movesDetector = false;
+
+            /** Taken with Shift from under a node: Shift is not a fine drag here. */
+            bool takenWithShift = false;
         };
 
         /** Two fingers on one band: its Q from how far apart they are. */

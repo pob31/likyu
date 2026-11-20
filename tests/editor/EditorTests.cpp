@@ -1120,6 +1120,36 @@ TEST_CASE ("editor: the ghost node of an Own detector: the selected band's is dr
     drag (curve, others, others + juce::Point<float> (-90.0f, 0.0f));
     CHECK (get (processor, 5, P::dfreq) == doctest::Approx (editor::geometry::draggedHz (9000.0, -90.0, plot, false)).epsilon (1.0e-5));
 
+    // The ghost under its own node (the detector listens where the band acts): the node takes a
+    // plain press; with Shift the press takes the ghost, and moves it by the whole drag, not a fine one.
+    {
+        set (processor, 5, P::dfreq, get (processor, 5, P::freq));
+        opened.refresh();
+
+        const auto shift = juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier | juce::ModifierKeys::shiftModifier);
+        const auto both = opened.nodeOf (5);
+        const auto bandAt = get (processor, 5, P::freq);
+
+        drag (curve, both, both + juce::Point<float> (70.0f, 0.0f), shift);
+        CHECK (get (processor, 5, P::dfreq) == doctest::Approx (editor::geometry::draggedHz (bandAt, 70.0, plot, false)).epsilon (1.0e-5));
+        CHECK (get (processor, 5, P::freq) == doctest::Approx (bandAt));
+
+        // Back under the node: a plain press there is the node's, as ever.
+        set (processor, 5, P::dfreq, bandAt);
+        opened.refresh();
+        drag (curve, both, both + juce::Point<float> (-50.0f, 0.0f));
+        CHECK (get (processor, 5, P::freq) == doctest::Approx (editor::geometry::draggedHz (bandAt, -50.0, plot, false)).epsilon (1.0e-5));
+        CHECK (get (processor, 5, P::dfreq) == doctest::Approx (bandAt));
+
+        // Shift on a node with no ghost under it is still the node's fine drag.
+        const auto other = opened.nodeOf (2);
+        const auto otherAt = get (processor, 2, P::freq);
+        curve.selectBand (2);
+        drag (curve, other, other + juce::Point<float> (60.0f, 0.0f), shift);
+        CHECK (get (processor, 2, P::freq) == doctest::Approx (editor::geometry::draggedHz (otherAt, 60.0, plot, true)).epsilon (1.0e-5));
+        curve.selectBand (5);
+    }
+
     // Follow, or a band that reads no key: no ghost to press.
     set (processor, 5, P::dfilt, static_cast<double> (dsp::DetectorFilter::follow));
     opened.refresh();

@@ -522,7 +522,24 @@ namespace likyu::editor
             return;
 
         const auto touch = key.first;
-        const auto hit = hitAt (at, touch);
+        auto hit = hitAt (at, touch);
+
+        /*  The selected band's ghost under a node (its own, when the detector
+            listens where the band acts, or another's): the node wins the
+            press, so Shift asks for the ghost. */
+        auto takenWithShift = false;
+
+        if (mods.isShiftDown() && hit.part != Part::ghost)
+        {
+            const auto& place = places[static_cast<std::size_t> (selected)];
+            const auto reach = geometry::sizesFor (plot.height, touch).hit;
+
+            if (place.ghost && std::hypot (at.x - px (place.ghostX), at.y - px (place.ghostY)) <= px (reach))
+            {
+                hit = { Part::ghost, selected };
+                takenWithShift = true;
+            }
+        }
 
         /*  A second finger: on a band a finger already holds, or on nothing
             while one finger holds a node, it pinches that band's Q. On
@@ -589,8 +606,9 @@ namespace likyu::editor
         drag.movesFrequency = sideways && ! drag.movesRange;
         drag.movesGain = node.hasGain && (hit.part == Part::node || hit.part == Part::gainArm);
         drag.movesDetector = hit.part == Part::ghost;
+        drag.takenWithShift = takenWithShift;
         drag.last = at;
-        anchor (drag, at, mods.isShiftDown());
+        anchor (drag, at, mods.isShiftDown() && ! takenWithShift);
 
         forEachParameter (drag, [this] (int index) { host.beginGesture (index); });
         drags[key] = drag;
@@ -616,7 +634,7 @@ namespace likyu::editor
         auto& drag = found->second;
         drag.last = at;
 
-        if (mods.isShiftDown() != drag.fine)
+        if (! drag.takenWithShift && mods.isShiftDown() != drag.fine)
             anchor (drag, at, mods.isShiftDown());
 
         const auto dx = static_cast<double> (at.x - drag.press.x);
