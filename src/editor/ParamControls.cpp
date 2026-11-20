@@ -274,6 +274,12 @@ namespace likyu::editor
         resized();
     }
 
+    void ParamBar::setMarker (bool shouldBeMarker)
+    {
+        marker = shouldBeMarker;
+        repaint();
+    }
+
     juce::Rectangle<float> ParamBar::barArea() const
     {
         const auto area = getLocalBounds().toFloat();
@@ -299,15 +305,38 @@ namespace likyu::editor
     {
         const auto area = barArea();
 
+        const auto at = area.getX() + area.getWidth() * static_cast<float> (shown);
+
         g.setColour (palette::controlTrack);
         g.fillRect (area);
 
-        const auto filled = area.withWidth (area.getWidth() * static_cast<float> (shown));
+        if (marker)
+        {
+            /*  The same amount of colour wherever the value is: the bar
+                tinted from end to end, and a block of the full colour at
+                the value. A fill from the left gave a band at 14 kHz a bar
+                of colour and a band at 30 Hz almost none. */
+            constexpr float block = 14.0f;
+            const auto left = std::clamp (at - 0.5f * block, area.getX(), area.getRight() - block);
+
+            g.setColour (accent.withMultipliedAlpha (0.3f));
+            g.fillRect (area);
+            g.setColour (accent);
+            g.fillRect (left, area.getY(), block, area.getHeight());
+            g.setColour (palette::textPrimary);
+            g.fillRect (left + 0.5f * block - 1.0f, area.getY(), 2.0f, area.getHeight());
+            return;
+        }
+
+        // Filled from the range's start, or from 0 where 0 is inside the range.
+        const auto origin = isBipolar (spec()) ? static_cast<float> (dsp::toNormalised (spec(), 0.0)) : 0.0f;
+        const auto from = area.getX() + area.getWidth() * origin;
+
         g.setColour (accent);
-        g.fillRect (filled);
+        g.fillRect (std::min (from, at), area.getY(), std::abs (at - from), area.getHeight());
 
         g.setColour (palette::textPrimary);
-        g.fillRect (std::min (filled.getRight(), area.getRight() - 2.0f), area.getY(), 2.0f, area.getHeight());
+        g.fillRect (std::clamp (at - 1.0f, area.getX(), area.getRight() - 2.0f), area.getY(), 2.0f, area.getHeight());
     }
 
     void ParamBar::mouseDown (const juce::MouseEvent& e)

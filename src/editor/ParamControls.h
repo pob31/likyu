@@ -23,8 +23,12 @@
 
       ParamDial    an arc of 315 degrees with a dot, turned by dragging round
                    its centre (WfsBasicDial); its name above, its value below
-      ParamBar     a bar filled to the value in the band's colour; a press
-                   jumps to the pointer (WfsStandardSlider); its value below
+      ParamBar     a bar; a press jumps to the pointer (WfsStandardSlider);
+                   its value below. As a marker (a band's Frequency) the
+                   whole bar is tinted in the band's colour and a block of
+                   that colour marks the value, so that a band at 30 Hz
+                   shows as much colour as one at 14 kHz; otherwise it is
+                   filled to the value, from 0 where 0 is inside the range
       ParamChoice  a combo box of the table's choices
       ParamToggle  a square in the band's colour when on (EQBandToggle)
 
@@ -127,6 +131,9 @@ namespace likyu::editor
             it: for a row of controls. */
         void setTextBeside (bool beside);
 
+        /** A tinted bar with a block at the value, in place of a fill. */
+        void setMarker (bool marker);
+
         void paint (juce::Graphics&) override;
         void resized() override;
         void mouseDown (const juce::MouseEvent&) override;
@@ -136,6 +143,7 @@ namespace likyu::editor
         juce::Rectangle<float> barArea() const;
 
         bool textBeside = false;
+        bool marker = false;
 
         double fromNormalised = 0.0;
         float pressX = 0.0f;

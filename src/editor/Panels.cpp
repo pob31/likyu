@@ -115,6 +115,8 @@ namespace likyu::editor
         for (auto* control : std::initializer_list<juce::Component*> { &on, &type, &frequency, &gain, &q })
             addAndMakeVisible (control);
 
+        frequency.setMarker (true);
+
         // A press on any of its controls is a press in the column.
         addMouseListener (this, true);
     }
