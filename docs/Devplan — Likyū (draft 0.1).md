@@ -294,7 +294,8 @@ and the plugin plays it.
 view; `docs/bench/` has the precision note and the first timing.
 
 **Needs from the author:** confirm or replace the **1 % budget** once 2f gives a number (PRD open
-decision). Nothing blocking.
+decision). Nothing blocking. *Decided 2026-11-20 by the author:* no fixed figure; optimised as
+much as possible.
 
 **Record, 2026-11-20: built in one session, beside Phase 1.** Handoff:
 [`docs/handoffs/2026-11-20-phase2.md`](handoffs/2026-11-20-phase2.md); bench note:
@@ -568,19 +569,21 @@ reach the parameters: Phase 1, finding 6).
 
 ## Phase 7 — Performance and packaging · M
 
-**Goal:** inside the budget, and installable.
+**Goal:** optimised as much as possible, and installable. (Was "inside the budget": on 2026-11-20
+the author replaced the 1 % with this.)
 
 - Detector lanes in SIMD: eight bands of a key channel to an AVX2 register, two NEON registers;
   the audio chain vectorised across channels. The scalar path stays, selected at build time, and
   both are held to the same outputs by the existing tests.
 - The seeding bank costed on its own: thirty filters per key source are the first suspect, and
   running them only while a tracker is unlocked is the first remedy to measure.
-- The bench against the budget: stereo, eight bands in Dynamic and Track, stereo sidechain,
-  96 kHz, 64 samples; then 64 channels linked, as information.
+- The bench in the budget's case: stereo, eight bands in Dynamic and Track, stereo sidechain,
+  96 kHz, 64 samples; then 64 channels linked. It measures what the optimisation gains; there is
+  no fixed figure to hold.
 - Installers from WFS-DIY's scripts: Windows (Inno Setup), macOS (pkg, universal binary, signed
   and notarised), Linux (tarball), each with VST3 and LV2, AU on macOS.
 
-**Done when:** the budget row holds on the bench machine and the figure is in `docs/bench/`; the
+**Done when:** the bench's figures, before and after the optimisation, are in `docs/bench/`; the
 three installers install plugins that pass the validators on a clean machine.
 
 **Needs from the author:**
@@ -655,7 +658,7 @@ for.
 | 0 | Recordings for the tracker spike | The spike, not the scaffold |
 | 0 | Copyright line; mono LV2 name | Decided 2026-11-16 |
 | 1 | Time at each host; the farm; a Go.dot build | Yes |
-| 2 | The performance budget, after the first figure | No |
+| 2 | The performance budget, after the first figure | Decided 2026-11-20: optimised as much as possible |
 | 3 | Form of the link list | Decided 2026-11-20 |
 | 4 | Listening pass; the transient time constants (temporary parameters in place, 2026-11-20) | Yes |
 | 5 | Freeze of the parameter IDs; band-pass as a band type | Yes, at the end |
