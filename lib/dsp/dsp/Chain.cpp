@@ -64,6 +64,7 @@ namespace likyu::dsp
         detectorS2.assign (slots * numBands, 0.0f);
         detectorPeak.assign (slots * numBands, 0.0f);
         keys.assign (slots * controlStep, 0.0f);
+        listened.assign (slots * controlStep, 0.0f);
         lanePower.assign (stride * controlStep, 0.0f);
         laneOffsets.assign (stride * controlStep, 0.0);
         offsets.assign (stride * numBands, 0.0);
@@ -78,6 +79,7 @@ namespace likyu::dsp
 
         outputGain.setLength (rampSteps (smoothingSeconds, rate, controlStep));
         bypassMix.setLength (rampSteps (switchFadeSeconds, rate, controlStep));
+        listenFade.setLength (rampSteps (switchFadeSeconds, rate, controlStep));
 
         position = 0;
         snapPending = true;
@@ -122,6 +124,38 @@ namespace likyu::dsp
         exclusionsPending = true;
     }
 
+    void Chain::setListen (int band) noexcept
+    {
+        pendingListen = band >= 0 && band < numBands ? band : -1;
+        listenPending = true;
+    }
+
+    BandMeter Chain::bandMeter (int band) const noexcept
+    {
+        BandMeter m;
+
+        if (band < 0 || band >= numBands)
+            return m;
+
+        const auto index = static_cast<std::size_t> (band);
+        const auto& b = bands[index];
+        const auto& l = lanes[index];
+        const auto stride = laneStride (channels);
+
+        for (int lane = 0; lane < l.count; ++lane)
+        {
+            const auto o = offsets[static_cast<std::size_t> (band * stride + lane)];
+
+            if (std::abs (o) > std::abs (m.offsetDb))
+                m.offsetDb = o;
+        }
+
+        const auto hz = b.frequencyHz();
+        m.frequencyHz = std::isfinite (hz) ? hz : 0.0;
+        m.keyFellBack = b.keyFellBack();
+        return m;
+    }
+
     double Chain::offsetDb (int band, int channel) const noexcept
     {
         if (band < 0 || band >= numBands || channel < 0 || channel >= channels)
@@ -156,6 +190,12 @@ namespace likyu::dsp
             excluded = pendingExcluded;
         }
 
+        if (listenPending)
+        {
+            listenPending = false;
+            listenTarget = pendingListen;
+        }
+
         sidechainChannels = sidechainNow;
 
         if (snapPending)
@@ -167,6 +207,10 @@ namespace likyu::dsp
             gainDb1 = outputGain.getCurrent();
             gainFactor0 = gainFactor1 = dbToFactor (gainDb1);
             mix0 = mix1 = bypassMix.getCurrent();
+
+            listenBand = listenTarget;
+            listenFade.jumpTo (listenBand >= 0 ? 1.0 : 0.0);
+            listen0 = listen1 = listenFade.getCurrent();
         }
         else
         {
@@ -182,6 +226,21 @@ namespace likyu::dsp
             }
 
             mix1 = bypassMix.step();
+
+            // Listen: out, the band changed where nothing of it is heard, back in.
+            if (listenTarget != listenBand)
+            {
+                if (! listenFade.isMoving() && exactlyEqual (listenFade.getCurrent(), 0.0))
+                    listenBand = listenTarget;
+                else
+                    listenFade.setTarget (0.0);
+            }
+
+            if (listenTarget == listenBand)
+                listenFade.setTarget (listenBand >= 0 ? 1.0 : 0.0);
+
+            listen0 = listen1;
+            listen1 = listenFade.step();
         }
 
         const auto prepared64 = channels >= 64 ? ~std::uint64_t (0) : (std::uint64_t (1) << channels) - 1u;
@@ -211,6 +270,14 @@ namespace likyu::dsp
                 clearDetectors (b);
                 detectorBuiltFor[static_cast<std::size_t> (b)] = band.getDetectorRevision();
             }
+        }
+
+        if (listenBand >= 0)
+        {
+            if (bands[static_cast<std::size_t> (listenBand)].detectorConfig().key == KeySource::sidechain)
+                sidechainKeyed = true;
+            else
+                selfKeyed = true;
         }
     }
 
@@ -332,6 +399,45 @@ namespace likyu::dsp
             }
         }
 
+        // Listen: the listened band's detector in place of the chain.
+        if (listenBand >= 0 && ! (exactlyEqual (listen0, 0.0) && exactlyEqual (listen1, 0.0)))
+        {
+            const auto listenMoving = ! exactlyEqual (listen0, listen1);
+            const auto sidechain = bands[static_cast<std::size_t> (listenBand)].detectorConfig().key == KeySource::sidechain;
+            std::array<float, controlStep> mean {};
+
+            if (sidechain && sidechainChannels > 0)
+            {
+                for (int s = 0; s < sidechainChannels; ++s)
+                {
+                    const float* y = listened.data() + (channels + s) * controlStep;
+
+                    for (int i = 0; i < n; ++i)
+                        mean[static_cast<std::size_t> (i)] += y[i];
+                }
+
+                const auto scale = 1.0f / static_cast<float> (sidechainChannels);
+
+                for (int i = 0; i < n; ++i)
+                    mean[static_cast<std::size_t> (i)] *= scale;
+            }
+
+            for (int c = 0; c < numChannels; ++c)
+            {
+                double* w = work.data() + c * controlStep;
+                const float* y = sidechain ? mean.data() : listened.data() + c * controlStep;
+
+                for (int i = 0; i < n; ++i)
+                {
+                    const auto t = static_cast<double> (position + i + 1) / controlStep;
+                    const auto weight = smoothstep (listenMoving ? lerpExact (listen0, listen1, t) : listen1);
+                    w[i] = lerpExact (w[i], static_cast<double> (y[i]), weight);
+                }
+
+                touched[static_cast<std::size_t> (c)] = all;
+            }
+        }
+
         // Fully bypassed: the host's buffer already holds the dry signal.
         if (fullyBypassed)
             return false;
@@ -368,7 +474,10 @@ namespace likyu::dsp
 
         anyOffset[index] = false;
 
-        if (! band.isDynamic() || band.isIdle() || l.count == 0)
+        const auto dynamic = band.isDynamic() && ! band.isIdle() && l.count > 0;
+        const auto listening = b == listenBand;
+
+        if (! dynamic && ! listening)
         {
             if (detectorInUse[index])
             {
@@ -382,13 +491,14 @@ namespace likyu::dsp
         detectorInUse[index] = true;
 
         const auto& k = band.detectorCoefficients();
-        const auto sidechain = band.activeShape().key == KeySource::sidechain;
+        const auto sidechain = band.detectorConfig().key == KeySource::sidechain;
         const auto first = sidechain ? channels : 0;
         const auto last = first + (sidechain ? sidechainChannels : numChannels);
         const auto stepEnds = position + n == controlStep;
 
-        for (int lane = 0; lane < l.count; ++lane)
-            std::fill (lanePower.begin() + lane * controlStep, lanePower.begin() + lane * controlStep + n, 0.0f);
+        if (dynamic)
+            for (int lane = 0; lane < l.count; ++lane)
+                std::fill (lanePower.begin() + lane * controlStep, lanePower.begin() + lane * controlStep + n, 0.0f);
 
         // Every key channel's detector; the maximum of the powers into its lane.
         for (int slot = first; slot < last; ++slot)
@@ -396,11 +506,20 @@ namespace likyu::dsp
             const auto i0 = slotIndex (slot, b);
             auto s1 = detectorS1[i0], s2 = detectorS2[i0], peak = detectorPeak[i0];
             const float* x = keys.data() + slot * controlStep;
-            float* power = lanePower.data() + l.ofSlot[static_cast<std::size_t> (slot)] * controlStep;
+            float* power = lanePower.data() + (dynamic ? l.ofSlot[static_cast<std::size_t> (slot)] : 0) * controlStep;
+            float* heard = listened.data() + slot * controlStep;
             float output = 0.0f;
 
             for (int i = 0; i < n; ++i)
-                power[i] = std::max (power[i], detectorTick (x[i], s1, s2, peak, k, output));
+            {
+                const auto p = detectorTick (x[i], s1, s2, peak, k, output);
+
+                if (dynamic)
+                    power[i] = std::max (power[i], p);
+
+                if (listening)
+                    heard[i] = output;
+            }
 
             if (stepEnds)
             {
@@ -413,6 +532,9 @@ namespace likyu::dsp
             detectorS2[i0] = s2;
             detectorPeak[i0] = peak;
         }
+
+        if (! dynamic)
+            return;
 
         // One level per lane, its target, and the offset's one-pole, per sample.
         const auto stride = laneStride (channels);

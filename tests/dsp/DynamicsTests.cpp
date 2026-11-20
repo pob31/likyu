@@ -19,7 +19,8 @@
     rows: dynamic curve, exact bypass return, gain limit (with real offsets),
     channel linking, linked maximum, link exclusion (its DSP half), sidechain
     fallback (its DSP half), layouts, realtime, block-size invariance (again,
-    with every new mode). The switches' clicks are in MovementTests.cpp.
+    with every new mode). Listen and the meters (devplan 3d). The switches'
+    clicks are in MovementTests.cpp.
 
     A level here is a PEAK level: a sine of amplitude a is 20 log10(a) dB, as
     the band-pass quadrature envelope reads it.
@@ -30,6 +31,7 @@
 #include "DspTestSupport.h"
 
 #include <dsp/Chain.h>
+#include <dsp/Detector.h>
 #include <dsp/Dynamics.h>
 #include <dsp/rt/RtCheck.h>
 
@@ -219,7 +221,7 @@ TEST_CASE ("gain computer: attack and release are time constants, the offset ret
     {
         gc.smooth (offset, 0.0);
 
-        if (reached < 0 && offset == 0.0)
+        if (reached < 0 && exactlyEqual (offset, 0.0))
             reached = i;
     }
 
@@ -563,6 +565,12 @@ namespace
                   auto sc = dynamicBand (BandType::bell, 2500.0, 2.0, 0.0, -30.0, -12.0, 4.0, 0.5, 80.0);
                   c.setBand (2, sc);                                                                        // key back to Self
               } },
+            { period + 500, [] (Chain& c) { c.setListen (3); } },                                          // Listen, Own high-pass
+            { period + 900, [] (Chain& c) { c.setListen (2); } },                                          // to the sidechain band
+            { 2 * period + 700, [] (Chain& c) { c.setListen (4); } },                                      // a static notch
+            { 2 * period + 2000, [] (Chain& c) { c.setListen (-1); } },
+            { 4 * period + 50, [] (Chain& c) { c.setListen (2); } },
+            { 4 * period + 3000, [] (Chain& c) { c.setListen (-1); } },
         };
     }
 }
@@ -631,8 +639,8 @@ TEST_CASE ("channel linking: a transient on one side of a stereo signal: linked,
         {
             const auto left = t.offsets[0][static_cast<std::size_t> (n)], right = t.offsets[1][static_cast<std::size_t> (n)];
             most = std::min (most, left);
-            same = same && left == right;
-            rightStill = rightStill && right == 0.0;
+            same = same && exactlyEqual (left, right);
+            rightStill = rightStill && exactlyEqual (right, 0.0);
         }
 
         INFO (std::string (isLinked ? "linked" : "unlinked") << ": deepest offset " << most << " dB");
@@ -844,6 +852,7 @@ TEST_CASE ("realtime: 500 blocks of dynamic bands, both keys, the link and exclu
 
             chain.setChain ({ random.unit() < 0.2, 48.0 * random.unit() - 24.0, random.unit() < 0.5 });
             chain.setLinkExclusions (random.next() % 4u);
+            chain.setListen (static_cast<int> (random.next() % 12u) - 3);
         }
 
         Key<double> key;
@@ -856,4 +865,133 @@ TEST_CASE ("realtime: 500 blocks of dynamic bands, both keys, the link and exclu
 
     CHECK (rt::regions() == 500);
     CHECK (rt::violations() == 0);
+}
+
+//==============================================================================
+namespace
+{
+    /** A detector as the band builds it, run on its own from silence: what Listen should play. */
+    std::vector<float> detectorOutput (const std::vector<double>& key, DetectorType type, double hz, double q)
+    {
+        Warp warp;
+        warp.prepare (rate);
+        const auto f = warp.clamp (std::exp2 (std::log2 (hz)));
+        const auto k = makeDetectorCoefficients (type, warp.g (f), std::exp2 (-std::log2 (q)), f, rate);
+
+        std::vector<float> out (key.size());
+        float s1 = 0.0f, s2 = 0.0f, peak = 0.0f;
+
+        for (std::size_t n = 0; n < key.size(); ++n)
+            detectorTick (static_cast<float> (key[n]), s1, s2, peak, k, out[n]);
+
+        return out;
+    }
+
+    BandSettings ownDetector (KeySource key)
+    {
+        auto s = band (true, BandType::bell, 500.0, 1.0, 0.0);
+        s.key = key;
+        s.dfilt = DetectorFilter::own;
+        s.dtype = DetectorType::bandPass;
+        s.detectorFrequency = 1000.0;
+        s.detectorQ = 4.0;
+        return s;
+    }
+}
+
+TEST_CASE ("listen: Self, each channel hears its own detector; Sidechain, the mean of the sidechain's, on every channel")
+{
+    const auto length = 4800;
+    const std::vector<std::vector<double>> input { tone<double> (length, 1000.0, 0.5, rate), tone<double> (length, 3000.0, 0.5, rate) };
+
+    // Self, set before the first block: Listen from the first sample, a static band's detector.
+    {
+        const std::vector<Event> events { { 0, [] (Chain& c) { c.setBand (2, ownDetector (KeySource::self)); c.setListen (2); } } };
+        const auto output = render (rate, input, events, fixedBlocks (64));
+
+        for (std::size_t c = 0; c < input.size(); ++c)
+        {
+            const auto expected = detectorOutput (input[c], DetectorType::bandPass, 1000.0, 4.0);
+
+            for (std::size_t n = 0; n < expected.size(); ++n)
+                REQUIRE (output[c][n] == static_cast<double> (expected[n]));
+        }
+    }
+
+    // Sidechain: the mean of its two detectors, on both main channels.
+    {
+        const std::vector<std::vector<double>> sidechain { tone<double> (length, 1000.0, 0.5, rate), tone<double> (length, 1000.0, 0.2, rate, 1.0) };
+        const std::vector<Event> events { { 0, [] (Chain& c) { c.setBand (2, ownDetector (KeySource::sidechain)); c.setListen (2); } } };
+        const auto output = render (rate, input, events, fixedBlocks (64), sidechain);
+
+        const auto a = detectorOutput (sidechain[0], DetectorType::bandPass, 1000.0, 4.0);
+        const auto b = detectorOutput (sidechain[1], DetectorType::bandPass, 1000.0, 4.0);
+
+        for (std::size_t c = 0; c < input.size(); ++c)
+            for (std::size_t n = 0; n < a.size(); ++n)
+                REQUIRE (output[c][n] == static_cast<double> ((a[n] + b[n]) * 0.5f));
+    }
+}
+
+TEST_CASE ("listen: off again, the chain is the exact bypass once the fade out ends")
+{
+    const auto length = 9600, off = 2400;
+    const std::vector<std::vector<double>> input { noise<double> (length, 81, 0.3), noise<double> (length, 82, 0.3) };
+    const std::vector<Event> events {
+        { 0, [] (Chain& c) { c.setBand (2, ownDetector (KeySource::self)); c.setListen (2); } },
+        { off, [] (Chain& c) { c.setListen (-1); } },
+    };
+
+    const auto output = render (rate, input, events, randomBlocks (83));
+    const auto faded = off + rampSteps (switchFadeSeconds, rate, controlStep) * controlStep + controlStep;
+
+    for (std::size_t c = 0; c < input.size(); ++c)
+    {
+        CHECK_FALSE (output[c][100] == input[c][100]);
+        CHECK (std::equal (output[c].begin() + faded, output[c].end(), input[c].begin() + faded));
+    }
+}
+
+TEST_CASE ("meters: a band shows its offset, the largest over its lanes, its frequency, and whether its key fell back")
+{
+    const auto length = 9600;
+    const std::vector<std::vector<double>> input { tone<double> (length, 1000.0, 0.5, rate), noise<double> (length, 91, 1.0e-4) };
+
+    Chain chain;
+    chain.prepare (rate, 2);
+    chain.setBand (0, dynamicBand (BandType::bell, 1000.0, 1.0, 0.0, -30.0, -12.0));
+    auto sidechainBand = dynamicBand (BandType::bell, 2000.0, 1.0, 0.0, -30.0, -12.0);
+    sidechainBand.key = KeySource::sidechain;
+    chain.setBand (1, sidechainBand);
+    chain.setChain ({ false, 0.0, false });
+
+    auto audio = input;
+    double* p[] = { audio[0].data(), audio[1].data() };
+    chain.process (p, 2, length);
+
+    const auto m = chain.bandMeter (0);
+    CHECK (m.offsetDb < -6.0);
+    CHECK (m.offsetDb == chain.offsetDb (0, 0));
+    CHECK (chain.offsetDb (0, 1) == 0.0);
+    CHECK (m.frequencyHz == doctest::Approx (1000.0).epsilon (1.0e-9));
+    CHECK (m.confidence == 0.0);
+    CHECK_FALSE (m.keyFellBack);
+
+    // No sidechain in the call: band 2 fell back to Self, and says so.
+    CHECK (chain.bandMeter (1).keyFellBack);
+
+    // A sidechain in the next call: it no longer falls back (from the next grid point).
+    const std::vector<double> side (64, 0.0);
+    const double* sp[] = { side.data() };
+    Key<double> key;
+    key.self = p;
+    key.selfChannels = 2;
+    key.sidechain = sp;
+    key.sidechainChannels = 1;
+    chain.process (p, 2, key, 64);
+    CHECK_FALSE (chain.bandMeter (1).keyFellBack);
+
+    // Out of range: nothing.
+    CHECK (chain.bandMeter (-1).offsetDb == 0.0);
+    CHECK (chain.bandMeter (numBands).frequencyHz == 0.0);
 }

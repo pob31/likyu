@@ -522,6 +522,45 @@ TEST_CASE ("switches: gain mode, detector, direction, key, the fallback, link an
     }
 }
 
+TEST_CASE ("switches: Listen in and out crossfades without a click; switched hard it would click")
+{
+    // A +6 dB bell at 700 Hz on the sine, its own band-pass detector at 700 Hz, Q 2.
+    auto s = band (true, BandType::bell, 700.0, 2.0, 6.0);
+    s.dfilt = DetectorFilter::own;
+    s.detectorFrequency = 700.0;
+    s.detectorQ = 2.0;
+
+    std::vector<double> input (static_cast<std::size_t> (switchAt + 12000));
+
+    for (int n = 0; n < static_cast<int> (input.size()); ++n)
+        input[static_cast<std::size_t> (n)] = sine (n);
+
+    for (const auto in : { true, false })
+    {
+        const std::vector<Event> events {
+            { 0, [s, in] (Chain& c) { c.setBand (0, s); c.setListen (in ? -1 : 0); } },
+            { switchAt, [in] (Chain& c) { c.setListen (in ? 0 : -1); } },
+        };
+
+        const auto soft = measure (render (rate, std::vector<std::vector<double>> { input }, events, fixedBlocks (64))[0]);
+
+        // Hard: the chain's output, then the detector's, from one sample to the next.
+        const auto chainOut = render (rate, std::vector<std::vector<double>> { input }, { { 0, [s] (Chain& c) { c.setBand (0, s); } } }, fixedBlocks (64))[0];
+        const auto listened = render (rate, std::vector<std::vector<double>> { input }, { { 0, [s] (Chain& c) { c.setBand (0, s); c.setListen (0); } } }, fixedBlocks (64))[0];
+        std::vector<double> hardOut (input.size());
+
+        for (std::size_t n = 0; n < input.size(); ++n)
+            hardOut[n] = (static_cast<int> (n) < switchAt) == in ? chainOut[n] : listened[n];
+
+        const auto hard = measure (hardOut);
+
+        INFO (std::string (in ? "into" : "out of") << " Listen: " << soft.switchDb << " dB, steady " << soft.steadyDb << " dB; hard " << hard.switchDb << " dB");
+        MESSAGE (std::string (in ? "into" : "out of") << " Listen: " << soft.switchDb << " dB through the chain, " << hard.switchDb << " dB hard");
+        CHECK (hard.switchDb > soft.steadyDb + 30.0);
+        CHECK (soft.switchDb < -70.0);
+    }
+}
+
 //==============================================================================
 TEST_CASE ("sub-block: how far g interpolated over 16 samples bends a glide, measured")
 {

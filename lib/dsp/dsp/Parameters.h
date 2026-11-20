@@ -118,6 +118,14 @@ namespace likyu::dsp
         the audio thread (its lookup is built on first use). */
     int indexOfId (std::string_view id);
 
+    /*  TEMPORARY, devplan 3d: Listen as a host parameter until the editor
+        exists, so that it can be heard from a host's generic view. A choice
+        (Off, Band 1 to Band 8), not automatable, NOT IN THE TABLE: the 284
+        stay as the PRD counts them, the state chunk does not save it (PRD:
+        Listen is not saved), and Dispatch never sees it. Never frozen;
+        removed in Phase 6, when Listen becomes the editor's button. */
+    const ParamSpec& temporaryListenSpec();
+
     //==========================================================================
     /*  A HOST'S 0 TO 1, AND BACK. Linear, or logarithmic (equal steps of the
         host's range are equal ratios of the value); a choice's index spread

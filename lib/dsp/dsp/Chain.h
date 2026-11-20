@@ -73,10 +73,22 @@
     skips it; so which path a stretch of samples takes changes no bit, and
     a band whose offsets have all returned to 0 is again the exact bypass.
 
-    THREADS. setBand(), setChain(), setLinkExclusions() are called on the
-    audio thread, before process(), with values read from the host's atomics
-    once per block (likyu::core does that); they take effect at the next grid
-    point. prepare() allocates and belongs to the message thread.
+    LISTEN (PRD, Detection; Phase 3d): one band's detector output replaces
+    the chain's output, a solo in place. Self: each channel hears its own
+    detector. Sidechain: the mean of the sidechain's detectors, on every
+    channel. It crossfades in and out along a smoothstep, 10 ms each way; a
+    change of band goes out and back in. The bypass, after it, still wins.
+
+    METERS: per band, the offset now (the largest over its lanes), the
+    frequency now, the tracker's confidence (0 until Phase 5) and whether
+    the key fell back to Self. Read on the audio thread after process();
+    likyu::core publishes them (core/MeterSnapshot.h).
+
+    THREADS. setBand(), setChain(), setLinkExclusions(), setListen() are
+    called on the audio thread, before process(), with values read from the
+    host's atomics once per block (likyu::core does that); they take effect
+    at the next grid point. prepare() allocates and belongs to the message
+    thread.
 
     Standard library only.
 */
@@ -120,6 +132,15 @@ namespace likyu::dsp
         int sidechainChannels = 0;
     };
 
+    /** What a band shows of itself now (PRD, Detection: metering). */
+    struct BandMeter
+    {
+        double offsetDb = 0.0;
+        double frequencyHz = 0.0;
+        double confidence = 0.0;
+        bool keyFellBack = false;
+    };
+
     class Chain
     {
     public:
@@ -150,12 +171,22 @@ namespace likyu::dsp
             the next grid point; bits beyond the channels prepared are ignored. */
         void setLinkExclusions (std::uint64_t channelsLeftOut) noexcept;
 
+        /** The band (from 0) whose detector replaces the output, or -1 for
+            none. Takes effect at the next grid point, through a crossfade. */
+        void setListen (int band) noexcept;
+
+        /** The band listened to now, or -1; it stays until the fade out ends. */
+        int getListenBand() const noexcept      { return listenBand; }
+
         double getSampleRate() const noexcept   { return rate; }
         int getNumChannels() const noexcept     { return channels; }
 
         /** The dynamic offset of `band` (from 0) on `channel` now, in dB: 0
             for a band that is not dynamic. For tests and the meters. */
         double offsetDb (int band, int channel) const noexcept;
+
+        /** What `band` (from 0) shows now. */
+        BandMeter bandMeter (int band) const noexcept;
 
         /** In place, keyed by the input itself and no sidechain: the plugin's
             case with the lookahead off, and a native client's. Channels
@@ -305,6 +336,7 @@ namespace likyu::dsp
         std::array<bool, numBands> detectorInUse {};
         std::array<int, numBands> detectorBuiltFor {};   // the band's detector revision
         std::vector<float> keys;                // slot * controlStep + sample
+        std::vector<float> listened;            // the listened band's detector outputs, the same
         std::vector<float> lanePower;           // lane * controlStep + sample, one band at a time
         std::vector<double> laneOffsets;        // the same, the offsets
         std::array<bool, numBands> anyOffset {};
@@ -322,6 +354,11 @@ namespace likyu::dsp
         bool exclusionsPending = false;
         int sidechainNow = 0, sidechainChannels = 0;
         bool selfKeyed = false, sidechainKeyed = false;   // a detector of this step reads that key
+
+        Ramp listenFade;
+        int pendingListen = -1, listenTarget = -1, listenBand = -1;
+        bool listenPending = false;
+        double listen0 = 0.0, listen1 = 0.0;
 
         double gainDb1 = 0.0, gainFactor0 = 1.0, gainFactor1 = 1.0;
         double mix0 = 0.0, mix1 = 0.0;
