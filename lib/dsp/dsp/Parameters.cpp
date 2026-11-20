@@ -99,10 +99,10 @@ namespace likyu::dsp
             table.push_back (choice (id ("ddir"), name ("Direction"), { "Above", "Below" }, 0));
 
             // Transient.
-            table.push_back (linear (id ("tatk"), name ("Transient Attack"), "%", -100.0, 100.0, 0.0));
-            table.push_back (linear (id ("tsus"), name ("Transient Sustain"), "%", -100.0, 100.0, 0.0));
-            table.push_back (logarithmic (id ("ttime"), name ("Transient Time"), "x", 0.25, 4.0, 1.0));
-            table.push_back (linear (id ("tfloor"), name ("Transient Floor"), "dB", -90.0, -20.0, -60.0));
+            table.push_back (linear (id ("tatk"), name ("Transient Attack"), "%", -maxTransientAmountPercent, maxTransientAmountPercent, 0.0));
+            table.push_back (linear (id ("tsus"), name ("Transient Sustain"), "%", -maxTransientAmountPercent, maxTransientAmountPercent, 0.0));
+            table.push_back (logarithmic (id ("ttime"), name ("Transient Time"), "x", minTransientTime, maxTransientTime, 1.0));
+            table.push_back (linear (id ("tfloor"), name ("Transient Floor"), "dB", minTransientFloorDb, maxTransientFloorDb, -60.0));
 
             // Env and Track.
             table.push_back (logarithmic (id ("flo"), name ("Frequency Low"), "Hz", minFrequency, maxFrequency, low));

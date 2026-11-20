@@ -57,13 +57,20 @@
     asks for the Phase 2 coefficients themselves, so a dynamic band at rest
     is bit for bit the static band it would be.
 
+    PHASE 4: TRANSIENT. A band in Transient mode (a bell or a shelf) owns
+    its transient shaper (dsp/Transient.h) beside the gain computer; the same
+    detector, the same lanes, the same coefficientsAt (index, offsetDb): only
+    the source of the offset differs (PRD, Gain modes). Range limits both.
+
     THE SHAPE grows with the gain mode, the key as it is in effect (the
     sidechain falls back to Self when the bus is absent or disabled), the
     detector filter and type, the direction and the link. Each goes through
     the identity like a type switch. What does not matter for a band is not
     compared, so it costs no fade: a Static band's detector and key, a
-    Follow detector's type, a Sidechain band's link. The key and the link
-    are the chain's, given each grid point as the band's CONTEXT.
+    Follow detector's type, a Sidechain band's link, the direction of a band
+    that is not Dynamic. Transient has no switch of its own: its amounts,
+    floor and Time are continuous. The key and the link are the chain's,
+    given each grid point as the band's CONTEXT.
 
     Standard library only; no allocation anywhere in this class.
 */
@@ -77,6 +84,7 @@
 #include "Smoother.h"
 #include "Svf.h"
 #include "Tan.h"
+#include "Transient.h"
 
 #include <algorithm>
 #include <cmath>
@@ -119,6 +127,12 @@ namespace likyu::dsp
         double attackMs = 5.0;
         double releaseMs = 120.0;
         Direction direction = Direction::above;
+
+        // Phase 4: the transient shaper, in the table's units.
+        double transientAttackPercent = 0.0;
+        double transientSustainPercent = 0.0;
+        double transientTime = 1.0;
+        double transientFloorDb = -60.0;
     };
 
     /** What the chain tells every band at each grid point. */
@@ -138,7 +152,7 @@ namespace likyu::dsp
             bool on = false;
             BandType type = BandType::bell;
             QMode qmode = QMode::proportional;
-            bool dynamic = false;
+            GainMode gmode = GainMode::staticGain;   // in effect: Static for a type without a gain
             KeySource key = KeySource::self;
             DetectorFilter dfilt = DetectorFilter::follow;
             DetectorType dtype = DetectorType::bandPass;
@@ -146,16 +160,22 @@ namespace likyu::dsp
             bool linked = true;
             std::uint64_t excluded = 0;
 
+            /** Dynamic or Transient: a detector, lanes and an offset. */
+            bool hasOffset() const noexcept     { return gmode != GainMode::staticGain; }
+
             /** The same effect: what does not matter for this band is not compared. */
             bool operator== (const Shape& o) const noexcept
             {
-                if (! (on == o.on && type == o.type && qmode == o.qmode && dynamic == o.dynamic))
+                if (! (on == o.on && type == o.type && qmode == o.qmode && gmode == o.gmode))
                     return false;
 
-                if (! dynamic)
+                if (! hasOffset())
                     return true;
 
-                if (! (key == o.key && dfilt == o.dfilt && dtype == o.dtype && direction == o.direction))
+                if (! (key == o.key && dfilt == o.dfilt && dtype == o.dtype))
+                    return false;
+
+                if (gmode == GainMode::dynamic && direction != o.direction)
                     return false;
 
                 if (key == KeySource::sidechain)
@@ -189,6 +209,7 @@ namespace likyu::dsp
             detectorLogFrequency.setLength (smoothing);
             detectorLogQ.setLength (smoothing);
             dynamics.prepare (sampleRate, smoothing);
+            transient.prepare (sampleRate, smoothing);
             detectorLf = notANumber;
             detectorStale = true;
 
@@ -232,6 +253,7 @@ namespace likyu::dsp
                 detectorLogFrequency.finish();
                 detectorLogQ.finish();
                 dynamics.finish();
+                transient.finish();
                 active = target;
                 ++shapeRevision;
                 fade.jumpTo (active.on ? 1.0 : 0.0);
@@ -270,7 +292,15 @@ namespace likyu::dsp
             detectorLogFrequency.step();
             detectorLogQ.step();
             dynamics.step();
+            transient.step();
             updateDetector();
+        }
+
+        /** The transient shaper's four constants, instance-wide (dsp/Transient.h).
+            Takes effect at the next grid point. */
+        void setTransientTimes (const TransientTimes& times) noexcept
+        {
+            transient.setTimes (times);
         }
 
         /** Off and faded out: nothing to compute, the state may be cleared. */
@@ -339,15 +369,18 @@ namespace likyu::dsp
         /** Goes up each time the shape in effect changes, a snap included. */
         int getShapeRevision() const noexcept               { return shapeRevision; }
 
-        /** In Dynamic mode with a gain to move. */
-        bool isDynamic() const noexcept                     { return active.dynamic; }
+        /** In Dynamic or Transient mode with a gain to move: a detector, lanes, an offset. */
+        bool hasOffset() const noexcept                     { return active.hasOffset(); }
 
-        /** The detector the band runs: the one in effect for a dynamic band,
-            which changes only through the identity; for any other band, the
-            one asked for, which only Listen hears. */
+        /** The gain mode in effect: Static for a type without a gain. */
+        GainMode gainMode() const noexcept                  { return active.gmode; }
+
+        /** The detector the band runs: the one in effect for a band with an
+            offset, which changes only through the identity; for any other
+            band, the one asked for, which only Listen hears. */
         DetectorConfig detectorConfig() const noexcept
         {
-            const auto& s = active.dynamic ? active : target;
+            const auto& s = active.hasOffset() ? active : target;
             return { s.key, s.dfilt, s.dtype };
         }
 
@@ -376,6 +409,15 @@ namespace likyu::dsp
             dynamics.smooth (offset, targetDb);
         }
 
+        /** Transient: `n` samples of one lane's offsets from its powers, from
+            sample `index` of the step. True when any of them is not 0. */
+        bool transientOffsets (const float* power, int n, int index, TransientEnvelopes& envelopes,
+                               double* offsets) const noexcept
+        {
+            return transient.run (power, n, index, controlStep, dynamics.rangeStart(), dynamics.rangeEnd(),
+                                  envelopes, offsets);
+        }
+
         /** The sidechain was asked for and the bus is absent or disabled:
             the band runs on Self, and the editor says so (PRD, Band model). */
         bool keyFellBack() const noexcept
@@ -394,14 +436,14 @@ namespace likyu::dsp
 
         /** What the settings and the context make the band. Q mode is a
             bell's only; a Follow detector is a band-pass; a band without a
-            gain, or in Transient until Phase 4, is Static. */
+            gain is Static (PRD, non-goals). */
         static Shape shapeOf (const BandSettings& s, const BandContext& c) noexcept
         {
             Shape shape;
             shape.on = s.on;
             shape.type = s.type;
             shape.qmode = s.type == BandType::bell ? s.qmode : QMode::proportional;
-            shape.dynamic = hasGain (s.type) && s.gmode == GainMode::dynamic;
+            shape.gmode = hasGain (s.type) ? s.gmode : GainMode::staticGain;
             shape.key = s.key == KeySource::sidechain && c.sidechainChannels > 0 ? KeySource::sidechain : KeySource::self;
             shape.dfilt = s.dfilt;
             shape.dtype = s.dfilt == DetectorFilter::own ? s.dtype : DetectorType::bandPass;
@@ -438,6 +480,8 @@ namespace likyu::dsp
 
             dynamics.setTarget (pending.thresholdDb, pending.kneeDb, pending.ratio, pending.rangeDb,
                                 pending.attackMs, pending.releaseMs);
+            transient.setTarget (pending.transientAttackPercent, pending.transientSustainPercent,
+                                 pending.transientTime, pending.transientFloorDb);
 
             if (std::isfinite (pending.frequency))
                 logFrequency.setTarget (std::log2 (std::clamp (pending.frequency, minFrequency, maxFrequency)));
@@ -567,6 +611,7 @@ namespace likyu::dsp
         Ramp logFrequency, logQ, gain, fade;
         Ramp detectorLogFrequency, detectorLogQ;
         GainComputer dynamics;
+        TransientComputer transient;
         double rate = 0.0;
 
         BandSettings pending, latched;

@@ -104,7 +104,7 @@ TEST_CASE ("dispatch: a band's settings are its values, choices rounded and clam
     CHECK (core::chainSettingsFrom (global).outputGainDb == -3.0);
 }
 
-TEST_CASE ("dispatch: a band's detector and Dynamic values, and the link, as the chain takes them")
+TEST_CASE ("dispatch: a band's detector, Dynamic and Transient values, and the link, as the chain takes them")
 {
     using P = dsp::BandParam;
 
@@ -142,6 +142,17 @@ TEST_CASE ("dispatch: a band's detector and Dynamic values, and the link, as the
     band (values, 4, P::gmode) = 7.0f;
     CHECK (core::bandSettingsFrom (values, 4).gmode == dsp::GainMode::transient);
 
+    // Transient's four (Phase 4), in the table's units.
+    band (values, 4, P::tatk) = -75.0f;
+    band (values, 4, P::tsus) = 40.0f;
+    band (values, 4, P::ttime) = 2.0f;
+    band (values, 4, P::tfloor) = -48.0f;
+    const auto t = core::bandSettingsFrom (values, 4);
+    CHECK (t.transientAttackPercent == -75.0);
+    CHECK (t.transientSustainPercent == 40.0);
+    CHECK (t.transientTime == 2.0);
+    CHECK (t.transientFloorDb == -48.0);
+
     // The defaults: Static, Self, Follow, the table's Dynamic values.
     const auto d = core::bandSettingsFrom (defaults(), 0);
     CHECK (d.gmode == dsp::GainMode::staticGain);
@@ -150,6 +161,10 @@ TEST_CASE ("dispatch: a band's detector and Dynamic values, and the link, as the
     CHECK (d.rangeDb == -6.0);
     CHECK (d.thresholdDb == -24.0);
     CHECK (d.direction == dsp::Direction::above);
+    CHECK (d.transientAttackPercent == 0.0);
+    CHECK (d.transientSustainPercent == 0.0);
+    CHECK (d.transientTime == 1.0);
+    CHECK (d.transientFloorDb == -60.0);
 
     auto global = defaults();
     CHECK (core::chainSettingsFrom (global).linked);

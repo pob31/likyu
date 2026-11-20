@@ -469,6 +469,7 @@ namespace
             return s;
         };
         const auto keyedBy = [] (KeySource key) { auto s = dynamicBell(); s.key = key; return s; };
+        const auto shaped = [] { auto s = dynamicBell(); s.gmode = GainMode::transient; s.transientAttackPercent = 100.0; return s; };
         const auto below = [] { auto s = dynamicBell(); s.direction = Direction::below; return s; };
 
         // Stereo, the left louder: linked, the right is cut as the left is.
@@ -479,6 +480,10 @@ namespace
               [withStatic] (Chain& c) { c.setBand (0, withStatic()); }, [] (Chain& c) { c.setBand (0, dynamicBell()); } },
             { "gain mode, Dynamic to Static", { sineLevel }, 0, false, 0,
               [] (Chain& c) { c.setBand (0, dynamicBell()); }, [withStatic] (Chain& c) { c.setBand (0, withStatic()); } },
+            { "gain mode, Dynamic to Transient", { sineLevel }, 0, false, 0,
+              [] (Chain& c) { c.setBand (0, dynamicBell()); }, [shaped] (Chain& c) { c.setBand (0, shaped()); } },
+            { "gain mode, Transient to Dynamic", { sineLevel }, 0, false, 0,
+              [shaped] (Chain& c) { c.setBand (0, shaped()); }, [] (Chain& c) { c.setBand (0, dynamicBell()); } },
             { "detector filter, Follow to Own", { sineLevel }, 0, false, 0,
               [] (Chain& c) { c.setBand (0, dynamicBell()); },
               [own] (Chain& c) { c.setBand (0, own (DetectorType::bandPass, 3000.0, 4.0)); } },
@@ -558,6 +563,112 @@ TEST_CASE ("switches: Listen in and out crossfades without a click; switched har
         MESSAGE (std::string (in ? "into" : "out of") << " Listen: " << soft.switchDb << " dB through the chain, " << hard.switchDb << " dB hard");
         CHECK (hard.switchDb > soft.steadyDb + 30.0);
         CHECK (soft.switchDb < -70.0);
+    }
+}
+
+//==============================================================================
+namespace
+{
+    /*  THE SWITCHES OF PHASE 4, where Transient is shaping. A steady sine has
+        no attack and no sustain, so its Transient offset is 0 throughout: the
+        sine here is the same 500 Hz with its level swung by 6 dB three times
+        a second, and the bell (700 Hz, Q 2, +6 dB static, Range 12 dB, keyed
+        by the sine) moves with it before and after the switch. Into
+        Transient from Static the detector starts cold, so the note the band
+        enters on reads as an onset under the fade in: that is measured too.
+        Dynamic to and from Transient, with its hard control, is in the list
+        above, on the steady sine. */
+    double swung (int n)
+    {
+        return sine (n) * (0.75 + 0.25 * std::sin (2.0 * pi * 3.0 * n / rate));
+    }
+
+    BandSettings transientBell (double attackPercent = 100.0, double sustainPercent = 100.0)
+    {
+        return transientBand (BandType::bell, 700.0, 2.0, dynamicStaticDb, attackPercent, sustainPercent, -12.0);
+    }
+
+    struct SwungSwitch
+    {
+        std::string name;
+        BandSettings from, to;
+    };
+
+    struct SwungClick
+    {
+        Click click;
+        double offsetBeforeDb = 0.0, offsetAfterDb = 0.0;   // the largest |offset| in the 250 ms before, after
+    };
+
+    SwungClick switchedSwung (const SwungSwitch& s)
+    {
+        const auto length = switchAt + 12000;
+        std::vector<double> audio (static_cast<std::size_t> (length));
+
+        for (int n = 0; n < length; ++n)
+            audio[static_cast<std::size_t> (n)] = swung (n);
+
+        Chain chain;
+        chain.prepare (rate, 1);
+        chain.setBand (0, s.from);
+
+        SwungClick result;
+
+        for (int n = 0; n < length; n += controlStep)
+        {
+            if (n == switchAt)
+                chain.setBand (0, s.to);
+
+            double* p[] = { audio.data() + n };
+            chain.process (p, 1, controlStep);
+
+            const auto o = std::abs (chain.offsetDb (0, 0));
+
+            if (n >= switchAt - 12000 && n < switchAt)
+                result.offsetBeforeDb = std::max (result.offsetBeforeDb, o);
+            else if (n >= switchAt)
+                result.offsetAfterDb = std::max (result.offsetAfterDb, o);
+        }
+
+        result.click = measure (audio);
+        return result;
+    }
+
+    std::vector<SwungSwitch> swungSwitches()
+    {
+        auto staticBell = transientBell();
+        staticBell.gmode = GainMode::staticGain;
+        auto raisedFloor = transientBell();
+        raisedFloor.transientFloorDb = -20.0;
+        auto slower = transientBell();
+        slower.transientTime = 4.0;
+
+        return {
+            { "gain mode, Static to Transient", staticBell, transientBell() },
+            { "gain mode, Transient to Static", transientBell(), staticBell },
+            { "sustain, +100 % to -100 %", transientBell (100.0, 100.0), transientBell (100.0, -100.0) },
+            { "attack, -100 % to +100 %", transientBell (-100.0, 100.0), transientBell (100.0, 100.0) },
+            { "floor, -60 to -20 dB, inside the swing", transientBell(), raisedFloor },
+            { "Time, 1x to 4x", transientBell(), slower },
+        };
+    }
+}
+
+TEST_CASE ("switches: into and out of Transient, and its amounts, floor and Time stepped while it shapes, without a click")
+{
+    for (const auto& s : swungSwitches())
+    {
+        const auto r = switchedSwung (s);
+
+        INFO (s.name << ": " << r.click.switchDb << " dB through the chain, steady " << r.click.steadyDb
+                     << " dB; offsets up to " << r.offsetBeforeDb << " dB before, " << r.offsetAfterDb << " dB after");
+        MESSAGE (s.name << ": " << r.click.switchDb << " dB through the chain; offsets up to " << r.offsetBeforeDb
+                        << " dB before, " << r.offsetAfterDb << " dB after");
+
+        // The shaper is at work on one side of the switch at least.
+        CHECK (std::max (r.offsetBeforeDb, r.offsetAfterDb) > 2.0);
+
+        CHECK (r.click.switchDb < -70.0);
     }
 }
 

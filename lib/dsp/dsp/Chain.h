@@ -67,6 +67,11 @@
     channel of eight, in all eight, or in two in opposite phase gives the
     same offset, bit for bit (acceptance row "linked maximum").
 
+    A lane's level becomes its offset through the band's gain computer and
+    the offset's one-pole (Dynamic), or through the band's transient shaper
+    and the lane's three envelopes (Transient, Phase 4; dsp/Transient.h).
+    Everything after the offset is the same for both.
+
     A DYNAMIC OFFSET OF EXACTLY 0 IS PHASE 2. A sample whose offset is 0 is
     computed with the band's own Phase 2 coefficients, and an identity is
     skipped only in a step where the band is constant, exactly as Phase 2
@@ -345,6 +350,7 @@ namespace likyu::dsp
         std::vector<double> laneOffsets;        // the same, the offsets
         std::array<bool, numBands> anyOffset {};
         std::vector<double> offsets;            // band * channels + lane: the smoothed offset, dB
+        std::vector<TransientEnvelopes> envelopes;   // the same: a Transient lane's envelopes
         std::array<Lanes, numBands> lanes {};
         std::array<int, numBands> lanesBuiltFor {};      // the band's shape revision
 

@@ -68,6 +68,7 @@ namespace likyu::dsp
         lanePower.assign (stride * controlStep, 0.0f);
         laneOffsets.assign (stride * controlStep, 0.0);
         offsets.assign (stride * numBands, 0.0);
+        envelopes.assign (stride * numBands, TransientEnvelopes {});
         lanes = {};
         lanesBuiltFor.fill (-1);
         detectorBuiltFor.fill (-1);
@@ -94,6 +95,7 @@ namespace likyu::dsp
         std::fill (detectorS2.begin(), detectorS2.end(), 0.0f);
         std::fill (detectorPeak.begin(), detectorPeak.end(), 0.0f);
         std::fill (offsets.begin(), offsets.end(), 0.0);
+        std::fill (envelopes.begin(), envelopes.end(), TransientEnvelopes {});
         stateInUse.fill (false);
         detectorInUse.fill (false);
         lanesBuiltFor.fill (-1);
@@ -254,7 +256,7 @@ namespace likyu::dsp
             band.setContext (context);
             band.beginStep();
 
-            if (band.isDynamic() && ! band.isIdle())
+            if (band.hasOffset() && ! band.isIdle())
             {
                 if (band.activeShape().key == KeySource::sidechain)
                     sidechainKeyed = true;
@@ -291,10 +293,11 @@ namespace likyu::dsp
         l = Lanes {};
         lanesBuiltFor[index] = band.getShapeRevision();
         std::fill (offsets.begin() + b * stride, offsets.begin() + (b + 1) * stride, 0.0);
+        std::fill (envelopes.begin() + b * stride, envelopes.begin() + (b + 1) * stride, TransientEnvelopes {});
 
         const auto& shape = band.activeShape();
 
-        if (! shape.dynamic || channels <= 0)
+        if (! shape.hasOffset() || channels <= 0)
             return;
 
         if (shape.key == KeySource::sidechain)
@@ -474,7 +477,7 @@ namespace likyu::dsp
 
         anyOffset[index] = false;
 
-        const auto dynamic = band.isDynamic() && ! band.isIdle() && l.count > 0;
+        const auto dynamic = band.hasOffset() && ! band.isIdle() && l.count > 0;
         const auto listening = b == listenBand;
 
         if (! dynamic && ! listening)
@@ -536,9 +539,24 @@ namespace likyu::dsp
         if (! dynamic)
             return;
 
-        // One level per lane, its target, and the offset's one-pole, per sample.
         const auto stride = laneStride (channels);
 
+        // Transient: the lane's envelopes, then its offsets, in the shaper's own loop.
+        if (band.gainMode() == GainMode::transient)
+        {
+            for (int lane = 0; lane < l.count; ++lane)
+            {
+                const auto i = static_cast<std::size_t> (b * stride + lane);
+                double* o = laneOffsets.data() + lane * controlStep;
+                const auto moved = band.transientOffsets (lanePower.data() + lane * controlStep, n, position, envelopes[i], o);
+                offsets[i] = o[n - 1];
+                anyOffset[index] = anyOffset[index] || moved;
+            }
+
+            return;
+        }
+
+        // Dynamic: one level per lane, its target, and the offset's one-pole, per sample.
         for (int lane = 0; lane < l.count; ++lane)
         {
             auto& offset = offsets[static_cast<std::size_t> (b * stride + lane)];

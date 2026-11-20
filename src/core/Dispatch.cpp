@@ -79,6 +79,11 @@ namespace likyu::core
         s.attackMs = static_cast<double> (bandValue (values, band, P::atk));
         s.releaseMs = static_cast<double> (bandValue (values, band, P::rel));
         s.direction = static_cast<dsp::Direction> (choiceIndex (bandValue (values, band, P::ddir), dsp::numDirections));
+
+        s.transientAttackPercent = static_cast<double> (bandValue (values, band, P::tatk));
+        s.transientSustainPercent = static_cast<double> (bandValue (values, band, P::tsus));
+        s.transientTime = static_cast<double> (bandValue (values, band, P::ttime));
+        s.transientFloorDb = static_cast<double> (bandValue (values, band, P::tfloor));
         return s;
     }
 

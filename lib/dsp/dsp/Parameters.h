@@ -66,6 +66,14 @@ namespace likyu::dsp
     inline constexpr double minReleaseMs = 5.0;
     inline constexpr double maxReleaseMs = 2000.0;
 
+    /** The ranges of the Transient mode's parameters, which the transient
+        shaper clamps to as the table does (dsp/Transient.h). Time is *tune*. */
+    inline constexpr double maxTransientAmountPercent = 100.0;
+    inline constexpr double minTransientTime = 0.25;
+    inline constexpr double maxTransientTime = 4.0;
+    inline constexpr double minTransientFloorDb = -90.0;
+    inline constexpr double maxTransientFloorDb = -20.0;
+
     enum class ParamKind { toggle, choice, continuous };
 
     /** How a continuous parameter is laid along a host's 0 to 1. */

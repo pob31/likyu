@@ -204,6 +204,11 @@ namespace likyu::dsp
             return moving ? lerpExact (start.range, end.range, t) : end.range;
         }
 
+        /** The Range at the current step's start and end, for the transient
+            shaper's limit (dsp/Transient.h), which interpolates them itself. */
+        double rangeStart() const noexcept  { return start.range; }
+        double rangeEnd() const noexcept    { return end.range; }
+
         /** One sample of the one-pole, from `offset` toward `target`. */
         void smooth (double& offset, double target) const noexcept
         {

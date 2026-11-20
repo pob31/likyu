@@ -188,6 +188,21 @@ namespace likyutest::dsp
         return s;
     }
 
+    /** A band in Transient mode, its detector following it, keyed by the input. */
+    inline likyu::dsp::BandSettings transientBand (likyu::dsp::BandType type, double hz, double q, double gainDb,
+                                                   double attackPercent, double sustainPercent, double rangeDb,
+                                                   double time = 1.0, double floorDb = -60.0)
+    {
+        auto s = band (true, type, hz, q, gainDb);
+        s.gmode = likyu::dsp::GainMode::transient;
+        s.transientAttackPercent = attackPercent;
+        s.transientSustainPercent = sustainPercent;
+        s.rangeDb = rangeDb;
+        s.transientTime = time;
+        s.transientFloorDb = floorDb;
+        return s;
+    }
+
     /** A sine of peak `amplitude`. */
     template <typename Sample>
     std::vector<Sample> tone (int length, double hz, double amplitude, double rate, double phase = 0.0)
