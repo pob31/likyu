@@ -24,6 +24,8 @@ add_library(likyu_dsp STATIC
     dsp/Chain.h
     dsp/Chain.cpp
     dsp/Denormals.h
+    dsp/Detector.h
+    dsp/FastLog.h
     dsp/Gain.h
     dsp/Lookahead.h
     dsp/Math.h
