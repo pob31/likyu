@@ -621,6 +621,9 @@ except Listen and the link list.
   spare the LFE (PRD, Band model, Channels). It is in `lib/dsp` (a band's channels left out of
   its filter, its key and its lanes; Track bands grouped by the channels they read), in the
   state chunk as `band_out`, and in the foot panel as a row of cells.
+  *Listen, the same day:* the guard is a long press in every host (PRD, open decisions), so no
+  host is recognised. Listen is the editor's action through `setListen`; the temporary
+  `tmp_listen` parameter is gone. Reset band and Flatten are behind the same long press.
 - **6e. Touch.** Several nodes at once, pinch for Q, hit areas that do not overlap at the default
   size, where Phase 1 found that touches arrive. The mouse path complete without it.
 - **6f. Analyser**, off by default, from a lock-free tap, last.

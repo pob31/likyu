@@ -31,6 +31,8 @@ target_sources(likyu_editor INTERFACE
     "${CMAKE_CURRENT_SOURCE_DIR}/EditorHost.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/EditorRoot.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/EditorRoot.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/LongPressButton.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/LongPressButton.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/Palette.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/Panels.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/Panels.cpp"

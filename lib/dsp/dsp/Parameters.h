@@ -138,18 +138,10 @@ namespace likyu::dsp
         the audio thread (its lookup is built on first use). */
     int indexOfId (std::string_view id);
 
-    /*  TEMPORARY, devplan 3d: Listen as a host parameter until the editor
-        exists, so that it can be heard from a host's generic view. A choice
-        (Off, Band 1 to Band 8), not automatable, NOT IN THE TABLE: the 284
-        stay as the PRD counts them, the state chunk does not save it (PRD:
-        Listen is not saved), and Dispatch never sees it. Never frozen;
-        removed in Phase 6, when Listen becomes the editor's button. */
-    const ParamSpec& temporaryListenSpec();
-
     /*  TEMPORARY, devplan Phase 4: the transient shaper's four time constants
         as host parameters, so that the author's listening pass can set them
         by ear (decided by the author 2026-11-20). In ms, logarithmic, not
-        automatable, NOT IN THE TABLE and not saved, like tmp_listen; their
+        automatable, NOT IN THE TABLE and not saved; their
         defaults are the PRD's starting values (dsp/Transient.h). In order:
         fast attack, slow attack, fast release, slow release. Never frozen;
         removed once the PRD's values are decided. */

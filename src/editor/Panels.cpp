@@ -47,6 +47,14 @@ namespace likyu::editor
     {
         outputGain.setTextBeside (true);
 
+        flatten.onLongPress = [this]
+        {
+            if (onFlatten != nullptr)
+                onFlatten();
+        };
+
+        addAndMakeVisible (flatten);
+
         addAndMakeVisible (bypass);
         addAndMakeVisible (outputGain);
         addAndMakeVisible (lookahead);
@@ -78,6 +86,8 @@ namespace likyu::editor
 
         area.removeFromLeft (50);                                   // "Link"
         link.setBounds (area.removeFromLeft (104).withSizeKeepingCentre (104, 24));
+
+        flatten.setBounds (area.removeFromRight (84).withSizeKeepingCentre (84, 24));
     }
 
     void GlobalRow::paint (juce::Graphics& g)
@@ -338,6 +348,41 @@ namespace likyu::editor
             if (band >= 0)
                 host.setBandLeftOut (band, leftOut);
         };
+
+        // Listen: the band's detector on the output, from a long press until the release.
+        listen.onHeld = [this]
+        {
+            if (band >= 0)
+            {
+                listening = true;
+                host.setListen (band);
+            }
+        };
+
+        listen.onLetGo = [this] { stopListening(); };
+
+        reset.onLongPress = [this]
+        {
+            if (band >= 0 && onReset != nullptr)
+                onReset (band);
+        };
+
+        addAndMakeVisible (listen);
+        addAndMakeVisible (reset);
+    }
+
+    FootPanel::~FootPanel()
+    {
+        stopListening();
+    }
+
+    void FootPanel::stopListening()
+    {
+        if (listening)
+        {
+            listening = false;
+            host.setListen (-1);
+        }
     }
 
     std::vector<int> FootPanel::parameters() const
@@ -356,6 +401,18 @@ namespace likyu::editor
 
         for (const auto& section : presentation::footOf (settings))
             now.insert (now.end(), section.params.begin(), section.params.end());
+
+        // Another band: a Listen in progress was the other band's.
+        if (bandIn != band)
+        {
+            listen.cancel();
+            stopListening();
+        }
+
+        // Nothing to hear on a band that is off or has no detector in use.
+        listen.setEnabled (settings.on && presentation::usesDetector (settings));
+        listen.setAccent (palette::band (bandIn));
+        reset.setAccent (palette::warning);
 
         if (bandIn == band && now == shown)
             return;
@@ -471,6 +528,12 @@ namespace likyu::editor
 
             controls[i]->setBounds (juce::Rectangle<int> (x, top + place.row * cellHeight, width, cellHeight).reduced (4, 4));
         }
+
+        // On the title's line, at the right: Listen, then Reset.
+        auto titleRow = juce::Rectangle<int> (0, 3, getWidth() - footMargin, footTitleHeight - 5);
+        reset.setBounds (titleRow.removeFromRight (92));
+        titleRow.removeFromRight (8);
+        listen.setBounds (titleRow.removeFromRight (72));
 
         // What is left, to the right: the band's channels under their own title.
         const auto last = blockArea (presentation::FootBlock::key);

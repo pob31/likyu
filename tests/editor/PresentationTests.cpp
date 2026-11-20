@@ -405,29 +405,26 @@ TEST_CASE ("presentation: Listen")
     core::Meters meters;
 
     // Nothing to hear on a band with no detector in use.
-    CHECK_FALSE (listenOf (s, 2, meters, false, false).enabled);
-    CHECK_FALSE (listenOf (s, 2, meters, false, false).acts);
+    CHECK_FALSE (listenOf (s, 2, meters).enabled);
 
     s.gmode = dsp::GainMode::dynamic;
-    auto l = listenOf (s, 2, meters, false, false);
-    CHECK (l.enabled);
-    CHECK_FALSE (l.needsArm);
-    CHECK (l.acts);
-    CHECK_FALSE (l.playing);
+    CHECK (listenOf (s, 2, meters).enabled);
+    CHECK_FALSE (listenOf (s, 2, meters).playing);
 
-    // A guarded host: Arm first.
-    l = listenOf (s, 2, meters, true, false);
-    CHECK (l.enabled);
-    CHECK (l.needsArm);
-    CHECK_FALSE (l.acts);
-    CHECK (listenOf (s, 2, meters, true, true).acts);
+    // Env has a detector; Track without a gain mode reads the key itself.
+    s.gmode = dsp::GainMode::staticGain;
+    s.fmode = dsp::FrequencyMode::env;
+    CHECK (listenOf (s, 2, meters).enabled);
+    s.fmode = dsp::FrequencyMode::track;
+    CHECK_FALSE (listenOf (s, 2, meters).enabled);
 
+    s.gmode = dsp::GainMode::dynamic;
     meters.listening = 2;
-    CHECK (listenOf (s, 2, meters, false, false).playing);
-    CHECK_FALSE (listenOf (s, 3, meters, false, false).playing);
+    CHECK (listenOf (s, 2, meters).playing);
+    CHECK_FALSE (listenOf (s, 3, meters).playing);
 
     s.on = false;
-    CHECK_FALSE (listenOf (s, 2, meters, false, false).enabled);
+    CHECK_FALSE (listenOf (s, 2, meters).enabled);
 }
 
 TEST_CASE ("presentation: the strip shows the current modes' controls and no others")

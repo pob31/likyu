@@ -73,21 +73,6 @@ TEST_CASE ("parameters: every ID is unique and an LV2 symbol")
     }
 }
 
-TEST_CASE ("parameters: the temporary Listen is outside the table, a choice of Off and the eight bands, not automatable")
-{
-    const auto& listen = temporaryListenSpec();
-
-    CHECK (listen.id == "tmp_listen");
-    CHECK (isSymbol (listen.id));
-    CHECK (indexOfId (listen.id) < 0);
-    CHECK (listen.kind == ParamKind::choice);
-    CHECK_FALSE (listen.automatable);
-    REQUIRE (listen.choices.size() == static_cast<std::size_t> (numBands + 1));
-    CHECK (listen.choices.front() == "Off");
-    CHECK (listen.choices.back() == "Band 8");
-    CHECK (listen.defaultValue == 0.0);
-}
-
 TEST_CASE ("parameters: the temporary transient constants are outside the table, in ms, log, not automatable, at the PRD's starting values")
 {
     const auto& specs = temporaryTransientSpecs();

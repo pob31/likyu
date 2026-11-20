@@ -142,13 +142,7 @@ namespace likyu
             addParameter (parameter.release());
         }
 
-        // TEMPORARY until Phase 6: Listen, after the table, kept out of `parameters` and the state.
-        auto listen = makeParameter (dsp::temporaryListenSpec());
-        listenParameter = dynamic_cast<juce::AudioParameterChoice*> (listen.get());
-        jassert (listenParameter != nullptr);
-        addParameter (listen.release());
-
-        // TEMPORARY until the listening pass has set them: the transient shaper's constants, after Listen.
+        // TEMPORARY until the listening pass has set them: the transient shaper's constants, after the table.
         const auto& times = dsp::temporaryTransientSpecs();
 
         for (std::size_t i = 0; i < times.size() && i < transientTimeParameters.size(); ++i)
@@ -437,7 +431,7 @@ namespace likyu
 
         for (int band = 0; band < dsp::numBands; ++band)
             chain.setBandChannels (band, bandMasks[static_cast<std::size_t> (band)].load (std::memory_order_relaxed));
-        chain.setListen (listenParameter != nullptr ? listenParameter->getIndex() - 1 : -1);
+        chain.setListen (listenBand.load (std::memory_order_relaxed));
         chain.setLookahead (delaySamples.load (std::memory_order_relaxed));
 
         // TEMPORARY: the transient constants of the listening pass, for every band.

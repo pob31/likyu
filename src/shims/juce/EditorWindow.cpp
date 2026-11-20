@@ -44,6 +44,7 @@ namespace likyu
 
             host.bandLeftOut = [&processor] (int band) { return processor.bandChannelsLeftOut (band); };
             host.setBandLeftOut = [&processor] (int band, std::uint64_t leftOut) { processor.setBandChannelsLeftOut (band, leftOut); };
+            host.setListen = [&processor] (int band) { processor.setListen (band); };
             return host;
         }
     }

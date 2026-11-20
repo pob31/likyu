@@ -91,17 +91,14 @@ namespace
     }
 }
 
-TEST_CASE ("processor: the host sees the table, 284 parameters in real units, then the temporary Listen and transient constants")
+TEST_CASE ("processor: the host sees the table, 284 parameters in real units, then the temporary transient constants")
 {
     LikyuProcessor processor;
     const auto& table = dsp::parameterTable();
     const auto& times = dsp::temporaryTransientSpecs();
 
-    // The 284, then Listen until Phase 6 (devplan 3d), then the four constants until the listening pass (Phase 4).
-    REQUIRE (processor.getParameters().size() == static_cast<int> (table.size()) + 1 + dsp::numTemporaryTransientTimes);
-
-    auto* listen = processor.getParameters()[static_cast<int> (table.size())];
-    REQUIRE (listen == &processor.temporaryListen());
+    // The 284, then the four constants until the listening pass (Phase 4). Listen is no parameter.
+    REQUIRE (processor.getParameters().size() == static_cast<int> (table.size()) + dsp::numTemporaryTransientTimes);
 
     for (int i = 0; i < dsp::numTemporaryTransientTimes; ++i)
     {
@@ -109,7 +106,7 @@ TEST_CASE ("processor: the host sees the table, 284 parameters in real units, th
         const auto& spec = times[static_cast<std::size_t> (i)];
 
         INFO ("id: " << spec.id);
-        CHECK (processor.getParameters()[static_cast<int> (table.size()) + 1 + i] == &time);
+        CHECK (processor.getParameters()[static_cast<int> (table.size()) + i] == &time);
         CHECK (time.getParameterID().toStdString() == spec.id);
         CHECK_FALSE (time.isAutomatable());
         CHECK (static_cast<double> (time.get()) == doctest::Approx (spec.defaultValue).epsilon (1.0e-6));
@@ -117,9 +114,7 @@ TEST_CASE ("processor: the host sees the table, 284 parameters in real units, th
         CHECK (static_cast<double> (time.convertFrom0to1 (1.0f)) == doctest::Approx (spec.maximum).epsilon (1.0e-5));
         CHECK (juce::URL::addEscapeChars (juce::String (spec.id), true).toStdString() == spec.id);
     }
-    CHECK (processor.temporaryListen().getParameterID() == "tmp_listen");
-    CHECK_FALSE (listen->isAutomatable());
-    CHECK (processor.temporaryListen().getIndex() == 0);
+    CHECK (processor.listen() == -1);
 
     for (int i = 0; i < static_cast<int> (table.size()); ++i)
     {
@@ -1241,7 +1236,7 @@ TEST_CASE ("processor: the temporary Listen puts a band's detector on the output
         return 20.0 * std::log10 (static_cast<double> (buffer.getMagnitude (0, length / 2, length / 2)) / 0.5);
     };
 
-    processor.temporaryListen().setValueNotifyingHost (processor.temporaryListen().convertTo0to1 (2.0f));
+    processor.setListen (1);
     const auto low = levelOf (200.0), high = levelOf (9000.0);
 
     INFO ("Listen on band 2: 200 Hz at " << low << " dB, 9 kHz at " << high << " dB");
@@ -1255,14 +1250,14 @@ TEST_CASE ("processor: the temporary Listen puts a band's detector on the output
     // Not saved: the chunk has no such field, and a new instance starts with Listen off.
     juce::MemoryBlock chunk;
     processor.getStateInformation (chunk);
-    CHECK_FALSE (chunk.toString().contains ("tmp_listen"));
+    CHECK_FALSE (chunk.toString().containsIgnoreCase ("listen"));
 
     LikyuProcessor restored;
     restored.setStateInformation (chunk.getData(), static_cast<int> (chunk.getSize()));
-    CHECK (restored.temporaryListen().getIndex() == 0);
+    CHECK (restored.listen() == -1);
 
     // Off again: the bell, no longer the detector.
-    processor.temporaryListen().setValueNotifyingHost (0.0f);
+    processor.setListen (-1);
     CHECK (std::abs (levelOf (1000.0) - 6.0) < 0.1);
 }
 

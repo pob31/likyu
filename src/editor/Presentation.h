@@ -316,24 +316,19 @@ namespace likyu::editor::presentation
     }
 
     //==========================================================================
-    /** Listen (PRD, Detection): the band's detector, solo in place, while held. */
+    /** Listen (PRD, Detection): the band's detector, solo in place, while its
+        button is held. The guard is the button's own, a long press in every
+        host (decided by the author 2026-11-20, replacing the Arm switch and
+        the recognition of a live host): nothing of it is decided here. */
     struct Listen
     {
-        bool enabled = false;       // the band has a detector to hear
-        bool needsArm = false;      // a guarded host: Arm shows, and must be on
-        bool acts = false;          // a press would act
+        bool enabled = false;       // the band is on and has a detector to hear
         bool playing = false;       // the chain says this band is heard now
     };
 
-    inline Listen listenOf (const dsp::BandSettings& s, int band, const core::Meters& meters,
-                            bool guarded, bool armed) noexcept
+    inline Listen listenOf (const dsp::BandSettings& s, int band, const core::Meters& meters) noexcept
     {
-        Listen l;
-        l.enabled = s.on && usesDetector (s);
-        l.needsArm = guarded;
-        l.acts = l.enabled && (! guarded || armed);
-        l.playing = meters.listening == band;
-        return l;
+        return { s.on && usesDetector (s), meters.listening == band };
     }
 
     //==========================================================================

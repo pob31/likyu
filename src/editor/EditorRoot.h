@@ -69,6 +69,14 @@ namespace likyu::editor
         /** The band the foot shows, from 0. */
         void selectBand (int band);
 
+        /** A band back to the table's defaults, every channel in it again;
+            and all eight (the foot's Reset and the top row's Flatten, each
+            on a long press). */
+        void resetBand (int band);
+        void flatten();
+
+        GlobalRow& globalRow() noexcept                 { return global; }
+
         CurveView& curveView() noexcept                 { return curve; }
         FootPanel& footPanel() noexcept                 { return foot; }
         BandColumn& bandColumn (int band) noexcept      { return *columns[static_cast<std::size_t> (band)]; }

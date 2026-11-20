@@ -35,6 +35,7 @@
 */
 
 #include "EditorHost.h"
+#include "LongPressButton.h"
 #include "ParamControls.h"
 #include "Presentation.h"
 
@@ -59,10 +60,16 @@ namespace likyu::editor
         void paint (juce::Graphics&) override;
         void resized() override;
 
+        /** Every band back to its defaults, on a long press. */
+        std::function<void()> onFlatten;
+
+        LongPressButton& flattenButton() noexcept       { return flatten; }
+
     private:
         ParamToggle bypass;
         ParamBar outputGain;
         ParamChoice lookahead, link;
+        LongPressButton flatten { "Flatten" };
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GlobalRow)
     };
@@ -140,9 +147,16 @@ namespace likyu::editor
         static constexpr int height = 204;
 
         explicit FootPanel (Host& host);
+        ~FootPanel() override;
 
         /** The band whose modes are shown, and what it is now. */
         void show (int band, const dsp::BandSettings& settings);
+
+        /** The shown band back to its defaults, on a long press. */
+        std::function<void (int band)> onReset;
+
+        LongPressButton& listenButton() noexcept        { return listen; }
+        LongPressButton& resetButton() noexcept         { return reset; }
         void refresh();
 
         /** The table indices of the controls shown, in order: for a test. */
@@ -172,6 +186,13 @@ namespace likyu::editor
 
         ChannelCells cells;
         juce::Rectangle<int> cellsTitle;
+
+        // Listen: heard from the moment its press is long enough until the release.
+        void stopListening();
+
+        LongPressButton listen { "Listen" };
+        LongPressButton reset { "Reset band" };
+        bool listening = false;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FootPanel)
     };

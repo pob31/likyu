@@ -100,6 +100,8 @@ namespace likyu::editor
         addAndMakeVisible (foot);
 
         curve.onSelect = [this] (int) { refreshNow(); };
+        foot.onReset = [this] (int band) { resetBand (band); };
+        global.onFlatten = [this] { flatten(); };
 
         refreshNow();
         startTimerHz (refreshHz);
@@ -118,6 +120,31 @@ namespace likyu::editor
             curve.selectBand (band);
             refreshNow();
         }
+    }
+
+    void EditorRoot::resetBand (int band)
+    {
+        if (band < 0 || band >= dsp::numBands)
+            return;
+
+        const auto& table = dsp::parameterTable();
+
+        for (int p = 0; p < dsp::numBandParams; ++p)
+        {
+            const auto index = dsp::indexOf (band, static_cast<dsp::BandParam> (p));
+            host.beginGesture (index);
+            host.setValue (index, table[static_cast<std::size_t> (index)].defaultValue);
+            host.endGesture (index);
+        }
+
+        host.setBandLeftOut (band, 0);
+        refreshNow();
+    }
+
+    void EditorRoot::flatten()
+    {
+        for (int band = 0; band < dsp::numBands; ++band)
+            resetBand (band);
     }
 
     void EditorRoot::refreshNow()

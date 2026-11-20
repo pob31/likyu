@@ -63,5 +63,9 @@ namespace likyu::editor
             Channels). Not parameters: they are in the state. */
         std::function<std::uint64_t (int band)> bandLeftOut;
         std::function<void (int band, std::uint64_t leftOut)> setBandLeftOut;
+
+        /** Listen (PRD, Detection): the band (from 0) whose detector replaces
+            the output, or -1 for none. Not a parameter and not saved. */
+        std::function<void (int band)> setListen;
     };
 }

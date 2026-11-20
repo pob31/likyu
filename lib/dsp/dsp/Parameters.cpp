@@ -143,21 +143,6 @@ namespace likyu::dsp
         return table;
     }
 
-    const ParamSpec& temporaryListenSpec()
-    {
-        static const ParamSpec spec = []
-        {
-            Choices entries { "Off" };
-
-            for (int band = 0; band < numBands; ++band)
-                entries.push_back ("Band " + std::to_string (band + 1));
-
-            return choice ("tmp_listen", "Listen (temporary)", std::move (entries), 0, false);
-        }();
-
-        return spec;
-    }
-
     const std::vector<ParamSpec>& temporaryTransientSpecs()
     {
         static const std::vector<ParamSpec> specs = []

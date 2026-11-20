@@ -385,10 +385,14 @@ namespace likyu::editor
     }
 
     //==========================================================================
+    geometry::Hit CurveView::hitAt (juce::Point<float> at, bool touch) const noexcept
+    {
+        return geometry::hitTest (places, selected, at.x, at.y, geometry::sizesFor (plot.height, touch));
+    }
+
     geometry::Hit CurveView::hitAt (const juce::MouseEvent& e) const noexcept
     {
-        return geometry::hitTest (places, selected, e.position.x, e.position.y,
-                                  geometry::sizesFor (plot.height, e.source.isTouch()));
+        return hitAt (e.position, e.source.isTouch());
     }
 
     bool CurveView::isDragged (int band) const noexcept
@@ -430,12 +434,22 @@ namespace likyu::editor
         forEachParameter (drag, [this] (int index) { host.endGesture (index); });
     }
 
+    void CurveView::endPinch()
+    {
+        if (pinch.has_value())
+        {
+            host.endGesture (dsp::indexOf (pinch->band, P::q));
+            pinch.reset();
+        }
+    }
+
     void CurveView::endAllDrags()
     {
         for (const auto& entry : drags)
             endDrag (entry.second);
 
         drags.clear();
+        endPinch();
     }
 
     void CurveView::mouseDown (const juce::MouseEvent& e)
@@ -444,7 +458,70 @@ namespace likyu::editor
         if (juce::Desktop::getInstance().getNumDraggingMouseSources() <= 1)
             endAllDrags();
 
-        const auto hit = hitAt (e);
+        pointerDown (keyOf (e), e.position, e.mods);
+    }
+
+    void CurveView::mouseDrag (const juce::MouseEvent& e)
+    {
+        pointerMoved (keyOf (e), e.position, e.mods);
+    }
+
+    void CurveView::mouseUp (const juce::MouseEvent& e)
+    {
+        pointerUp (keyOf (e));
+    }
+
+    void CurveView::pointerDown (PointerKey key, juce::Point<float> at, juce::ModifierKeys mods)
+    {
+        // Two fingers are pinching: a third is ignored.
+        if (pinch.has_value())
+            return;
+
+        const auto touch = key.first;
+        const auto hit = hitAt (at, touch);
+
+        /*  A second finger: on a band a finger already holds, or on nothing
+            while one finger holds a node, it pinches that band's Q. On
+            another band's handle it is that band's own drag. */
+        if (touch)
+        {
+            auto held = drags.end();
+            auto touches = 0;
+
+            for (auto it = drags.begin(); it != drags.end(); ++it)
+            {
+                if (! it->first.first)
+                    continue;
+
+                ++touches;
+
+                if (hit.band >= 0 ? it->second.band == hit.band : true)
+                    held = it;
+            }
+
+            const auto onHeldBand = hit.band >= 0 && held != drags.end() && held->second.band == hit.band;
+            const auto onNothing = hit.part == Part::none && touches == 1 && held != drags.end();
+
+            if (onHeldBand || onNothing)
+            {
+                Pinch p;
+                p.band = held->second.band;
+                p.first = held->first;
+                p.second = key;
+                p.a = held->second.last;
+                p.b = at;
+                p.fromQ = host.valueOf (dsp::indexOf (p.band, P::q));
+                p.fromDistance = std::max (8.0, static_cast<double> (p.a.getDistanceFrom (p.b)));
+
+                // The node's drag stops where the pinch starts.
+                endDrag (held->second);
+                drags.erase (held);
+
+                host.beginGesture (dsp::indexOf (p.band, P::q));
+                pinch = p;
+                return;
+            }
+        }
 
         if (hit.band < 0 || hit.part == Part::none || hit.part == Part::ghost || isDragged (hit.band))
             return;
@@ -467,26 +544,38 @@ namespace likyu::editor
         drag.movesRange = sideways && node.drag == presentation::FrequencyDrag::range;
         drag.movesFrequency = sideways && ! drag.movesRange;
         drag.movesGain = node.hasGain && (hit.part == Part::node || hit.part == Part::gainArm);
-        anchor (drag, e.position, e.mods.isShiftDown());
+        drag.last = at;
+        anchor (drag, at, mods.isShiftDown());
 
         forEachParameter (drag, [this] (int index) { host.beginGesture (index); });
-        drags[keyOf (e)] = drag;
+        drags[key] = drag;
     }
 
-    void CurveView::mouseDrag (const juce::MouseEvent& e)
+    void CurveView::pointerMoved (PointerKey key, juce::Point<float> at, juce::ModifierKeys mods)
     {
-        const auto found = drags.find (keyOf (e));
+        if (pinch.has_value() && (key == pinch->first || key == pinch->second))
+        {
+            (key == pinch->first ? pinch->a : pinch->b) = at;
+
+            const auto distance = std::max (1.0, static_cast<double> (pinch->a.getDistanceFrom (pinch->b)));
+            host.setValue (dsp::indexOf (pinch->band, P::q), pinchedQ (pinch->fromQ, pinch->fromDistance, distance));
+            refresh();
+            return;
+        }
+
+        const auto found = drags.find (key);
 
         if (found == drags.end())
             return;
 
         auto& drag = found->second;
+        drag.last = at;
 
-        if (e.mods.isShiftDown() != drag.fine)
-            anchor (drag, e.position, e.mods.isShiftDown());
+        if (mods.isShiftDown() != drag.fine)
+            anchor (drag, at, mods.isShiftDown());
 
-        const auto dx = static_cast<double> (e.position.x - drag.press.x);
-        const auto dy = static_cast<double> (e.position.y - drag.press.y);
+        const auto dx = static_cast<double> (at.x - drag.press.x);
+        const auto dy = static_cast<double> (at.y - drag.press.y);
 
         if (drag.movesFrequency)
             host.setValue (dsp::indexOf (drag.band, P::freq), geometry::draggedHz (drag.fromHz, dx, plot, drag.fine));
@@ -504,9 +593,16 @@ namespace likyu::editor
         refresh();
     }
 
-    void CurveView::mouseUp (const juce::MouseEvent& e)
+    void CurveView::pointerUp (PointerKey key)
     {
-        const auto found = drags.find (keyOf (e));
+        // Either finger of a pinch ends it; the other does nothing more until it too is lifted.
+        if (pinch.has_value() && (key == pinch->first || key == pinch->second))
+        {
+            endPinch();
+            return;
+        }
+
+        const auto found = drags.find (key);
 
         if (found == drags.end())
             return;

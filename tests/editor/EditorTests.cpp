@@ -34,6 +34,7 @@
 #include <PluginProcessor.h>
 
 #include <editor/CurveGeometry.h>
+#include <editor/LongPressButton.h>
 #include <editor/Palette.h>
 #include <editor/QGestures.h>
 
@@ -722,5 +723,248 @@ TEST_CASE ("editor: the selected band's channels are cells in the foot; a press 
 
         for (int c = 0; c < 64; ++c)
             CHECK (cells.getLocalBounds().contains (cells.cellBounds (c)));
+    }
+}
+
+TEST_CASE ("editor: two fingers: on two nodes they move both; the second on a held node, or on nothing, pinches its Q")
+{
+    Opened opened;
+    auto& processor = opened.processor;
+    auto& curve = opened.curve();
+    const auto plot = opened.plot();
+
+    constexpr int band = 2, other = 5;
+    set (processor, band, P::on, 1.0);
+    set (processor, other, P::on, 1.0);
+    opened.refresh();
+
+    GestureCounter gestures (processor);
+    const editor::CurveView::PointerKey first { true, 0 }, second { true, 1 }, third { true, 2 };
+    const juce::ModifierKeys none;
+
+    SUBCASE ("one finger each on two nodes: both move, each by its own finger")
+    {
+        const auto a = opened.nodeOf (band), b = opened.nodeOf (other);
+        curve.pointerDown (first, a, none);
+        curve.pointerDown (second, b, none);
+        curve.pointerMoved (first, a + juce::Point<float> (0.0f, -40.0f), none);
+        curve.pointerMoved (second, b + juce::Point<float> (0.0f, 30.0f), none);
+
+        CHECK (get (processor, band, P::gain) == doctest::Approx (editor::geometry::draggedDb (0.0, -40.0, plot, false)).epsilon (1.0e-5));
+        CHECK (get (processor, other, P::gain) == doctest::Approx (editor::geometry::draggedDb (0.0, 30.0, plot, false)).epsilon (1.0e-5));
+        CHECK (get (processor, band, P::q) == doctest::Approx (1.0));
+
+        curve.pointerUp (first);
+        curve.pointerUp (second);
+        CHECK (gestures.open == 0);
+    }
+
+    SUBCASE ("a second finger beside a held node: closing the two narrows the band")
+    {
+        const auto a = opened.nodeOf (band);
+        const auto b = a + juce::Point<float> (120.0f, 0.0f);       // past the arm's end: on nothing
+
+        curve.pointerDown (first, a, none);
+        CHECK (gestures.begunFor (band, P::freq) == 1);
+
+        curve.pointerDown (second, b, none);
+
+        // The node's own drag stopped; the Q's gesture began.
+        CHECK (gestures.endedFor (band, P::freq) == 1);
+        CHECK (gestures.endedFor (band, P::gain) == 1);
+        CHECK (gestures.begunFor (band, P::q) == 1);
+
+        // Half as far apart: twice the Q. The node does not follow either finger.
+        curve.pointerMoved (second, a + juce::Point<float> (60.0f, 0.0f), none);
+        CHECK (get (processor, band, P::q) == doctest::Approx (2.0).epsilon (1.0e-5));
+        CHECK (get (processor, band, P::freq) == doctest::Approx (200.0));
+
+        // Apart again, past where they started: wider than it was.
+        curve.pointerMoved (first, a + juce::Point<float> (-120.0f, 0.0f), none);
+        CHECK (get (processor, band, P::q) == doctest::Approx (120.0 / 180.0).epsilon (1.0e-5));
+        CHECK (get (processor, band, P::freq) == doctest::Approx (200.0));
+
+        // A third finger changes nothing.
+        curve.pointerDown (third, opened.nodeOf (other), none);
+        curve.pointerMoved (third, opened.nodeOf (other) + juce::Point<float> (0.0f, 50.0f), none);
+        CHECK (get (processor, other, P::gain) == 0.0);
+        curve.pointerUp (third);
+
+        // One finger lifted ends the pinch; the one left moves nothing.
+        curve.pointerUp (second);
+        CHECK (gestures.endedFor (band, P::q) == 1);
+        const auto q = get (processor, band, P::q);
+        curve.pointerMoved (first, a + juce::Point<float> (40.0f, 40.0f), none);
+        CHECK (get (processor, band, P::q) == doctest::Approx (q));
+        CHECK (get (processor, band, P::freq) == doctest::Approx (200.0));
+        curve.pointerUp (first);
+        CHECK (gestures.open == 0);
+    }
+
+    SUBCASE ("a second finger on the node itself pinches too")
+    {
+        const auto a = opened.nodeOf (band);
+        curve.pointerDown (first, a + juce::Point<float> (-4.0f, 0.0f), none);
+        curve.pointerDown (second, a + juce::Point<float> (4.0f, 0.0f), none);
+        CHECK (gestures.begunFor (band, P::q) == 1);
+
+        // Fingers that land together are 8 pixels apart at the least; spread to 32, the band is four times wider.
+        curve.pointerMoved (second, a + juce::Point<float> (28.0f, 0.0f), none);
+        CHECK (get (processor, band, P::q) == doctest::Approx (0.25).epsilon (1.0e-5));
+
+        curve.pointerUp (first);
+        curve.pointerUp (second);
+        CHECK (gestures.open == 0);
+    }
+
+    SUBCASE ("the mouse never pinches: a second press on nothing is nothing")
+    {
+        const auto a = opened.nodeOf (band);
+        curve.pointerDown ({ false, 0 }, a, none);
+        curve.pointerDown ({ false, 1 }, a + juce::Point<float> (120.0f, 0.0f), none);
+        CHECK (gestures.begunFor (band, P::q) == 0);
+        curve.pointerUp ({ false, 0 });
+        CHECK (gestures.open == 0);
+    }
+
+    SUBCASE ("closing the editor mid-pinch ends the gesture")
+    {
+        const auto a = opened.nodeOf (band);
+        curve.pointerDown (first, a, none);
+        curve.pointerDown (second, a + juce::Point<float> (120.0f, 0.0f), none);
+        CHECK (gestures.open == 1);
+        opened.window.reset();
+        CHECK (gestures.open == 0);
+    }
+}
+
+TEST_CASE ("editor: Listen, Reset and Flatten want a long press")
+{
+    Opened opened;
+    auto& processor = opened.processor;
+    auto& root = opened.window->editorRoot();
+    auto& listen = root.footPanel().listenButton();
+    auto& reset = root.footPanel().resetButton();
+    auto& flatten = root.globalRow().flattenButton();
+    const auto hold = editor::LongPressButton::defaultHoldMs;
+
+    // Three bands away from their defaults, one of them leaving a channel out.
+    for (const auto band : { 0, 3, 6 })
+    {
+        set (processor, band, P::on, 1.0);
+        set (processor, band, P::gain, 7.0);
+        set (processor, band, P::q, 3.0);
+        set (processor, band, P::gmode, static_cast<double> (dsp::GainMode::dynamic));
+        set (processor, band, P::thresh, -50.0);
+    }
+
+    processor.setBandChannelsLeftOut (3, 2u);
+    root.selectBand (3);
+    opened.refresh();
+
+    SUBCASE ("Listen: nothing on a tap; heard from the long press until the release")
+    {
+        CHECK (listen.isEnabled());
+
+        listen.press();
+        listen.heldFor (hold - 50);
+        CHECK (processor.listen() == -1);
+        listen.release (true);
+        CHECK (processor.listen() == -1);
+
+        listen.press();
+        listen.heldFor (hold);
+        CHECK (processor.listen() == 3);
+        listen.heldFor (hold + 2000);
+        CHECK (processor.listen() == 3);
+        listen.release (true);
+        CHECK (processor.listen() == -1);
+
+        // Released off the button: it stops all the same.
+        listen.press();
+        listen.heldFor (hold);
+        listen.release (false);
+        CHECK (processor.listen() == -1);
+    }
+
+    SUBCASE ("Listen stops when another band is selected, and when the editor closes")
+    {
+        listen.press();
+        listen.heldFor (hold);
+        CHECK (processor.listen() == 3);
+        root.selectBand (0);
+        CHECK (processor.listen() == -1);
+
+        listen.press();
+        listen.heldFor (hold);
+        CHECK (processor.listen() == 0);
+        opened.window.reset();
+        CHECK (processor.listen() == -1);
+    }
+
+    SUBCASE ("Listen is not offered on a band with no detector in use, or off")
+    {
+        set (processor, 3, P::gmode, static_cast<double> (dsp::GainMode::staticGain));
+        opened.refresh();
+        CHECK_FALSE (listen.isEnabled());
+        listen.press();
+        listen.heldFor (hold);
+        CHECK (processor.listen() == -1);
+        listen.release (true);
+
+        set (processor, 3, P::gmode, static_cast<double> (dsp::GainMode::dynamic));
+        set (processor, 3, P::on, 0.0);
+        opened.refresh();
+        CHECK_FALSE (listen.isEnabled());
+    }
+
+    SUBCASE ("Reset: the shown band back to its defaults, its channels with it; the others as they were")
+    {
+        // A tap, a long press let go off the button: nothing.
+        reset.press();
+        reset.heldFor (hold - 1);
+        reset.release (true);
+        reset.press();
+        reset.heldFor (hold);
+        reset.release (false);
+        CHECK (get (processor, 3, P::gain) == doctest::Approx (7.0));
+
+        reset.press();
+        reset.heldFor (hold);
+        CHECK (get (processor, 3, P::gain) == doctest::Approx (7.0));     // on release, not before
+        reset.release (true);
+
+        const auto& table = dsp::parameterTable();
+
+        for (int p = 0; p < dsp::numBandParams; ++p)
+        {
+            const auto index = dsp::indexOf (3, static_cast<P> (p));
+            INFO (table[static_cast<std::size_t> (index)].id);
+            CHECK (processor.valueOf (index) == doctest::Approx (table[static_cast<std::size_t> (index)].defaultValue).epsilon (1.0e-6));
+        }
+
+        CHECK (processor.bandChannelsLeftOut (3) == 0u);
+        CHECK (get (processor, 0, P::gain) == doctest::Approx (7.0));
+        CHECK (get (processor, 6, P::thresh) == doctest::Approx (-50.0));
+    }
+
+    SUBCASE ("Flatten: every band back to its defaults; the instance's own parameters stay")
+    {
+        processor.setValue (dsp::indexOf (dsp::GlobalParam::outGain), -3.0);
+
+        flatten.press();
+        flatten.heldFor (hold);
+        flatten.release (true);
+
+        const auto& table = dsp::parameterTable();
+
+        for (int index = dsp::numGlobalParams; index < dsp::numParams; ++index)
+        {
+            INFO (table[static_cast<std::size_t> (index)].id);
+            CHECK (processor.valueOf (index) == doctest::Approx (table[static_cast<std::size_t> (index)].defaultValue).epsilon (1.0e-6));
+        }
+
+        CHECK (processor.bandChannelsLeftOut (3) == 0u);
+        CHECK (processor.valueOf (dsp::indexOf (dsp::GlobalParam::outGain)) == doctest::Approx (-3.0));
     }
 }

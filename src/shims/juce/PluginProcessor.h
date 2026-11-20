@@ -37,9 +37,9 @@
       - The state chunk, version 1 (core/State.h), with the list of channels
         left out of the link (core/LinkList.h), which applies only to the
         layout it was made for.
-      - TEMPORARY until Phase 6: one more host parameter after the 284,
-        Listen (dsp/Parameters.h, temporaryListenSpec), not automatable and
-        not saved. It puts one band's detector on the output.
+      - Listen (PRD, Detection): one band's detector on the output while
+        the editor holds its button. An action of the editor, not a
+        parameter: setListen(), not saved.
       - TEMPORARY until the Phase 4 listening pass has set them: four more,
         the transient shaper's time constants (temporaryTransientSpecs), not
         automatable and not saved, read every block for every band.
@@ -176,10 +176,14 @@ namespace likyu
             for a channel it does not name), for the editor's cells. */
         juce::StringArray channelNames() const;
 
-        /** The temporary Listen parameter, after the 284 (removed in Phase 6). */
-        juce::AudioParameterChoice& temporaryListen() const noexcept    { return *listenParameter; }
+        /** Listen: the band (from 0) whose detector replaces the output, or
+            -1 for none. The editor's, while its button is held; not a
+            parameter and not saved. Takes effect at the next block, through
+            the chain's crossfade. */
+        void setListen (int band) noexcept              { listenBand.store (band, std::memory_order_relaxed); }
+        int listen() const noexcept                     { return listenBand.load (std::memory_order_relaxed); }
 
-        /** The temporary transient constants, after Listen, in the order of
+        /** The temporary transient constants, after the table, in the order of
             dsp::temporaryTransientSpecs() (removed once the PRD has its values). */
         juce::AudioParameterFloat& temporaryTransientTime (int index) const
         {
@@ -223,9 +227,9 @@ namespace likyu
 
         std::vector<juce::RangedAudioParameter*> parameters;   // owned by the base class, table order
         std::vector<Reader> readers;                           // the same, by kind
-        juce::AudioParameterChoice* listenParameter = nullptr; // owned by the base class, after them
+        std::atomic<int> listenBand { -1 };
 
-        // Owned by the base class, after Listen. TEMPORARY: the listening pass's.
+        // Owned by the base class, after the table. TEMPORARY: the listening pass's.
         std::array<juce::AudioParameterFloat*, dsp::numTemporaryTransientTimes> transientTimeParameters {};
 
         core::MeterSnapshot meterSnapshot;

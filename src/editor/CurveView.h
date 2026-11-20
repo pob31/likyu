@@ -35,7 +35,12 @@
         band; Ctrl turns it over (a Windows touchpad's pinch), Shift is fine;
       - a double click on a bell's or a shelf's node puts its gain at 0 dB;
       - each pointer has its own drag, keyed by kind and index (JUCE numbers
-        the mouse 0 and the first finger 0), so several nodes move at once.
+        the mouse 0 and the first finger 0), so several nodes move at once;
+      - a second finger on a node a finger holds, or on nothing while one
+        finger holds a node, pinches that band's Q: closing narrows the
+        band. The node's own drag stops there; a third finger is ignored.
+        (Phase 1, finding 5: with multitouch on, Windows sends no pinch of
+        its own.)
 
     refresh() is the editor's timer: it reads the values and the meters and
     repaints only when something it draws has changed.
@@ -52,6 +57,7 @@
 #include <array>
 #include <functional>
 #include <map>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -82,6 +88,15 @@ namespace likyu::editor
         void paint (juce::Graphics&) override;
         void resized() override;
 
+        /** A pointer: its kind (true for a touch), then its index within the kind. */
+        using PointerKey = std::pair<bool, int>;
+
+        /** What the mouse handlers do, by pointer: for them, and for a test,
+            which has no touch screen. */
+        void pointerDown (PointerKey key, juce::Point<float> at, juce::ModifierKeys mods);
+        void pointerMoved (PointerKey key, juce::Point<float> at, juce::ModifierKeys mods);
+        void pointerUp (PointerKey key);
+
         void mouseDown (const juce::MouseEvent&) override;
         void mouseDrag (const juce::MouseEvent&) override;
         void mouseUp (const juce::MouseEvent&) override;
@@ -92,20 +107,26 @@ namespace likyu::editor
         void mouseMagnify (const juce::MouseEvent&, float scaleFactor) override;
 
     private:
-        /** A pointer: its kind, then its index within the kind. */
-        using PointerKey = std::pair<bool, int>;
-
         struct Drag
         {
             int band = -1;
             geometry::Part part = geometry::Part::none;
-            juce::Point<float> press;
+            juce::Point<float> press, last;
             bool fine = false;
 
             // The values at the press, or at the last change of Shift.
             double fromHz = 0.0, fromDb = 0.0, fromLow = 0.0, fromHigh = 0.0;
 
             bool movesFrequency = false, movesRange = false, movesGain = false;
+        };
+
+        /** Two fingers on one band: its Q from how far apart they are. */
+        struct Pinch
+        {
+            int band = -1;
+            PointerKey first, second;
+            juce::Point<float> a, b;
+            double fromQ = 1.0, fromDistance = 1.0;
         };
 
         static PointerKey keyOf (const juce::MouseEvent&) noexcept;
@@ -117,6 +138,8 @@ namespace likyu::editor
         void endAllDrags();
         bool isDragged (int band) const noexcept;
         geometry::Hit hitAt (const juce::MouseEvent&) const noexcept;
+        geometry::Hit hitAt (juce::Point<float> at, bool touch) const noexcept;
+        void endPinch();
         void setQ (int band, double q);
 
         void paintGrid (juce::Graphics&) const;
@@ -140,6 +163,7 @@ namespace likyu::editor
         int selected = 0;
         geometry::Hit hovered;
         std::map<PointerKey, Drag> drags;
+        std::optional<Pinch> pinch;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (CurveView)
     };
