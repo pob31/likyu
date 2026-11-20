@@ -24,6 +24,7 @@ add_library(likyu_core STATIC
     Dispatch.cpp
     LinkList.h
     LinkList.cpp
+    MeterSnapshot.h
     State.h
     State.cpp
     ValueText.h

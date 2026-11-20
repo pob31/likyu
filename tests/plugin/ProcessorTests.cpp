@@ -91,12 +91,19 @@ namespace
     }
 }
 
-TEST_CASE ("processor: the host sees the table, 284 parameters in real units")
+TEST_CASE ("processor: the host sees the table, 284 parameters in real units, then the temporary Listen")
 {
     LikyuProcessor processor;
     const auto& table = dsp::parameterTable();
 
-    REQUIRE (processor.getParameters().size() == static_cast<int> (table.size()));
+    // The 284, then Listen until Phase 6 (devplan 3d).
+    REQUIRE (processor.getParameters().size() == static_cast<int> (table.size()) + 1);
+
+    auto* listen = processor.getParameters().getLast();
+    REQUIRE (listen == &processor.temporaryListen());
+    CHECK (processor.temporaryListen().getParameterID() == "tmp_listen");
+    CHECK_FALSE (listen->isAutomatable());
+    CHECK (processor.temporaryListen().getIndex() == 0);
 
     for (int i = 0; i < static_cast<int> (table.size()); ++i)
     {
@@ -951,4 +958,82 @@ TEST_CASE ("processor: 500 blocks of dynamic bands, a sidechain, the link and it
 
     CHECK (rt::regions() == 500);
     CHECK (rt::violations() == 0);
+}
+
+//==============================================================================
+TEST_CASE ("processor: the temporary Listen puts a band's detector on the output and is not saved")
+{
+    constexpr int length = 4800;
+
+    LikyuProcessor processor;
+    setBand (processor, 1, true, dsp::BandType::bell, 1000.0, 2.0, 6.0);
+    processor.setValue (dsp::indexOf (1, dsp::BandParam::dfilt), static_cast<double> (dsp::DetectorFilter::own));
+    processor.setValue (dsp::indexOf (1, dsp::BandParam::dtype), static_cast<double> (dsp::DetectorType::highPass));
+    processor.setValue (dsp::indexOf (1, dsp::BandParam::dfreq), 4000.0);
+    processor.setRateAndBufferSizeDetails (48000.0, 256);
+    processor.prepareToPlay (48000.0, 256);
+
+    // Band 2's high-pass detector at 4 kHz: a 200 Hz tone almost gone, a 9 kHz one through.
+    const auto levelOf = [&processor] (double hz)
+    {
+        juce::AudioBuffer<float> buffer (2, length);
+        buffer.clear();
+        addTone (buffer, 0, hz, 0.5, 0, length);
+        addTone (buffer, 1, hz, 0.5, 0, length);
+        processInBlocks (processor, buffer, 256);
+        return 20.0 * std::log10 (static_cast<double> (buffer.getMagnitude (0, length / 2, length / 2)) / 0.5);
+    };
+
+    processor.temporaryListen().setValueNotifyingHost (processor.temporaryListen().convertTo0to1 (2.0f));
+    const auto low = levelOf (200.0), high = levelOf (9000.0);
+
+    INFO ("Listen on band 2: 200 Hz at " << low << " dB, 9 kHz at " << high << " dB");
+    CHECK (low < -40.0);
+    CHECK (std::abs (high) < 1.0);
+
+    core::Meters meters;
+    processor.meters().read (meters);
+    CHECK (meters.listening == 1);
+
+    // Not saved: the chunk has no such field, and a new instance starts with Listen off.
+    juce::MemoryBlock chunk;
+    processor.getStateInformation (chunk);
+    CHECK_FALSE (chunk.toString().contains ("tmp_listen"));
+
+    LikyuProcessor restored;
+    restored.setStateInformation (chunk.getData(), static_cast<int> (chunk.getSize()));
+    CHECK (restored.temporaryListen().getIndex() == 0);
+
+    // Off again: the bell, no longer the detector.
+    processor.temporaryListen().setValueNotifyingHost (0.0f);
+    CHECK (std::abs (levelOf (1000.0) - 6.0) < 0.1);
+}
+
+TEST_CASE ("processor: the meters say each band's offset and frequency, and that a Sidechain band fell back to Self")
+{
+    LikyuProcessor processor;
+    setDynamic (processor, 0, dsp::BandType::bell, 2000.0, -40.0, -12.0, dsp::KeySource::sidechain);
+    setDynamic (processor, 3, dsp::BandType::highShelf, 5000.0, -40.0, 6.0);
+    processor.setRateAndBufferSizeDetails (48000.0, 256);
+    processor.prepareToPlay (48000.0, 256);
+
+    juce::AudioBuffer<float> buffer (2, 4800);
+    buffer.clear();
+    addTone (buffer, 0, 2000.0, 0.5, 0, 4800);
+    addTone (buffer, 1, 2000.0, 0.5, 0, 4800);
+    processInBlocks (processor, buffer, 256);
+
+    core::Meters meters;
+    REQUIRE (processor.meters().read (meters));
+    CHECK (meters.block == 4800 / 256 + 1);
+    CHECK (meters.listening == -1);
+
+    // The sidechain bus is disabled: band 1 runs on Self, is cut by the tone, and says it fell back.
+    CHECK (meters.bands[0].keyFellBack);
+    CHECK (meters.bands[0].offsetDb < -6.0f);
+    CHECK (meters.bands[0].frequencyHz == doctest::Approx (2000.0).epsilon (1.0e-5));
+
+    // Band 4, keyed by Self, at rest: the tone is far under its high shelf's band-pass.
+    CHECK_FALSE (meters.bands[3].keyFellBack);
+    CHECK (meters.bands[3].confidence == 0.0f);
 }

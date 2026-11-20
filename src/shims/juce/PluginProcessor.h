@@ -37,6 +37,11 @@
       - The state chunk, version 1 (core/State.h), with the list of channels
         left out of the link (core/LinkList.h), which applies only to the
         layout it was made for.
+      - TEMPORARY until Phase 6: one more host parameter after the 284,
+        Listen (dsp/Parameters.h, temporaryListenSpec), not automatable and
+        not saved. It puts one band's detector on the output.
+      - The meters (core/MeterSnapshot.h), published after every block for
+        the editor of Phase 6; meters() reads them.
 
     The editor until Phase 6 is JUCE's generic one (createEditor()).
 
@@ -51,6 +56,7 @@
 
 #include <core/Dispatch.h>
 #include <core/LinkList.h>
+#include <core/MeterSnapshot.h>
 #include <core/State.h>
 #include <dsp/Chain.h>
 #include <dsp/Lookahead.h>
@@ -148,6 +154,12 @@ namespace likyu
         /** The main bus's layout as a link list names it: its speaker arrangement. */
         juce::String currentLayoutName() const;
 
+        /** The temporary Listen parameter, after the 284 (removed in Phase 6). */
+        juce::AudioParameterChoice& temporaryListen() const noexcept    { return *listenParameter; }
+
+        /** The meters of the last block. Its one reader: the editor, or a test. */
+        core::MeterSnapshot& meters() noexcept                          { return meterSnapshot; }
+
     private:
         void parameterValueChanged (int parameterIndex, float newValue) override;
         void parameterGestureChanged (int, bool) override {}
@@ -182,6 +194,10 @@ namespace likyu
 
         std::vector<juce::RangedAudioParameter*> parameters;   // owned by the base class, table order
         std::vector<Reader> readers;                           // the same, by kind
+        juce::AudioParameterChoice* listenParameter = nullptr; // owned by the base class, after them
+
+        core::MeterSnapshot meterSnapshot;
+        std::uint64_t blocksPublished = 0;
 
         core::Dispatch dispatch;
         core::Dispatch::Values values {};

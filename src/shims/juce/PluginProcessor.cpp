@@ -140,6 +140,12 @@ namespace likyu
             addParameter (parameter.release());
         }
 
+        // TEMPORARY until Phase 6: Listen, after the table, kept out of `parameters` and the state.
+        auto listen = makeParameter (dsp::temporaryListenSpec());
+        listenParameter = dynamic_cast<juce::AudioParameterChoice*> (listen.get());
+        jassert (listenParameter != nullptr);
+        addParameter (listen.release());
+
         parameterAt (dsp::indexOf (dsp::GlobalParam::lookahead)).addListener (this);
     }
 
@@ -369,6 +375,7 @@ namespace likyu
 
         dispatch.apply (values, chain);
         chain.setLinkExclusions (linkMask.load (std::memory_order_relaxed));
+        chain.setListen (listenParameter != nullptr ? listenParameter->getIndex() - 1 : -1);
         lookahead.setDelay (delaySamples.load (std::memory_order_relaxed));
 
         /*  In chunks: the key is the main input copied before the lookahead
@@ -412,6 +419,23 @@ namespace likyu
             lookahead.process (at.data(), channels, n);
             chain.process (at.data(), channels, key, n);
         }
+
+        // The meters, for the editor.
+        core::Meters meters;
+        meters.block = ++blocksPublished;
+        meters.listening = chain.getListenBand();
+
+        for (int b = 0; b < dsp::numBands; ++b)
+        {
+            const auto m = chain.bandMeter (b);
+            auto& out = meters.bands[static_cast<std::size_t> (b)];
+            out.offsetDb = static_cast<float> (m.offsetDb);
+            out.frequencyHz = static_cast<float> (m.frequencyHz);
+            out.confidence = static_cast<float> (m.confidence);
+            out.keyFellBack = m.keyFellBack;
+        }
+
+        meterSnapshot.publish (meters);
     }
 
     void LikyuProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
