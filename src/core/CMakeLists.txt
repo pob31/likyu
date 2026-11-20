@@ -20,6 +20,7 @@
 # Phase 3: the list of channels left out of the link (retired 2026-11-20 for the channels of each band).
 
 add_library(likyu_core STATIC
+    AnalyserTap.h
     BandChannels.h
     BandChannels.cpp
     Dispatch.h

@@ -40,6 +40,7 @@ target_sources(likyu_editor INTERFACE
     "${CMAKE_CURRENT_SOURCE_DIR}/ParamControls.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/Presentation.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/QGestures.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/ResponseCurve.h")
+    "${CMAKE_CURRENT_SOURCE_DIR}/ResponseCurve.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Spectrum.h")
 
 target_include_directories(likyu_editor INTERFACE "${PROJECT_SOURCE_DIR}/src")

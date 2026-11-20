@@ -1106,6 +1106,7 @@ TEST_CASE ("processor: 500 blocks of dynamic bands, a sidechain, the link and it
             // Outside the process call, as a host or the editor does.
             processor.setValue (dsp::indexOf (dsp::GlobalParam::link), (block / 10) % 2);
             processor.setValue (dsp::indexOf (block % dsp::numBands, dsp::BandParam::thresh), -60.0 + block % 50);
+            processor.analyser().setEnabled ((block / 10) % 2 == 0);     // the analyser's tap, on and off
             processor.setBandChannelsLeftOut (block % dsp::numBands, static_cast<std::uint64_t> ((block / 20) % 4));
         }
 

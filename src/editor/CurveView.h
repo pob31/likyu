@@ -55,6 +55,7 @@
 #include "CurveGeometry.h"
 #include "EditorHost.h"
 #include "Presentation.h"
+#include "Spectrum.h"
 
 #include <core/Dispatch.h>
 
@@ -77,6 +78,16 @@ namespace likyu::editor
 
         /** Reads the host's values and meters; repaints if the picture changed. */
         void refresh();
+
+        /** The analyser behind the curve (PRD, Editor): off by default, not
+            saved. While it is on, refresh() reads the tap and repaints at
+            every tick. */
+        void setAnalyserOn (bool on);
+        bool isAnalyserOn() const noexcept      { return analyserOn; }
+
+        /** What it shows now, in dB at the curve's frequencies: for a test. */
+        const std::vector<double>& inputSpectrum() const noexcept       { return shownInput; }
+        const std::vector<double>& sidechainSpectrum() const noexcept   { return shownSidechain; }
 
         /** The band the strip shows, from 0. */
         int selectedBand() const noexcept       { return selected; }
@@ -153,6 +164,8 @@ namespace likyu::editor
 
         void paintGrid (juce::Graphics&) const;
         void paintLines (juce::Graphics&) const;
+        void paintSpectrum (juce::Graphics&) const;
+        void readSpectrum();
         void paintBand (juce::Graphics&, int band) const;
 
         Host& host;
@@ -167,6 +180,12 @@ namespace likyu::editor
         geometry::Places places {};
 
         std::vector<double> hz, staticDb, liveDb;
+
+        bool analyserOn = false;
+        Spectrum spectrum;
+        std::vector<float> samples;
+        std::vector<double> levels, shownInput, shownSidechain;
+        juce::uint32 lastSpectrumAt = 0;
         bool liveDiffers = false;
 
         int selected = 0;

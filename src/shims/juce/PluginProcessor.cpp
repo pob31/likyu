@@ -410,6 +410,7 @@ namespace likyu
             values[static_cast<std::size_t> (dsp::indexOf (dsp::GlobalParam::bypass))] = 1.0f;
 
         dispatch.apply (values, chain);
+
         for (int band = 0; band < dsp::numBands; ++band)
             chain.setBandChannels (band, bandMasks[static_cast<std::size_t> (band)].load (std::memory_order_relaxed));
         chain.setListen (listenBand.load (std::memory_order_relaxed));
@@ -431,6 +432,10 @@ namespace likyu
         key.selfChannels = channels;
         key.sidechain = sidechainChannels > 0 ? sidechain.data() : nullptr;
         key.sidechainChannels = sidechainChannels;
+
+        // The analyser's tap, while the editor shows it: the input and the sidechain as they come in.
+        analyserTap.write (core::AnalyserTap::input, audio, channels, samples);
+        analyserTap.write (core::AnalyserTap::sidechain, sidechain.data(), sidechainChannels, samples);
 
         chain.process (audio, channels, key, samples);
 

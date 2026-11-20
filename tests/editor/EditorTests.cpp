@@ -1242,3 +1242,110 @@ TEST_CASE ("editor: the transient's temporary times slide over the frequency con
     CHECK_FALSE (foot.timesAreOpen());
     CHECK_FALSE (foot.timesChevron().isVisible());
 }
+
+TEST_CASE ("editor: the analyser, off by default: its toggle turns the tap on, the curve shows the input and the sidechain, and closing turns it off")
+{
+    LikyuProcessor processor;
+
+    juce::AudioProcessor::BusesLayout layout;
+    layout.inputBuses.add (juce::AudioChannelSet::stereo());
+    layout.inputBuses.add (juce::AudioChannelSet::stereo());
+    layout.outputBuses.add (juce::AudioChannelSet::stereo());
+    REQUIRE (processor.setBusesLayout (layout));
+
+    processor.setRateAndBufferSizeDetails (rate, blockSize);
+    processor.prepareToPlay (rate, blockSize);
+
+    // A 1 kHz tone on the input, a 5 kHz one on the sidechain.
+    const auto play = [&processor] (int blocks)
+    {
+        juce::AudioBuffer<float> buffer (4, blockSize);
+        juce::MidiBuffer midi;
+        static double phase = 0.0;
+
+        for (int b = 0; b < blocks; ++b)
+        {
+            for (int i = 0; i < blockSize; ++i)
+            {
+                const auto t = phase + i / rate;
+                const auto input = static_cast<float> (0.5 * std::sin (juce::MathConstants<double>::twoPi * 1000.0 * t));
+                const auto side = static_cast<float> (0.5 * std::sin (juce::MathConstants<double>::twoPi * 5000.0 * t));
+                buffer.setSample (0, i, input);
+                buffer.setSample (1, i, input);
+                buffer.setSample (2, i, side);
+                buffer.setSample (3, i, side);
+            }
+
+            phase += blockSize / rate;
+            processor.processBlock (buffer, midi);
+        }
+    };
+
+    {
+        std::unique_ptr<EditorWindow> window (dynamic_cast<EditorWindow*> (processor.createEditor()));
+        REQUIRE (window != nullptr);
+
+        auto& root = window->editorRoot();
+        auto& curve = root.curveView();
+        auto& toggle = root.globalRow().analyserToggle();
+
+        // Off: the tap writes nothing, and the curve shows no spectrum.
+        CHECK_FALSE (toggle.isOn());
+        CHECK_FALSE (processor.analyser().isEnabled());
+        play (40);
+        root.refreshNow();
+        CHECK (curve.inputSpectrum().empty());
+
+        // On.
+        toggle.mouseDown (eventAt (toggle, { 10.0f, 10.0f }, { 10.0f, 10.0f }));
+        CHECK (toggle.isOn());
+        CHECK (curve.isAnalyserOn());
+        CHECK (processor.analyser().isEnabled());
+
+        play (60);
+        root.refreshNow();
+
+        const auto plot = editor::geometry::plotWithin (curve.getWidth(), curve.getHeight());
+        const auto at = [&plot] (const std::vector<double>& db, double hz)
+        {
+            const auto i = static_cast<std::size_t> (std::lround (editor::geometry::xOfHz (plot, hz) - plot.x));
+            return db[std::min (i, db.size() - 1)];
+        };
+
+        REQUIRE_FALSE (curve.inputSpectrum().empty());
+        REQUIRE_FALSE (curve.sidechainSpectrum().empty());
+
+        // The input's tone where it is, at its level (-6 dBFS, 1 kHz is the tilt's pivot); the sidechain's at 5 kHz.
+        CHECK (at (curve.inputSpectrum(), 1000.0) == doctest::Approx (-6.0).epsilon (0.3));
+        CHECK (at (curve.inputSpectrum(), 5000.0) < -40.0);
+        CHECK (at (curve.sidechainSpectrum(), 5000.0) > -6.0);
+        CHECK (at (curve.sidechainSpectrum(), 1000.0) < -40.0);
+
+        if (const auto folder = juce::SystemStats::getEnvironmentVariable ("LIKYU_SNAPSHOT_DIR", {}); folder.isNotEmpty())
+        {
+            const auto file = juce::File (folder).getChildFile ("likyu-editor-analyser.png");
+            file.deleteFile();
+
+            if (juce::FileOutputStream stream (file); stream.openedOk())
+                juce::PNGImageFormat().writeImageToStream (window->createComponentSnapshot (window->getLocalBounds()), stream);
+        }
+
+        // Off again by its toggle.
+        toggle.mouseDown (eventAt (toggle, { 10.0f, 10.0f }, { 10.0f, 10.0f }));
+        CHECK_FALSE (processor.analyser().isEnabled());
+
+        // On, then the editor closes: off, and the next editor starts with it off.
+        toggle.mouseDown (eventAt (toggle, { 10.0f, 10.0f }, { 10.0f, 10.0f }));
+        CHECK (processor.analyser().isEnabled());
+    }
+
+    CHECK_FALSE (processor.analyser().isEnabled());
+
+    {
+        std::unique_ptr<EditorWindow> window (dynamic_cast<EditorWindow*> (processor.createEditor()));
+        CHECK_FALSE (window->editorRoot().globalRow().analyserToggle().isOn());
+        CHECK_FALSE (processor.analyser().isEnabled());
+    }
+
+    processor.releaseResources();
+}

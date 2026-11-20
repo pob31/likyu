@@ -102,6 +102,7 @@ namespace likyu::editor
         curve.onSelect = [this] (int) { refreshNow(); };
         foot.onReset = [this] (int band) { resetBand (band); };
         global.onFlatten = [this] { flatten(); };
+        global.analyserToggle().onChange = [this] (bool on) { curve.setAnalyserOn (on); };
 
         refreshNow();
         startTimerHz (refreshHz);

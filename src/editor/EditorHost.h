@@ -72,5 +72,13 @@ namespace likyu::editor
         /** Listen (PRD, Detection): the band (from 0) whose detector replaces
             the output, or -1 for none. Not a parameter and not saved. */
         std::function<void (int band)> setListen;
+
+        /** The analyser (PRD, Editor): on while the editor shows it; the
+            latest `count` samples of a stream (0 the input, 1 the
+            sidechain), false when there are none to read; and whether the
+            sidechain is there. Not a parameter and not saved. */
+        std::function<void (bool on)> setAnalyser;
+        std::function<bool (int stream, float* out, int count)> readAnalyser;
+        std::function<bool()> sidechainPresent;
     };
 }

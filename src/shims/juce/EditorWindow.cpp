@@ -66,6 +66,13 @@ namespace likyu
             host.bandLeftOut = [&processor] (int band) { return processor.bandChannelsLeftOut (band); };
             host.setBandLeftOut = [&processor] (int band, std::uint64_t leftOut) { processor.setBandChannelsLeftOut (band, leftOut); };
             host.setListen = [&processor] (int band) { processor.setListen (band); };
+
+            host.setAnalyser = [&processor] (bool on) { processor.analyser().setEnabled (on); };
+            host.readAnalyser = [&processor] (int stream, float* out, int count)
+            {
+                return processor.analyser().read (static_cast<core::AnalyserTap::Stream> (stream), out, count);
+            };
+            host.sidechainPresent = [&processor] { return processor.analyser().isPresent (core::AnalyserTap::sidechain); };
             return host;
         }
     }

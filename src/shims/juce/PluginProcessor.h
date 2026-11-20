@@ -56,6 +56,7 @@
     the audio thread never takes.
 */
 
+#include <core/AnalyserTap.h>
 #include <core/Dispatch.h>
 #include <core/MeterSnapshot.h>
 #include <core/State.h>
@@ -181,6 +182,10 @@ namespace likyu
             return *transientTimeParameters[static_cast<std::size_t> (index)];
         }
 
+        /** The analyser's tap: the input and the sidechain, written while the
+            editor's analyser is on (core/AnalyserTap.h). */
+        core::AnalyserTap& analyser() noexcept                          { return analyserTap; }
+
         /** The meters of the last block. Its one reader: the editor, or a test. */
         core::MeterSnapshot& meters() noexcept                          { return meterSnapshot; }
 
@@ -224,6 +229,7 @@ namespace likyu
         std::array<juce::AudioParameterFloat*, dsp::numTemporaryTransientTimes> transientTimeParameters {};
 
         core::MeterSnapshot meterSnapshot;
+        core::AnalyserTap analyserTap;
         std::uint64_t blocksPublished = 0;
 
         core::Dispatch dispatch;

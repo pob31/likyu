@@ -20,6 +20,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <utility>
 
 namespace likyu::editor
 {
@@ -39,6 +40,43 @@ namespace likyu::editor
     }
 
     //==========================================================================
+    TextToggle::TextToggle (juce::String textIn)
+        : text (std::move (textIn))
+    {
+    }
+
+    void TextToggle::setOn (bool shouldBeOn)
+    {
+        if (on != shouldBeOn)
+        {
+            on = shouldBeOn;
+            repaint();
+        }
+    }
+
+    void TextToggle::paint (juce::Graphics& g)
+    {
+        const auto area = getLocalBounds().toFloat().reduced (0.5f);
+
+        g.setColour (on ? palette::accent : palette::controlBackground);
+        g.fillRoundedRectangle (area, 3.0f);
+        g.setColour (palette::controlBorder);
+        g.drawRoundedRectangle (area, 3.0f, 1.0f);
+
+        g.setColour (on ? juce::Colours::black : palette::textPrimary);
+        g.setFont (fontOf (12.0f));
+        g.drawText (text, getLocalBounds(), juce::Justification::centred, false);
+    }
+
+    void TextToggle::mouseDown (const juce::MouseEvent&)
+    {
+        setOn (! on);
+
+        if (onChange != nullptr)
+            onChange (on);
+    }
+
+    //==========================================================================
     GlobalRow::GlobalRow (Host& host)
         : bypass (host, dsp::indexOf (dsp::GlobalParam::bypass), "Bypass", palette::warning, false),
           outputGain (host, dsp::indexOf (dsp::GlobalParam::outGain), "Output", palette::accent),
@@ -54,6 +92,7 @@ namespace likyu::editor
         };
 
         addAndMakeVisible (flatten);
+        addAndMakeVisible (analyser);
 
         addAndMakeVisible (bypass);
         addAndMakeVisible (outputGain);
@@ -88,6 +127,8 @@ namespace likyu::editor
         link.setBounds (area.removeFromLeft (104).withSizeKeepingCentre (104, 24));
 
         flatten.setBounds (area.removeFromRight (84).withSizeKeepingCentre (84, 24));
+        area.removeFromRight (10);
+        analyser.setBounds (area.removeFromRight (84).withSizeKeepingCentre (84, 24));
     }
 
     void GlobalRow::paint (juce::Graphics& g)

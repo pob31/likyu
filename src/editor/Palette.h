@@ -48,6 +48,8 @@ namespace likyu::editor::palette
     inline const juce::Colour controlTrack  { 0xff000000 };   // WFS-DIY's sliderTrackBg
     inline const juce::Colour controlBackground { 0xff2a2a2a };
     inline const juce::Colour controlBorder { 0xff606060 };   // WFS-DIY's buttonBorder
+    inline const juce::Colour analyserInput { 0xfffffffe };
+    inline const juce::Colour analyserSidechain { 0xffb39ddb };
 
     /** One colour per band, in WFS-DIY's order. */
     inline juce::Colour band (int index) noexcept

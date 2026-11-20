@@ -82,6 +82,10 @@ namespace likyu::editor
     CurveView::~CurveView()
     {
         endAllDrags();
+
+        // The tap costs the audio thread nothing again once nothing shows it.
+        if (analyserOn)
+            host.setAnalyser (false);
     }
 
     CurveView::PointerKey CurveView::keyOf (const juce::MouseEvent& e) noexcept
@@ -102,6 +106,49 @@ namespace likyu::editor
     }
 
     //==========================================================================
+    void CurveView::setAnalyserOn (bool on)
+    {
+        if (on == analyserOn)
+            return;
+
+        analyserOn = on;
+        host.setAnalyser (on);
+        shownInput.clear();
+        shownSidechain.clear();
+        lastSpectrumAt = juce::Time::getMillisecondCounter();
+        repaint();
+    }
+
+    /*  The latest samples of each stream, their spectrum at the curve's
+        frequencies, and what is shown, falling from what was. A stream
+        with nothing to read (the sidechain absent) shows nothing. */
+    void CurveView::readSpectrum()
+    {
+        const auto now = juce::Time::getMillisecondCounter();
+        const auto seconds = static_cast<double> (now - lastSpectrumAt) / 1000.0;
+        lastSpectrumAt = now;
+
+        samples.resize (static_cast<std::size_t> (Spectrum::size));
+
+        const auto take = [this, seconds] (int stream, std::vector<double>& shown)
+        {
+            if (! host.readAnalyser (stream, samples.data(), Spectrum::size))
+                return;
+
+            Spectrum::levelsAt (spectrum.analyse (samples.data()), rate, hz, levels);
+            Spectrum::fall (levels, seconds, shown);
+        };
+
+        take (0, shownInput);
+
+        if (host.sidechainPresent())
+            take (1, shownSidechain);
+        else
+            shownSidechain.clear();
+
+        repaint();
+    }
+
     void CurveView::refresh()
     {
         core::Dispatch::Values now {};
@@ -115,7 +162,12 @@ namespace likyu::editor
 
         if (read && std::memcmp (now.data(), values.data(), sizeof (float) * now.size()) == 0
             && sameMeters (metered, meters) && dsp::exactlyEqual (rateNow, rate))
+        {
+            if (analyserOn)
+                readSpectrum();
+
             return;
+        }
 
         values = now;
         meters = metered;
@@ -123,6 +175,10 @@ namespace likyu::editor
         read = true;
 
         rebuild();
+
+        if (analyserOn)
+            readSpectrum();
+
         repaint();
     }
 
@@ -197,6 +253,7 @@ namespace likyu::editor
             return;
 
         paintGrid (g);
+        paintSpectrum (g);
         paintLines (g);
 
         // The selected band last: it is the one a press on two nodes takes.
@@ -250,6 +307,59 @@ namespace likyu::editor
             g.drawText ((db > 0 ? "+" : "") + juce::String (db),
                         juce::Rectangle<float> (0.0f, y - 7.0f, area.getX() - 6.0f, 14.0f),
                         juce::Justification::centredRight, false);
+        }
+    }
+
+    /*  Behind the curve, on its own scale: 0 dB, tilted, at the plot's top,
+        -90 dB at its bottom. The input filled, faint; the sidechain a line. */
+    void CurveView::paintSpectrum (juce::Graphics& g) const
+    {
+        if (! analyserOn || hz.size() < 2)
+            return;
+
+        constexpr double topDb = 0.0, rangeDb = 90.0;
+        const juce::Rectangle<float> area (px (plot.x), px (plot.y), px (plot.width), px (plot.height));
+        const auto last = static_cast<double> (hz.size() - 1);
+
+        const auto pathOf = [this, last] (const std::vector<double>& db)
+        {
+            juce::Path path;
+
+            for (std::size_t i = 0; i < db.size(); ++i)
+            {
+                const auto x = px (plot.x + plot.width * static_cast<double> (i) / last);
+                const auto y = px (plot.y + plot.height * std::clamp ((topDb - db[i]) / rangeDb, 0.0, 1.0));
+
+                if (i == 0)
+                    path.startNewSubPath (x, y);
+                else
+                    path.lineTo (x, y);
+            }
+
+            return path;
+        };
+
+        const juce::Graphics::ScopedSaveState state (g);
+        g.reduceClipRegion (area.getSmallestIntegerContainer());
+
+        if (shownInput.size() == hz.size())
+        {
+            const auto line = pathOf (shownInput);
+            auto fill = line;
+            fill.lineTo (area.getRight(), area.getBottom());
+            fill.lineTo (area.getX(), area.getBottom());
+            fill.closeSubPath();
+
+            g.setColour (palette::analyserInput.withAlpha (0.10f));
+            g.fillPath (fill);
+            g.setColour (palette::analyserInput.withAlpha (0.30f));
+            g.strokePath (line, juce::PathStrokeType (1.0f));
+        }
+
+        if (shownSidechain.size() == hz.size())
+        {
+            g.setColour (palette::analyserSidechain.withAlpha (0.65f));
+            g.strokePath (pathOf (shownSidechain), juce::PathStrokeType (1.25f));
         }
     }
 

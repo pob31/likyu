@@ -52,6 +52,25 @@
 
 namespace likyu::editor
 {
+    /** A switch of the editor's own, not a parameter: lit while on. */
+    class TextToggle final : public juce::Component
+    {
+    public:
+        explicit TextToggle (juce::String text);
+
+        bool isOn() const noexcept      { return on; }
+        void setOn (bool shouldBeOn);
+
+        std::function<void (bool on)> onChange;
+
+        void paint (juce::Graphics&) override;
+        void mouseDown (const juce::MouseEvent&) override;
+
+    private:
+        const juce::String text;
+        bool on = false;
+    };
+
     class GlobalRow final : public juce::Component
     {
     public:
@@ -68,11 +87,15 @@ namespace likyu::editor
 
         LongPressButton& flattenButton() noexcept       { return flatten; }
 
+        /** The analyser, off each time the editor opens. */
+        TextToggle& analyserToggle() noexcept           { return analyser; }
+
     private:
         ParamToggle bypass;
         ParamBar outputGain;
         ParamChoice lookahead, link;
         LongPressButton flatten { "Flatten" };
+        TextToggle analyser { "Analyser" };
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GlobalRow)
     };

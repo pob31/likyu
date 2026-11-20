@@ -81,6 +81,7 @@ if(LIKYU_BUILD_PLUGINS)
         TestMain.cpp
         TestSupport.h
         LocaleTests.cpp
+        core/AnalyserTapTests.cpp
         core/BandChannelsTests.cpp
         core/DispatchTests.cpp
         core/MeterSnapshotTests.cpp
@@ -89,6 +90,7 @@ if(LIKYU_BUILD_PLUGINS)
         editor/CurveGeometryTests.cpp
         editor/EditorTests.cpp
         editor/PresentationTests.cpp
+        editor/SpectrumTests.cpp
         plugin/ProcessorTests.cpp
         support/RtAllocCounter.cpp
 
