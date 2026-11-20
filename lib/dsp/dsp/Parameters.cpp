@@ -90,12 +90,12 @@ namespace likyu::dsp
             table.push_back (logarithmic (id ("dq"), name ("Detector Q"), "", minQ, maxQ, 1.0));
 
             // Dynamic (range also limits Transient).
-            table.push_back (linear (id ("range"), name ("Range"), "dB", -30.0, 30.0, -6.0));
-            table.push_back (linear (id ("thresh"), name ("Threshold"), "dB", -80.0, 0.0, -24.0));
-            table.push_back (linear (id ("ratio"), name ("Ratio"), "", 1.0, 20.0, 3.0));
-            table.push_back (linear (id ("knee"), name ("Knee"), "dB", 0.0, 24.0, 6.0));
-            table.push_back (logarithmic (id ("atk"), name ("Attack"), "ms", 0.05, 200.0, 5.0));
-            table.push_back (logarithmic (id ("rel"), name ("Release"), "ms", 5.0, 2000.0, 120.0));
+            table.push_back (linear (id ("range"), name ("Range"), "dB", -maxRangeDb, maxRangeDb, -6.0));
+            table.push_back (linear (id ("thresh"), name ("Threshold"), "dB", minThresholdDb, maxThresholdDb, -24.0));
+            table.push_back (linear (id ("ratio"), name ("Ratio"), "", minRatio, maxRatio, 3.0));
+            table.push_back (linear (id ("knee"), name ("Knee"), "dB", 0.0, maxKneeDb, 6.0));
+            table.push_back (logarithmic (id ("atk"), name ("Attack"), "ms", minAttackMs, maxAttackMs, 5.0));
+            table.push_back (logarithmic (id ("rel"), name ("Release"), "ms", minReleaseMs, maxReleaseMs, 120.0));
             table.push_back (choice (id ("ddir"), name ("Direction"), { "Above", "Below" }, 0));
 
             // Transient.

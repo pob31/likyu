@@ -32,6 +32,7 @@ add_executable(likyu_dsp_tests
     dsp/DspTestSupport.h
     dsp/ChainTests.cpp
     dsp/DetectorTests.cpp
+    dsp/DynamicsTests.cpp
     dsp/ParameterTableTests.cpp
     dsp/LookaheadTests.cpp
     dsp/MovementTests.cpp
@@ -52,6 +53,7 @@ add_executable(likyu_bench bench/BenchMain.cpp)
 target_link_libraries(likyu_bench PRIVATE likyu::dsp likyu::warnings)
 
 add_test(NAME bench.smoke COMMAND likyu_bench time --seconds 0.2 --warmup 10)
+add_test(NAME bench.dynamic.smoke COMMAND likyu_bench time --scenario dynamic --seconds 0.2 --warmup 10)
 add_test(NAME bench.precision.smoke COMMAND likyu_bench precision --seconds 0.5)
 
 # The RTSan job's canary: a violation on purpose, which the sanitizer must die on.

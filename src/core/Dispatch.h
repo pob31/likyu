@@ -25,14 +25,15 @@
     (JUCE keeps each in an atomic), into a Values array, and calls apply()
     on the audio thread before the chain's process. Dispatch compares them
     with the last block's and hands the chain only what moved: a band's
-    settings when any of its 35 values did, the instance's when bypass or
-    the output gain did. The comparison is of bits, so a value that a host
-    sets again unchanged costs nothing.
+    settings when any of its 35 values did, the instance's when bypass, the
+    output gain or the link did. The comparison is of bits, so a value that a
+    host sets again unchanged costs nothing.
 
-    In Phase 2 a band reads on, type, freq, q, gain and qmode; its other
-    values (modes, detector, dynamics) are carried and ignored until Phases 3
-    to 5 give them a use. Choices are rounded to their index and clamped; a
-    toggle is on from 0.5.
+    Since Phase 3 a band reads its type, frequency, Q, gain and Q mode, its
+    gain mode, key and detector, and the Dynamic mode's values; Transient,
+    Env and Track's values are carried and ignored until Phases 4 and 5 give
+    them a use. Choices are rounded to their index and clamped; a toggle is
+    on from 0.5.
 
     No allocation; nothing of JUCE.
 */

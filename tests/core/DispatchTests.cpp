@@ -24,6 +24,7 @@
 #include <core/Dispatch.h>
 #include <dsp/Parameters.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <vector>
@@ -101,6 +102,97 @@ TEST_CASE ("dispatch: a band's settings are its values, choices rounded and clam
     global[static_cast<std::size_t> (dsp::indexOf (dsp::GlobalParam::outGain))] = -3.0f;
     CHECK (core::chainSettingsFrom (global).bypass);
     CHECK (core::chainSettingsFrom (global).outputGainDb == -3.0);
+}
+
+TEST_CASE ("dispatch: a band's detector and Dynamic values, and the link, as the chain takes them")
+{
+    using P = dsp::BandParam;
+
+    auto values = defaults();
+    band (values, 4, P::gmode) = 1.0f;
+    band (values, 4, P::key) = 1.0f;
+    band (values, 4, P::dfilt) = 1.0f;
+    band (values, 4, P::dtype) = 2.0f;
+    band (values, 4, P::dfreq) = 250.0f;
+    band (values, 4, P::dq) = 4.0f;
+    band (values, 4, P::range) = 9.0f;
+    band (values, 4, P::thresh) = -36.0f;
+    band (values, 4, P::ratio) = 8.0f;
+    band (values, 4, P::knee) = 12.0f;
+    band (values, 4, P::atk) = 0.5f;
+    band (values, 4, P::rel) = 400.0f;
+    band (values, 4, P::ddir) = 1.0f;
+
+    const auto s = core::bandSettingsFrom (values, 4);
+    CHECK (s.gmode == dsp::GainMode::dynamic);
+    CHECK (s.key == dsp::KeySource::sidechain);
+    CHECK (s.dfilt == dsp::DetectorFilter::own);
+    CHECK (s.dtype == dsp::DetectorType::lowPass);
+    CHECK (s.detectorFrequency == 250.0);
+    CHECK (s.detectorQ == 4.0);
+    CHECK (s.rangeDb == 9.0);
+    CHECK (s.thresholdDb == -36.0);
+    CHECK (s.ratio == 8.0);
+    CHECK (s.kneeDb == 12.0);
+    CHECK (s.attackMs == doctest::Approx (0.5));
+    CHECK (s.releaseMs == 400.0);
+    CHECK (s.direction == dsp::Direction::below);
+
+    // Out of range, rounded and clamped like every choice.
+    band (values, 4, P::gmode) = 7.0f;
+    CHECK (core::bandSettingsFrom (values, 4).gmode == dsp::GainMode::transient);
+
+    // The defaults: Static, Self, Follow, the table's Dynamic values.
+    const auto d = core::bandSettingsFrom (defaults(), 0);
+    CHECK (d.gmode == dsp::GainMode::staticGain);
+    CHECK (d.key == dsp::KeySource::self);
+    CHECK (d.dfilt == dsp::DetectorFilter::follow);
+    CHECK (d.rangeDb == -6.0);
+    CHECK (d.thresholdDb == -24.0);
+    CHECK (d.direction == dsp::Direction::above);
+
+    auto global = defaults();
+    CHECK (core::chainSettingsFrom (global).linked);
+    global[static_cast<std::size_t> (dsp::indexOf (dsp::GlobalParam::link))] = 1.0f;
+    CHECK_FALSE (core::chainSettingsFrom (global).linked);
+}
+
+TEST_CASE ("dispatch: the link, when it moves, reaches the chain")
+{
+    // Stereo, a loud left: linked, a dynamic band cuts the right as much as the left.
+    auto values = defaults();
+    band (values, 0, dsp::BandParam::on) = 1.0f;
+    band (values, 0, dsp::BandParam::gmode) = 1.0f;
+    band (values, 0, dsp::BandParam::freq) = 1000.0f;
+    band (values, 0, dsp::BandParam::thresh) = -40.0f;
+
+    dsp::Chain chain;
+    chain.prepare (48000.0, 2);
+    core::Dispatch dispatch;
+
+    std::vector<double> left (4800), right (4800, 0.0);
+    double* channels[] = { left.data(), right.data() };
+
+    const auto block = [&]
+    {
+        for (std::size_t n = 0; n < left.size(); ++n)
+            left[n] = 0.5 * std::sin (2.0 * 3.14159265358979323846 * 1000.0 * static_cast<double> (n) / 48000.0);
+
+        std::fill (right.begin(), right.end(), 0.0);
+        dispatch.apply (values, chain);
+        chain.process (channels, 2, static_cast<int> (left.size()));
+    };
+
+    block();
+    CHECK (chain.offsetDb (0, 1) < -3.0);
+
+    values[static_cast<std::size_t> (dsp::indexOf (dsp::GlobalParam::link))] = 1.0f;
+
+    for (int i = 0; i < 20; ++i)
+        block();
+
+    CHECK (chain.offsetDb (0, 0) < -3.0);
+    CHECK (chain.offsetDb (0, 1) == 0.0);
 }
 
 TEST_CASE ("dispatch: what moves reaches the chain")

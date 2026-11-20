@@ -46,6 +46,7 @@
 #include <dsp/Tan.h>
 
 #include <cmath>
+#include <functional>
 #include <string>
 
 using namespace likyu::dsp;
@@ -368,6 +369,156 @@ TEST_CASE ("switches: the bypass crossfades without a click")
 
         INFO (std::string (toBypass ? "into" : "out of") << " bypass: " << click.switchDb << " dB, steady " << click.steadyDb << " dB");
         CHECK (click.switchDb < -70.0);
+    }
+}
+
+//==============================================================================
+namespace
+{
+    /*  THE NEW SWITCHES OF PHASE 3. A dynamic bell at 700 Hz, Q 2, +6 dB
+        static, keyed by the 500 Hz sine itself (about -10.6 dB through its
+        band-pass) or by a sidechain, switched at `switchAt`. Each switch
+        changes the band's steady gain by several dB; the hard control
+        switches a static bell between the same two steady gains. */
+    constexpr double dynamicStaticDb = 6.0;
+
+    BandSettings dynamicBell (double rangeDb = -12.0)
+    {
+        return dynamicBand (BandType::bell, 700.0, 2.0, dynamicStaticDb, -30.0, rangeDb, 4.0, 5.0, 120.0);
+    }
+
+    struct DynamicSwitch
+    {
+        std::string name;
+        std::vector<double> amplitudes { sineLevel };   // per main channel
+        int measured = 0;                               // the channel the click is read on
+        bool sidechain = false;                         // a silent mono sidechain ...
+        int sidechainFrom = 0;                          // ... from this sample on
+        std::function<void (Chain&)> before, after;
+    };
+
+    struct DynamicClick
+    {
+        Click soft, hard;
+        double gainBeforeDb = 0.0, gainAfterDb = 0.0;
+    };
+
+    DynamicClick switchedDynamic (const DynamicSwitch& d)
+    {
+        const auto length = switchAt + 12000;
+        const auto channels = static_cast<int> (d.amplitudes.size());
+        std::vector<std::vector<double>> audio (d.amplitudes.size(), std::vector<double> (static_cast<std::size_t> (length)));
+
+        for (std::size_t c = 0; c < audio.size(); ++c)
+            for (int n = 0; n < length; ++n)
+                audio[c][static_cast<std::size_t> (n)] = d.amplitudes[c] * std::sin (2.0 * pi * sineHz * n / rate);
+
+        const std::vector<double> silence (static_cast<std::size_t> (length), 0.0);
+
+        Chain chain;
+        chain.prepare (rate, channels);
+        d.before (chain);
+
+        std::vector<double*> pointers (audio.size());
+        DynamicClick result;
+
+        for (int n = 0; n < length; n += 64)
+        {
+            if (n == switchAt)
+            {
+                result.gainBeforeDb = dynamicStaticDb + chain.offsetDb (0, d.measured);
+                d.after (chain);
+            }
+
+            for (std::size_t c = 0; c < audio.size(); ++c)
+                pointers[c] = audio[c].data() + n;
+
+            const double* side[] = { silence.data() + n };
+            Key<double> key;
+            key.self = pointers.data();
+            key.selfChannels = channels;
+
+            if (d.sidechain && n >= d.sidechainFrom)
+            {
+                key.sidechain = side;
+                key.sidechainChannels = 1;
+            }
+
+            chain.process (pointers.data(), channels, key, std::min (64, length - n));
+        }
+
+        result.gainAfterDb = dynamicStaticDb + chain.offsetDb (0, d.measured);
+        result.soft = measure (audio[static_cast<std::size_t> (d.measured)]);
+
+        // The hard control: the same two steady gains, a static bell switched between two samples.
+        const auto at = [] (double gainDb) { return band (true, BandType::bell, 700.0, 2.0, gainDb); };
+        result.hard = switchedHard (at (result.gainBeforeDb), at (result.gainAfterDb));
+        return result;
+    }
+
+    std::vector<DynamicSwitch> dynamicSwitches()
+    {
+        const auto withStatic = [] { auto s = dynamicBell(); s.gmode = GainMode::staticGain; return s; };
+        const auto own = [] (DetectorType type, double hz, double q)
+        {
+            auto s = dynamicBell();
+            s.dfilt = DetectorFilter::own;
+            s.dtype = type;
+            s.detectorFrequency = hz;
+            s.detectorQ = q;
+            return s;
+        };
+        const auto keyedBy = [] (KeySource key) { auto s = dynamicBell(); s.key = key; return s; };
+        const auto below = [] { auto s = dynamicBell(); s.direction = Direction::below; return s; };
+
+        // Stereo, the left louder: linked, the right is cut as the left is.
+        const std::vector<double> loudLeft { 2.0, sineLevel };
+
+        return {
+            { "gain mode, Static to Dynamic", { sineLevel }, 0, false, 0,
+              [withStatic] (Chain& c) { c.setBand (0, withStatic()); }, [] (Chain& c) { c.setBand (0, dynamicBell()); } },
+            { "gain mode, Dynamic to Static", { sineLevel }, 0, false, 0,
+              [] (Chain& c) { c.setBand (0, dynamicBell()); }, [withStatic] (Chain& c) { c.setBand (0, withStatic()); } },
+            { "detector filter, Follow to Own", { sineLevel }, 0, false, 0,
+              [] (Chain& c) { c.setBand (0, dynamicBell()); },
+              [own] (Chain& c) { c.setBand (0, own (DetectorType::bandPass, 3000.0, 4.0)); } },
+            { "detector type, band-pass to high-pass", { sineLevel }, 0, false, 0,
+              [own] (Chain& c) { c.setBand (0, own (DetectorType::bandPass, 500.0, 1.0)); },
+              [own] (Chain& c) { c.setBand (0, own (DetectorType::highPass, 5000.0, 0.7)); } },
+            { "direction, Above to Below", { sineLevel }, 0, false, 0,
+              [] (Chain& c) { c.setBand (0, dynamicBell()); }, [below] (Chain& c) { c.setBand (0, below()); } },
+            { "key, Self to a silent sidechain", { sineLevel }, 0, true, 0,
+              [keyedBy] (Chain& c) { c.setBand (0, keyedBy (KeySource::self)); },
+              [keyedBy] (Chain& c) { c.setBand (0, keyedBy (KeySource::sidechain)); } },
+            { "the fallback, a silent sidechain appearing", { sineLevel }, 0, true, switchAt,
+              [keyedBy] (Chain& c) { c.setBand (0, keyedBy (KeySource::sidechain)); }, [] (Chain&) {} },
+            { "link, Linked to Unlinked", loudLeft, 1, false, 0,
+              [] (Chain& c) { c.setBand (0, dynamicBell (-24.0)); c.setChain ({ false, 0.0, true }); },
+              [] (Chain& c) { c.setChain ({ false, 0.0, false }); } },
+            { "exclusion, the right left out of the link", loudLeft, 1, false, 0,
+              [] (Chain& c) { c.setBand (0, dynamicBell (-24.0)); },
+              [] (Chain& c) { c.setLinkExclusions (2u); } },
+        };
+    }
+}
+
+TEST_CASE ("switches: gain mode, detector, direction, key, the fallback, link and exclusion switch without a click; a hard switch would click")
+{
+    for (const auto& s : dynamicSwitches())
+    {
+        const auto r = switchedDynamic (s);
+
+        INFO (s.name << ": steady gain " << r.gainBeforeDb << " dB, then " << r.gainAfterDb << " dB; through the chain "
+                     << r.soft.switchDb << " dB, steady " << r.soft.steadyDb << " dB; done hard " << r.hard.switchDb << " dB");
+        MESSAGE (s.name << ": " << r.gainBeforeDb << " to " << r.gainAfterDb << " dB; " << r.soft.switchDb << " dB through the chain, "
+                        << r.hard.switchDb << " dB hard");
+
+        // The switch changes the sound, by several dB, and done hard it would click.
+        CHECK (std::abs (r.gainAfterDb - r.gainBeforeDb) > 4.0);
+        CHECK (r.hard.switchDb > r.soft.steadyDb + 30.0);
+
+        // Through the identity: under the same -70 dB as the Phase 2 switches.
+        CHECK (r.soft.switchDb < -70.0);
     }
 }
 

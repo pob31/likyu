@@ -20,8 +20,9 @@
     in seconds anywhere, the farm included.
 
       likyu_bench time [--rate 96000] [--block 64] [--channels 2] [--bands 8]
-                       [--scenario static|moving|decay] [--buffers float|double]
-                       [--seconds 10] [--warmup 200] [--json out.json]
+                       [--scenario static|moving|decay|dynamic|unlinked]
+                       [--buffers float|double] [--seconds 10] [--warmup 200]
+                       [--json out.json]
 
         The chain's process call timed per block, back to back after a
         warm-up: microseconds per block (min, median, p99, p999, max, mean)
@@ -35,10 +36,15 @@
                    case of a static EQ;
           decay    static bands, the first half on noise, the second on
                    silence; each half reported, and their medians compared
-                   (acceptance row "denormals", its timing half).
+                   (acceptance row "denormals", its timing half);
+          dynamic  eight bells and shelves in Dynamic mode, keyed by a stereo
+                   sidechain of noise, linked, every band acting all the time:
+                   the PRD's budget case without Track (Phase 3);
+          unlinked the same keyed by the input, unlinked: one gain computer
+                   and one set of coefficients per channel per band.
 
-        NOT INCLUDED: the shim's reading of 284 parameters per block and the
-        lookahead delay. The figure is the DSP's.
+        NOT INCLUDED: the shim's reading of 284 parameters per block, the
+        key's copy and the lookahead delay. The figure is the DSP's.
 
       likyu_bench precision [--seconds 10]
 
@@ -145,6 +151,27 @@ namespace
                  40.0 * std::pow (2.0, 1.2 * b), 0.7 + 0.5 * b, b % 2 == 0 ? 4.5 : -6.0 };
     }
 
+    /** For `dynamic` and `unlinked`: bells and shelves, every one acting on noise. */
+    BandSettings dynamicBand (int b, bool sidechain)
+    {
+        static constexpr BandType types[] = { BandType::bell, BandType::lowShelf, BandType::highShelf };
+        BandSettings s;
+        s.on = true;
+        s.type = types[static_cast<std::size_t> (b % 3)];
+        s.qmode = b % 2 == 0 ? QMode::proportional : QMode::constant;
+        s.frequency = 40.0 * std::pow (2.0, 1.2 * b);
+        s.q = 0.7 + 0.5 * b;
+        s.gainDb = b % 2 == 0 ? 3.0 : -2.0;
+        s.gmode = GainMode::dynamic;
+        s.key = sidechain ? KeySource::sidechain : KeySource::self;
+        s.thresholdDb = -70.0;
+        s.rangeDb = b % 2 == 0 ? -12.0 : 6.0;
+        s.ratio = 4.0;
+        s.attackMs = 1.0;
+        s.releaseMs = 80.0;
+        return s;
+    }
+
     /** For `moving`: a new target every block, so no ramp ever lands. */
     BandSettings movingBand (int b, int block)
     {
@@ -162,8 +189,13 @@ namespace
         Chain chain;
         chain.prepare (config.rate, config.channels);
 
+        const auto dynamic = config.scenario == "dynamic", unlinked = config.scenario == "unlinked";
+
         for (int b = 0; b < config.bands; ++b)
-            chain.setBand (b, staticBand (b));
+            chain.setBand (b, dynamic || unlinked ? dynamicBand (b, dynamic) : staticBand (b));
+
+        if (unlinked)
+            chain.setChain ({ false, 0.0, false });
 
         // Two seconds of noise per channel, precomputed, read round.
         const auto ring = static_cast<int> (2.0 * config.rate);
@@ -186,6 +218,19 @@ namespace
         for (auto& channel : buffer)
             pointers.push_back (channel.data());
 
+        // A stereo sidechain of its own noise, for `dynamic`.
+        std::vector<std::vector<Sample>> side (2, std::vector<Sample> (static_cast<std::size_t> (config.block)));
+        const Sample* sidePointers[] = { side[0].data(), side[1].data() };
+        Key<Sample> key;
+        key.self = pointers.data();
+        key.selfChannels = config.channels;
+
+        if (dynamic)
+        {
+            key.sidechain = sidePointers;
+            key.sidechainChannels = 2;
+        }
+
         std::vector<double> micros;
         micros.reserve (static_cast<std::size_t> (totalBlocks));
 
@@ -204,12 +249,17 @@ namespace
                                                                    : from[static_cast<std::size_t> ((start + i) % ring)];
             }
 
+            if (dynamic)
+                for (std::size_t s = 0; s < side.size(); ++s)
+                    for (int i = 0; i < config.block; ++i)
+                        side[s][static_cast<std::size_t> (i)] = source[s % source.size()][static_cast<std::size_t> ((start + i + 7919LL * static_cast<long long> (s + 1)) % ring)];
+
             if (config.scenario == "moving")
                 for (int b = 0; b < config.bands; ++b)
                     chain.setBand (b, movingBand (b, block));
 
             const auto t0 = std::chrono::steady_clock::now();
-            chain.process (pointers.data(), config.channels, config.block);
+            chain.process (pointers.data(), config.channels, key, config.block);
             const auto t1 = std::chrono::steady_clock::now();
 
             micros.push_back (std::chrono::duration<double, std::micro> (t1 - t0).count());
@@ -393,8 +443,8 @@ namespace
     {
         std::fprintf (stderr,
             "usage: likyu_bench time [--rate 96000] [--block 64] [--channels 2] [--bands 8]\n"
-            "                        [--scenario static|moving|decay] [--buffers float|double]\n"
-            "                        [--seconds 10] [--warmup 200] [--json out.json]\n"
+            "                        [--scenario static|moving|decay|dynamic|unlinked]\n"
+            "                        [--buffers float|double] [--seconds 10] [--warmup 200] [--json out.json]\n"
             "       likyu_bench precision [--seconds 10]\n");
     }
 }
@@ -452,7 +502,8 @@ int main (int argc, char* argv[])
 
     if (! (config.rate > 0.0) || config.block <= 0 || config.channels <= 0 || config.channels > Chain::maxChannels
         || config.bands < 0 || config.bands > numBands || ! (config.seconds > 0.0) || config.warmup < 0
-        || (config.scenario != "static" && config.scenario != "moving" && config.scenario != "decay")
+        || (config.scenario != "static" && config.scenario != "moving" && config.scenario != "decay"
+            && config.scenario != "dynamic" && config.scenario != "unlinked")
         || (config.buffers != "float" && config.buffers != "double"))
     {
         usage();

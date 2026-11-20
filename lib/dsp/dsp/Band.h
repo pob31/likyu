@@ -48,10 +48,29 @@
     Values arriving here are in the table's real units (dsp/Parameters.h)
     and are clamped to its ranges; the gain to the effective-gain limit.
 
+    PHASE 3: THE DYNAMIC OFFSET. A band in Dynamic mode (a bell or a shelf)
+    owns its gain computer (dsp/Dynamics.h) and works out its detector's
+    coefficients (dsp/Detector.h) at each grid point; the chain owns the
+    detector states and the offsets, per lane (dsp/Chain.h), and asks for
+    the coefficients of a sample with an offset through
+    coefficientsAt (index, offsetDb). With an offset of exactly 0 the chain
+    asks for the Phase 2 coefficients themselves, so a dynamic band at rest
+    is bit for bit the static band it would be.
+
+    THE SHAPE grows with the gain mode, the key as it is in effect (the
+    sidechain falls back to Self when the bus is absent or disabled), the
+    detector filter and type, the direction and the link. Each goes through
+    the identity like a type switch. What does not matter for a band is not
+    compared, so it costs no fade: a Static band's detector and key, a
+    Follow detector's type, a Sidechain band's link. The key and the link
+    are the chain's, given each grid point as the band's CONTEXT.
+
     Standard library only; no allocation anywhere in this class.
 */
 
 #include "BandCoefficients.h"
+#include "Detector.h"
+#include "Dynamics.h"
 #include "Gain.h"
 #include "Math.h"
 #include "Parameters.h"
@@ -61,6 +80,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 
 namespace likyu::dsp
@@ -84,21 +104,92 @@ namespace likyu::dsp
         double frequency = 1000.0;
         double q = 1.0;
         double gainDb = 0.0;
+
+        // Phase 3: the detector and the gain computer.
+        GainMode gmode = GainMode::staticGain;
+        KeySource key = KeySource::self;
+        DetectorFilter dfilt = DetectorFilter::follow;
+        DetectorType dtype = DetectorType::bandPass;
+        double detectorFrequency = 1000.0;
+        double detectorQ = 1.0;
+        double rangeDb = -6.0;
+        double thresholdDb = -24.0;
+        double ratio = 3.0;
+        double kneeDb = 6.0;
+        double attackMs = 5.0;
+        double releaseMs = 120.0;
+        Direction direction = Direction::above;
+    };
+
+    /** What the chain tells every band at each grid point. */
+    struct BandContext
+    {
+        int sidechainChannels = 0;      // 0: the bus is absent or disabled
+        bool linked = true;
+        std::uint64_t excluded = 0;     // channels left out of the link, among those prepared
     };
 
     class Band
     {
     public:
+        /** What the band is, for the identity fade: see THE SHAPE above. */
+        struct Shape
+        {
+            bool on = false;
+            BandType type = BandType::bell;
+            QMode qmode = QMode::proportional;
+            bool dynamic = false;
+            KeySource key = KeySource::self;
+            DetectorFilter dfilt = DetectorFilter::follow;
+            DetectorType dtype = DetectorType::bandPass;
+            Direction direction = Direction::above;
+            bool linked = true;
+            std::uint64_t excluded = 0;
+
+            /** The same effect: what does not matter for this band is not compared. */
+            bool operator== (const Shape& o) const noexcept
+            {
+                if (! (on == o.on && type == o.type && qmode == o.qmode && dynamic == o.dynamic))
+                    return false;
+
+                if (! dynamic)
+                    return true;
+
+                if (! (key == o.key && dfilt == o.dfilt && dtype == o.dtype && direction == o.direction))
+                    return false;
+
+                if (key == KeySource::sidechain)
+                    return true;
+
+                return linked == o.linked && (! linked || excluded == o.excluded);
+            }
+        };
+
+        /** Which detector the band runs: its key in effect, its filter and type. */
+        struct DetectorConfig
+        {
+            KeySource key = KeySource::self;
+            DetectorFilter dfilt = DetectorFilter::follow;
+            DetectorType dtype = DetectorType::bandPass;
+
+            bool operator== (const DetectorConfig&) const noexcept = default;
+        };
+
         /** Ramp lengths and the warp for this rate; the next step snaps. */
         void prepare (double sampleRate) noexcept
         {
             warp.prepare (sampleRate);
+            rate = sampleRate;
 
             const auto smoothing = rampSteps (smoothingSeconds, sampleRate, controlStep);
             logFrequency.setLength (smoothing);
             logQ.setLength (smoothing);
             gain.setLength (smoothing);
             fade.setLength (rampSteps (switchFadeSeconds, sampleRate, controlStep));
+            detectorLogFrequency.setLength (smoothing);
+            detectorLogQ.setLength (smoothing);
+            dynamics.prepare (sampleRate, smoothing);
+            detectorLf = notANumber;
 
             snapPending = true;
         }
@@ -116,11 +207,20 @@ namespace likyu::dsp
             snapPending = true;
         }
 
+        /** Before each beginStep(): the key and the link, from the chain. */
+        void setContext (const BandContext& c) noexcept
+        {
+            context = c;
+        }
+
         /** At a grid point: one control step. */
         void beginStep() noexcept
         {
             if (hasPending)
                 latch();
+
+            // The context may have changed without any setting doing so.
+            target = shapeOf (latched, context);
 
             if (snapPending)
             {
@@ -128,9 +228,14 @@ namespace likyu::dsp
                 logFrequency.finish();
                 logQ.finish();
                 gain.finish();
+                detectorLogFrequency.finish();
+                detectorLogQ.finish();
+                dynamics.finish();
                 active = target;
+                ++shapeRevision;
                 fade.jumpTo (active.on ? 1.0 : 0.0);
                 startOver();
+                updateDetector();
                 return;
             }
 
@@ -141,6 +246,7 @@ namespace likyu::dsp
                 if (! fade.isMoving() && exactlyEqual (fade.getCurrent(), 0.0))
                 {
                     active = target;
+                    ++shapeRevision;
                     shapeChanged = true;
                 }
                 else
@@ -159,6 +265,11 @@ namespace likyu::dsp
 
             stepRamps (shapeChanged);
             settle (shapeChanged);
+
+            detectorLogFrequency.step();
+            detectorLogQ.step();
+            dynamics.step();
+            updateDetector();
         }
 
         /** Off and faded out: nothing to compute, the state may be cleared. */
@@ -191,25 +302,95 @@ namespace likyu::dsp
             return withFade (designBand (active.type, active.qmode, g, kq, a, sqrtA), w);
         }
 
-    private:
-        struct Shape
+        /** The coefficients for sample `index` with a dynamic offset in dB,
+            which is not 0: the effective gain is the static gain plus the
+            offset, the offset within the Range and the sum within +-30 dB
+            (PRD, decided 2026-11-16). For a band whose type has a gain. */
+        SvfCoefficients<double> coefficientsAt (int index, double offsetDb) const noexcept
         {
-            bool on = false;
-            BandType type = BandType::bell;
-            QMode qmode = QMode::proportional;
+            const auto t = static_cast<double> (index + 1) / controlStep;
 
-            bool operator== (const Shape&) const noexcept = default;
-        };
+            const auto g = gMoving ? lerpExact (g0, g1, t) : g1;
+            const auto kq = kqMoving ? lerpExact (kq0, kq1, t) : kq1;
+            const auto w = wMoving ? lerpExact (w0, w1, t) : w1;
+            const auto db = dbMoving ? lerpExact (db0, db1, t) : db1;
 
+            const auto effective = effectiveGainDb (db, offsetDb, dynamics.rangeAt (t));
+            const auto a = bandA (effective);
+            const auto sqrtA = isShelf (active.type) ? bandSqrtA (effective) : 1.0;
+
+            return withFade (designBand (active.type, active.qmode, g, kq, a, sqrtA), w);
+        }
+
+        //======================================================================
+        /** The shape in effect, which the chain's lanes are built for. */
+        const Shape& activeShape() const noexcept           { return active; }
+
+        /** Goes up each time the shape in effect changes, a snap included. */
+        int getShapeRevision() const noexcept               { return shapeRevision; }
+
+        /** In Dynamic mode with a gain to move. */
+        bool isDynamic() const noexcept                     { return active.dynamic; }
+
+        /** The detector the band runs: the one in effect for a dynamic band,
+            which changes only through the identity; for any other band, the
+            one asked for, which only Listen hears. */
+        DetectorConfig detectorConfig() const noexcept
+        {
+            const auto& s = active.dynamic ? active : target;
+            return { s.key, s.dfilt, s.dtype };
+        }
+
+        /** Goes up each time detectorConfig() changes: the states it ran are then stale. */
+        int getDetectorRevision() const noexcept            { return detectorRevision; }
+
+        const DetectorCoefficients& detectorCoefficients() const noexcept { return detector; }
+
+        /** The gain computer's target for a level, at sample `index` of the step. */
+        double dynamicTargetAt (double levelDb, int index) const noexcept
+        {
+            return dynamics.targetAt (levelDb, static_cast<double> (index + 1) / controlStep, active.direction);
+        }
+
+        /** One sample of the offset's one-pole. */
+        void smoothOffset (double& offset, double targetDb) const noexcept
+        {
+            dynamics.smooth (offset, targetDb);
+        }
+
+        /** The sidechain was asked for and the bus is absent or disabled:
+            the band runs on Self, and the editor says so (PRD, Band model). */
+        bool keyFellBack() const noexcept
+        {
+            return latched.key == KeySource::sidechain && context.sidechainChannels <= 0;
+        }
+
+        /** The band's frequency now, in Hz. */
+        double frequencyHz() const noexcept                 { return std::exp2 (lastLogFrequency); }
+
+    private:
         static constexpr bool isShelf (BandType type) noexcept
         {
             return type == BandType::lowShelf || type == BandType::highShelf;
         }
 
-        /** Q mode is a bell's only: for another type it is not a change. */
-        static Shape shapeOf (const BandSettings& s) noexcept
+        /** What the settings and the context make the band. Q mode is a
+            bell's only; a Follow detector is a band-pass; a band without a
+            gain, or in Transient until Phase 4, is Static. */
+        static Shape shapeOf (const BandSettings& s, const BandContext& c) noexcept
         {
-            return { s.on, s.type, s.type == BandType::bell ? s.qmode : QMode::proportional };
+            Shape shape;
+            shape.on = s.on;
+            shape.type = s.type;
+            shape.qmode = s.type == BandType::bell ? s.qmode : QMode::proportional;
+            shape.dynamic = hasGain (s.type) && s.gmode == GainMode::dynamic;
+            shape.key = s.key == KeySource::sidechain && c.sidechainChannels > 0 ? KeySource::sidechain : KeySource::self;
+            shape.dfilt = s.dfilt;
+            shape.dtype = s.dfilt == DetectorFilter::own ? s.dtype : DetectorType::bandPass;
+            shape.direction = s.direction;
+            shape.linked = c.linked;
+            shape.excluded = c.excluded;
+            return shape;
         }
 
         /** The mix crossfaded with the identity: `position` 0 is (1, 0, 0),
@@ -229,7 +410,16 @@ namespace likyu::dsp
         void latch() noexcept
         {
             hasPending = false;
-            target = shapeOf (pending);
+            latched = pending;
+
+            if (std::isfinite (pending.detectorFrequency))
+                detectorLogFrequency.setTarget (std::log2 (std::clamp (pending.detectorFrequency, minFrequency, maxFrequency)));
+
+            if (std::isfinite (pending.detectorQ))
+                detectorLogQ.setTarget (std::log2 (std::clamp (pending.detectorQ, minQ, maxQ)));
+
+            dynamics.setTarget (pending.thresholdDb, pending.kneeDb, pending.ratio, pending.rangeDb,
+                                pending.attackMs, pending.releaseMs);
 
             if (std::isfinite (pending.frequency))
                 logFrequency.setTarget (std::log2 (std::clamp (pending.frequency, minFrequency, maxFrequency)));
@@ -317,16 +507,52 @@ namespace likyu::dsp
             idle = ! active.on && ! fade.isMoving() && exactlyEqual (w1, 0.0);
         }
 
+        /** The detector's coefficients for this step, from the band's own g
+            and 1/Q (Follow, unscaled) or from its detector's ramps (Own). */
+        void updateDetector() noexcept
+        {
+            const auto config = detectorConfig();
+
+            if (! (config == lastDetectorConfig))
+            {
+                lastDetectorConfig = config;
+                ++detectorRevision;
+            }
+
+            const auto own = config.dfilt == DetectorFilter::own;
+            const auto type = own ? config.dtype : DetectorType::bandPass;
+            const auto lf = own ? detectorLogFrequency.getCurrent() : lastLogFrequency;
+            const auto kq = own ? std::exp2 (-detectorLogQ.getCurrent()) : kq1;
+
+            if (exactlyEqual (lf, detectorLf) && exactlyEqual (kq, detectorKq) && type == detector.type)
+                return;
+
+            const auto hz = warp.clamp (std::exp2 (lf));
+            detectorLf = lf;
+            detectorKq = kq;
+            detector = makeDetectorCoefficients (type, own ? warp.g (hz) : g1, kq, hz, rate);
+        }
+
         static constexpr double notANumber = std::numeric_limits<double>::quiet_NaN();
 
         Warp warp;
         Ramp logFrequency, logQ, gain, fade;
+        Ramp detectorLogFrequency, detectorLogQ;
+        GainComputer dynamics;
+        double rate = 0.0;
 
-        BandSettings pending;
+        BandSettings pending, latched;
         bool hasPending = false;
         bool snapPending = true;
 
+        BandContext context;
         Shape target, active;
+        int shapeRevision = 0;
+
+        DetectorConfig lastDetectorConfig;
+        int detectorRevision = 0;
+        DetectorCoefficients detector;
+        double detectorLf = notANumber, detectorKq = notANumber;
 
         // The step's start (0) and end (1) values.
         double g0 = 0.0, g1 = 0.0;

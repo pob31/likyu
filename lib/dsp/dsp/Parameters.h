@@ -53,6 +53,19 @@ namespace likyu::dsp
     /** The range of the output gain (PRD: -24 to +24 dB). */
     inline constexpr double maxOutputGainDb = 24.0;
 
+    /** The ranges of the Dynamic mode's parameters (PRD, Parameters and state),
+        which the gain computer clamps to as the table does (dsp/Dynamics.h). */
+    inline constexpr double maxRangeDb = 30.0;
+    inline constexpr double minThresholdDb = -80.0;
+    inline constexpr double maxThresholdDb = 0.0;
+    inline constexpr double minRatio = 1.0;
+    inline constexpr double maxRatio = 20.0;
+    inline constexpr double maxKneeDb = 24.0;
+    inline constexpr double minAttackMs = 0.05;
+    inline constexpr double maxAttackMs = 200.0;
+    inline constexpr double minReleaseMs = 5.0;
+    inline constexpr double maxReleaseMs = 2000.0;
+
     enum class ParamKind { toggle, choice, continuous };
 
     /** How a continuous parameter is laid along a host's 0 to 1. */

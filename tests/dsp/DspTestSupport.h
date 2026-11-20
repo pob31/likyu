@@ -98,10 +98,14 @@ namespace likyutest::dsp
 
     /** Runs `input` (one vector per channel) through a fresh chain, cutting
         blocks with `sizes` and also at every event, so that each event
-        happens before the same sample in every rendering. */
+        happens before the same sample in every rendering. With a
+        `sidechain` (one vector per sidechain channel, as long as the audio)
+        the chain is keyed by the audio itself and that sidechain; without,
+        by the audio alone, through the overload a native client uses. */
     template <typename Sample>
     std::vector<std::vector<Sample>> render (double rate, std::vector<std::vector<Sample>> audio,
-                                             std::vector<Event> events, const BlockSizes& sizes)
+                                             std::vector<Event> events, const BlockSizes& sizes,
+                                             const std::vector<std::vector<Sample>>& sidechain = {})
     {
         std::stable_sort (events.begin(), events.end(), [] (const Event& a, const Event& b) { return a.at < b.at; });
 
@@ -111,7 +115,30 @@ namespace likyutest::dsp
 
         const auto length = static_cast<int> (audio.front().size());
         std::vector<Sample*> pointers (audio.size());
+        std::vector<const Sample*> sidePointers (sidechain.size());
         std::size_t next = 0;
+
+        const auto run = [&] (int position, int size)
+        {
+            for (std::size_t c = 0; c < audio.size(); ++c)
+                pointers[c] = audio[c].data() + position;
+
+            if (sidechain.empty())
+            {
+                chain.process (pointers.data(), channels, size);
+                return;
+            }
+
+            for (std::size_t s = 0; s < sidechain.size(); ++s)
+                sidePointers[s] = sidechain[s].data() + position;
+
+            likyu::dsp::Key<Sample> key;
+            key.self = pointers.data();
+            key.selfChannels = channels;
+            key.sidechain = sidePointers.data();
+            key.sidechainChannels = static_cast<int> (sidechain.size());
+            chain.process (pointers.data(), channels, key, size);
+        };
 
         for (int position = 0; position < length;)
         {
@@ -122,10 +149,7 @@ namespace likyutest::dsp
 
             if (size == 0)
             {
-                for (std::size_t c = 0; c < audio.size(); ++c)
-                    pointers[c] = audio[c].data() + position;
-
-                chain.process (pointers.data(), channels, 0);
+                run (position, 0);
                 continue;
             }
 
@@ -134,10 +158,7 @@ namespace likyutest::dsp
             if (next < events.size())
                 size = std::min (size, events[next].at - position);
 
-            for (std::size_t c = 0; c < audio.size(); ++c)
-                pointers[c] = audio[c].data() + position;
-
-            chain.process (pointers.data(), channels, size);
+            run (position, size);
             position += size;
         }
 
@@ -148,5 +169,34 @@ namespace likyutest::dsp
                                           likyu::dsp::QMode qmode = likyu::dsp::QMode::proportional)
     {
         return { on, type, qmode, hz, q, gainDb };
+    }
+
+    /** A band in Dynamic mode, its detector following it, keyed by the input. */
+    inline likyu::dsp::BandSettings dynamicBand (likyu::dsp::BandType type, double hz, double q, double gainDb,
+                                                 double thresholdDb, double rangeDb, double ratio = 3.0,
+                                                 double attackMs = 5.0, double releaseMs = 120.0,
+                                                 likyu::dsp::Direction direction = likyu::dsp::Direction::above)
+    {
+        auto s = band (true, type, hz, q, gainDb);
+        s.gmode = likyu::dsp::GainMode::dynamic;
+        s.thresholdDb = thresholdDb;
+        s.rangeDb = rangeDb;
+        s.ratio = ratio;
+        s.attackMs = attackMs;
+        s.releaseMs = releaseMs;
+        s.direction = direction;
+        return s;
+    }
+
+    /** A sine of peak `amplitude`. */
+    template <typename Sample>
+    std::vector<Sample> tone (int length, double hz, double amplitude, double rate, double phase = 0.0)
+    {
+        std::vector<Sample> out (static_cast<std::size_t> (length));
+
+        for (int n = 0; n < length; ++n)
+            out[static_cast<std::size_t> (n)] = static_cast<Sample> (amplitude * std::sin (2.0 * 3.14159265358979323846 * hz * n / rate + phase));
+
+        return out;
     }
 }

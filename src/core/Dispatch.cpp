@@ -65,6 +65,20 @@ namespace likyu::core
         s.frequency = static_cast<double> (bandValue (values, band, P::freq));
         s.q = static_cast<double> (bandValue (values, band, P::q));
         s.gainDb = static_cast<double> (bandValue (values, band, P::gain));
+
+        s.gmode = static_cast<dsp::GainMode> (choiceIndex (bandValue (values, band, P::gmode), dsp::numGainModes));
+        s.key = static_cast<dsp::KeySource> (choiceIndex (bandValue (values, band, P::key), dsp::numKeySources));
+        s.dfilt = static_cast<dsp::DetectorFilter> (choiceIndex (bandValue (values, band, P::dfilt), dsp::numDetectorFilters));
+        s.dtype = static_cast<dsp::DetectorType> (choiceIndex (bandValue (values, band, P::dtype), dsp::numDetectorTypes));
+        s.detectorFrequency = static_cast<double> (bandValue (values, band, P::dfreq));
+        s.detectorQ = static_cast<double> (bandValue (values, band, P::dq));
+        s.rangeDb = static_cast<double> (bandValue (values, band, P::range));
+        s.thresholdDb = static_cast<double> (bandValue (values, band, P::thresh));
+        s.ratio = static_cast<double> (bandValue (values, band, P::ratio));
+        s.kneeDb = static_cast<double> (bandValue (values, band, P::knee));
+        s.attackMs = static_cast<double> (bandValue (values, band, P::atk));
+        s.releaseMs = static_cast<double> (bandValue (values, band, P::rel));
+        s.direction = static_cast<dsp::Direction> (choiceIndex (bandValue (values, band, P::ddir), dsp::numDirections));
         return s;
     }
 
@@ -73,16 +87,19 @@ namespace likyu::core
         dsp::ChainSettings s;
         s.bypass = isOn (valueAt (values, dsp::indexOf (dsp::GlobalParam::bypass)));
         s.outputGainDb = static_cast<double> (valueAt (values, dsp::indexOf (dsp::GlobalParam::outGain)));
+        s.linked = choiceIndex (valueAt (values, dsp::indexOf (dsp::GlobalParam::link)), 2) == 0;
         return s;
     }
 
     void Dispatch::apply (const Values& values, dsp::Chain& chain) noexcept
     {
-        const auto bypass = dsp::indexOf (dsp::GlobalParam::bypass);
-        const auto outGain = dsp::indexOf (dsp::GlobalParam::outGain);
+        const auto moved = [&values, this] (dsp::GlobalParam p)
+        {
+            const auto i = static_cast<std::size_t> (dsp::indexOf (p));
+            return ! same (&values[i], &last[i], 1);
+        };
 
-        if (first || ! same (&values[static_cast<std::size_t> (bypass)], &last[static_cast<std::size_t> (bypass)], 1)
-                  || ! same (&values[static_cast<std::size_t> (outGain)], &last[static_cast<std::size_t> (outGain)], 1))
+        if (first || moved (dsp::GlobalParam::bypass) || moved (dsp::GlobalParam::outGain) || moved (dsp::GlobalParam::link))
             chain.setChain (chainSettingsFrom (values));
 
         for (int band = 0; band < dsp::numBands; ++band)
