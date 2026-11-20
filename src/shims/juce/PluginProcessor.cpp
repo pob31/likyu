@@ -36,28 +36,29 @@ namespace likyu
         }
 
         /*  A continuous parameter's 0 to 1: the table's own mapping
-            (dsp/Parameters.h), and a snap that gives back a value within a
-            millionth of a round number as that number, so that every default
-            maps to itself through JUCE's float arithmetic (auval warned on 18
-            that did not, Phase 1). `spec` lives in the table, which lives as
-            long as the program. */
+            (dsp/Parameters.h) between the range's FLOAT bounds, which JUCE
+            passes, so that the ends map to exactly 0 and 1 (0.1 as a float is
+            a little above 0.1, and auval sets and reads back each end); and a
+            snap that gives back a value within a millionth of a round number
+            as that number, so that every default maps to itself through the
+            float arithmetic (auval warned on 18 that did not, Phase 1). */
         juce::NormalisableRange<float> rangeFor (const dsp::ParamSpec& spec)
         {
-            const auto* s = &spec;
+            const auto skew = spec.skew;
 
             return { static_cast<float> (spec.minimum), static_cast<float> (spec.maximum),
-                     [s] (float, float, float proportion)
+                     [skew] (float lo, float hi, float proportion)
                      {
-                         return static_cast<float> (dsp::fromNormalised (*s, static_cast<double> (proportion)));
+                         return static_cast<float> (dsp::fromNormalised (skew, lo, hi, static_cast<double> (proportion)));
                      },
-                     [s] (float, float, float value)
+                     [skew] (float lo, float hi, float value)
                      {
-                         return static_cast<float> (dsp::toNormalised (*s, static_cast<double> (value)));
+                         return static_cast<float> (dsp::toNormalised (skew, lo, hi, static_cast<double> (value)));
                      },
-                     [s] (float, float, float value)
+                     [] (float lo, float hi, float value)
                      {
-                         const auto clamped = std::clamp (static_cast<double> (value), s->minimum, s->maximum);
-                         return static_cast<float> (dsp::snapToRound (clamped));
+                         const auto clamped = std::clamp (static_cast<double> (value), static_cast<double> (lo), static_cast<double> (hi));
+                         return std::clamp (static_cast<float> (dsp::snapToRound (clamped)), lo, hi);
                      } };
         }
 

@@ -117,6 +117,13 @@ namespace likyu::dsp
     /** From [0, 1], clamped. Not rounded: a choice's caller rounds. */
     double fromNormalised (const ParamSpec& spec, double normalised) noexcept;
 
+    /** The same, between bounds given apart from the spec. A shim whose host
+        range is in float passes the float bounds, so that its ends map to
+        exactly 0 and 1 (0.1 as a float is a little above 0.1: auval,
+        2026-11-20). */
+    double toNormalised (ParamSkew skew, double minimum, double maximum, double value) noexcept;
+    double fromNormalised (ParamSkew skew, double minimum, double maximum, double normalised) noexcept;
+
     /** A value within a millionth of a round number becomes that number
         (six significant digits). A host's float mapping returns 5 ms as
         5.0000024; this gives it back as 5, so every default maps to itself

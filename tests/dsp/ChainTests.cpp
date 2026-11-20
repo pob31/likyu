@@ -173,7 +173,7 @@ TEST_CASE ("exact bypass: a band moved away from 0 dB and back is the input agai
         auto movedAtAll = false;
 
         for (int n = 4800; n < 9600; ++n)
-            movedAtAll = movedAtAll || output[c][static_cast<std::size_t> (n)] != input[c][static_cast<std::size_t> (n)];
+            movedAtAll = movedAtAll || ! exactlyEqual (output[c][static_cast<std::size_t> (n)], input[c][static_cast<std::size_t> (n)]);
 
         CHECK (movedAtAll);
 

@@ -160,24 +160,34 @@ namespace likyu::dsp
     }
 
     //==========================================================================
+    double toNormalised (ParamSkew skew, double minimum, double maximum, double value) noexcept
+    {
+        const auto v = std::clamp (value, minimum, maximum);
+
+        if (skew == ParamSkew::logarithmic)
+            return std::clamp (std::log (v / minimum) / std::log (maximum / minimum), 0.0, 1.0);
+
+        return (v - minimum) / (maximum - minimum);
+    }
+
+    double fromNormalised (ParamSkew skew, double minimum, double maximum, double normalised) noexcept
+    {
+        const auto p = std::clamp (normalised, 0.0, 1.0);
+
+        if (skew == ParamSkew::logarithmic)
+            return std::clamp (minimum * std::pow (maximum / minimum, p), minimum, maximum);
+
+        return minimum + p * (maximum - minimum);
+    }
+
     double toNormalised (const ParamSpec& spec, double value) noexcept
     {
-        const auto v = std::clamp (value, spec.minimum, spec.maximum);
-
-        if (spec.skew == ParamSkew::logarithmic)
-            return std::clamp (std::log (v / spec.minimum) / std::log (spec.maximum / spec.minimum), 0.0, 1.0);
-
-        return (v - spec.minimum) / (spec.maximum - spec.minimum);
+        return toNormalised (spec.skew, spec.minimum, spec.maximum, value);
     }
 
     double fromNormalised (const ParamSpec& spec, double normalised) noexcept
     {
-        const auto p = std::clamp (normalised, 0.0, 1.0);
-
-        if (spec.skew == ParamSkew::logarithmic)
-            return std::clamp (spec.minimum * std::pow (spec.maximum / spec.minimum, p), spec.minimum, spec.maximum);
-
-        return spec.minimum + p * (spec.maximum - spec.minimum);
+        return fromNormalised (spec.skew, spec.minimum, spec.maximum, normalised);
     }
 
     double snapToRound (double value) noexcept

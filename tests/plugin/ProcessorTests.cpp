@@ -374,7 +374,7 @@ namespace
     }
 }
 
-TEST_CASE ("processor: every default maps to itself through the host's float mapping")
+TEST_CASE ("processor: every default maps to itself through the host's float mapping, and each end to itself")
 {
     LikyuProcessor processor;
     const auto& table = dsp::parameterTable();
@@ -388,6 +388,15 @@ TEST_CASE ("processor: every default maps to itself through the host's float map
         INFO ("id: " << spec.id);
         CHECK (parameter.convertFrom0to1 (parameter.getDefaultValue()) == expected);
         CHECK (parameter.convertFrom0to1 (parameter.convertTo0to1 (expected)) == expected);
+
+        // What auval does: set each end of the host's 0 to 1, read it back exactly.
+        for (const auto end : { 0.0f, 1.0f })
+        {
+            parameter.setValue (end);
+            CHECK (parameter.getValue() == end);
+        }
+
+        parameter.setValue (parameter.getDefaultValue());
     }
 }
 
