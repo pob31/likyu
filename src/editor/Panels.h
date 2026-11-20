@@ -148,6 +148,10 @@ namespace likyu::editor
         /** The table indices of the controls shown, in order: for a test. */
         std::vector<int> parameters() const;
 
+        /** Where the control of a band parameter is, or an empty rectangle
+            when it is not shown: for a test. */
+        juce::Rectangle<int> boundsOf (dsp::BandParam) const;
+
         /** The selected band's channels; not shown on a mono instance. */
         ChannelCells& channelCells() noexcept       { return cells; }
 
@@ -155,19 +159,15 @@ namespace likyu::editor
         void resized() override;
 
     private:
-        struct Block
-        {
-            juce::String title;
-            std::size_t first = 0, count = 0;
-            juce::Rectangle<int> area;
-        };
+        void rebuild();
 
-        void rebuild (const std::vector<presentation::StripSection>&);
+        /** Where a block starts and how wide one of its columns is, for the width of the moment. */
+        juce::Rectangle<int> blockArea (presentation::FootBlock) const;
+        int cellWidthNow() const;
 
         Host& host;
         int band = -1;
-        std::vector<dsp::BandParam> shown;
-        std::vector<Block> blocks;
+        std::vector<dsp::BandParam> shown;                      // in order, one per control
         std::vector<std::unique_ptr<ParamControl>> controls;
 
         ChannelCells cells;

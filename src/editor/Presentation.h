@@ -478,6 +478,109 @@ namespace likyu::editor::presentation
         return sections;
     }
 
+    /*  WHERE EACH CONTROL OF THE FOOT IS (decided by the author 2026-11-20).
+        Four blocks side by side, each of a fixed number of columns of two
+        rows, so that nothing moves when a mode changes: a control has one
+        place, whatever the modes, and a block that has nothing to show
+        keeps its room.
+
+          - A mode's choice (Q mode, Gain mode, Freq mode, Key) is alone in
+            its block's first column: nothing beneath it.
+          - Then pairs, one above the other: what the mode reads, how far it
+            goes, how fast; and what is left alone in a last column.
+          - What two modes share is in the same place in both: Range in
+            Dynamic and Transient, Low and High in Env and Track. */
+    enum class FootBlock { band, gain, frequency, key, count };
+
+    inline constexpr int numFootBlocks = static_cast<int> (FootBlock::count);
+    inline constexpr int footRows = 2;
+
+    /** The columns each block keeps, in order. */
+    inline constexpr int footColumns[numFootBlocks] = { 1, 5, 5, 3 };
+
+    inline std::string footTitle (FootBlock block)
+    {
+        switch (block)
+        {
+            case FootBlock::band:       return "Band";
+            case FootBlock::gain:       return "Gain";
+            case FootBlock::frequency:  return "Frequency";
+            case FootBlock::key:        return "Key";
+            case FootBlock::count:      break;
+        }
+
+        return {};
+    }
+
+    struct FootPlace
+    {
+        FootBlock block = FootBlock::band;
+        int column = 0, row = 0;
+
+        bool operator== (const FootPlace&) const noexcept = default;
+    };
+
+    /** A foot control's place. The column's controls have none: see inColumn. */
+    inline FootPlace footPlaceOf (BandParam p) noexcept
+    {
+        using P = BandParam;
+        using B = FootBlock;
+
+        switch (p)
+        {
+            case P::qmode:   return { B::band, 0, 0 };
+
+            // Dynamic: what it reads, how far, how fast, and the knee.
+            case P::gmode:   return { B::gain, 0, 0 };
+            case P::ddir:    return { B::gain, 1, 0 };
+            case P::thresh:  return { B::gain, 1, 1 };
+            case P::range:   return { B::gain, 2, 0 };
+            case P::ratio:   return { B::gain, 2, 1 };
+            case P::atk:     return { B::gain, 3, 0 };
+            case P::rel:     return { B::gain, 3, 1 };
+            case P::knee:    return { B::gain, 4, 0 };
+
+            // Transient: its two amounts, Range where Dynamic has it and the floor, the time.
+            case P::tatk:    return { B::gain, 1, 0 };
+            case P::tsus:    return { B::gain, 1, 1 };
+            case P::tfloor:  return { B::gain, 2, 1 };
+            case P::ttime:   return { B::gain, 3, 0 };
+
+            // Env: what it reads, where it goes, how fast, and the span.
+            case P::fmode:   return { B::frequency, 0, 0 };
+            case P::fdir:    return { B::frequency, 1, 0 };
+            case P::fsens:   return { B::frequency, 1, 1 };
+            case P::flo:     return { B::frequency, 2, 0 };
+            case P::fhi:     return { B::frequency, 2, 1 };
+            case P::fatk:    return { B::frequency, 3, 0 };
+            case P::frel:    return { B::frequency, 3, 1 };
+            case P::fspan:   return { B::frequency, 4, 0 };
+
+            // Track: its confidence, Low and High where Env has them, its times.
+            case P::fconf:   return { B::frequency, 1, 0 };
+            case P::fcgain:  return { B::frequency, 1, 1 };
+            case P::fspeed:  return { B::frequency, 3, 0 };
+            case P::fhold:   return { B::frequency, 3, 1 };
+
+            // The key, then its detector: the filter and its type, its frequency and Q.
+            case P::key:     return { B::key, 0, 0 };
+            case P::dfilt:   return { B::key, 1, 0 };
+            case P::dtype:   return { B::key, 1, 1 };
+            case P::dfreq:   return { B::key, 2, 0 };
+            case P::dq:      return { B::key, 2, 1 };
+
+            case P::on:
+            case P::type:
+            case P::freq:
+            case P::q:
+            case P::gain:
+            case P::count:
+                break;
+        }
+
+        return {};
+    }
+
     /** A control's name, short enough for a dial. */
     inline std::string labelOf (BandParam p)
     {

@@ -284,16 +284,71 @@ TEST_CASE ("editor: the picture, with a band of each kind")
     CHECK (has (editor::palette::liveLine));
     CHECK_FALSE (has (editor::palette::band (0)));      // band 1 is off: drawn darker
 
-    if (const auto folder = juce::SystemStats::getEnvironmentVariable ("LIKYU_SNAPSHOT_DIR", {}); folder.isNotEmpty())
+    const auto folder = juce::SystemStats::getEnvironmentVariable ("LIKYU_SNAPSHOT_DIR", {});
+
+    const auto write = [&folder, &opened] (const juce::String& name)
     {
-        const auto file = juce::File (folder).getChildFile ("likyu-editor.png");
+        if (folder.isEmpty())
+            return;
+
+        const auto file = juce::File (folder).getChildFile (name);
         file.deleteFile();
 
         if (juce::FileOutputStream stream (file); stream.openedOk())
-            juce::PNGImageFormat().writeImageToStream (image, stream);
+            juce::PNGImageFormat().writeImageToStream (opened.window->createComponentSnapshot (opened.window->getLocalBounds()), stream);
 
         MESSAGE ("wrote " << file.getFullPathName().toStdString());
-    }
+    };
+
+    write ("likyu-editor.png");
+
+    // The foot in each mode, one picture each: Transient, Env, Track with an Own detector.
+    auto& root = opened.window->editorRoot();
+    const auto where = [&root] (P param) { return root.footPanel().boundsOf (param); };
+
+    const auto rangeInDynamic = where (P::range);
+    const auto keyInDynamic = where (P::key);
+    const auto frequencyMode = where (P::fmode);
+    CHECK_FALSE (rangeInDynamic.isEmpty());
+
+    set (processor, 3, P::gmode, static_cast<double> (dsp::GainMode::transient));
+    set (processor, 3, P::tatk, 60.0);
+    set (processor, 3, P::tsus, -40.0);
+    opened.refresh();
+    write ("likyu-editor-transient.png");
+
+    // From Dynamic to Transient nothing that stays has moved.
+    CHECK (where (P::range) == rangeInDynamic);
+    CHECK (where (P::key) == keyInDynamic);
+    CHECK (where (P::fmode) == frequencyMode);
+    CHECK (where (P::thresh).isEmpty());
+    CHECK_FALSE (where (P::tatk).isEmpty());
+
+    set (processor, 3, P::gmode, static_cast<double> (dsp::GainMode::staticGain));
+    set (processor, 3, P::fmode, static_cast<double> (dsp::FrequencyMode::env));
+    set (processor, 3, P::flo, 400.0);
+    set (processor, 3, P::fhi, 3000.0);
+    opened.refresh();
+    write ("likyu-editor-env.png");
+
+    // Static and Env: the gain block is empty and keeps its room; the key has not moved.
+    const auto lowInEnv = where (P::flo);
+    CHECK (where (P::range).isEmpty());
+    CHECK (where (P::key) == keyInDynamic);
+    CHECK (where (P::fmode) == frequencyMode);
+
+    root.selectBand (4);
+    set (processor, 4, P::gmode, static_cast<double> (dsp::GainMode::dynamic));
+    set (processor, 4, P::dfilt, static_cast<double> (dsp::DetectorFilter::own));
+    opened.refresh();
+    write ("likyu-editor-track.png");
+
+    // Track on another band: Low is where Env has it, and so are the key and the mode's choice.
+    CHECK (where (P::flo).withY (0) == lowInEnv.withY (0));
+    CHECK (where (P::flo) == lowInEnv);
+    CHECK (where (P::key) == keyInDynamic);
+    CHECK (where (P::fmode) == frequencyMode);
+    CHECK (where (P::range) == rangeInDynamic);
 }
 
 TEST_CASE ("editor: a drag moves what its part of the handle moves, by what the geometry says, in one gesture")
@@ -556,10 +611,16 @@ TEST_CASE ("editor: a column per band, and a foot that follows the selected band
         opened.window->setSize (width, editor::EditorRoot::minimumHeight);
         opened.refresh();
 
-        for (auto* child : root.footPanel().getChildren())
+        const auto children = root.footPanel().getChildren();
+
+        for (int i = 0; i < children.size(); ++i)
         {
             INFO ("window width " << width);
-            CHECK (root.footPanel().getLocalBounds().contains (child->getBounds()));
+            CHECK (root.footPanel().getLocalBounds().contains (children[i]->getBounds()));
+
+            // And no two of them overlap.
+            for (int j = i + 1; j < children.size(); ++j)
+                CHECK_FALSE (children[i]->getBounds().intersects (children[j]->getBounds()));
         }
     }
 

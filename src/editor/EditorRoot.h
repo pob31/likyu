@@ -53,7 +53,7 @@ namespace likyu::editor
         static constexpr int defaultWidth = static_cast<int> (geometry::defaultCurveWidth);
         static constexpr int defaultHeight = GlobalRow::height + static_cast<int> (geometry::defaultCurveHeight)
                                              + BandColumn::height + FootPanel::height;
-        static constexpr int minimumWidth = 880, minimumHeight = 660;
+        static constexpr int minimumWidth = 1100, minimumHeight = 660;
         static constexpr int maximumWidth = 2400, maximumHeight = 1600;
 
         /** The meter snapshot's reader runs at about this rate (PRD, Detection). */

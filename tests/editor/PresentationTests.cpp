@@ -600,3 +600,65 @@ TEST_CASE ("presentation: the columns and the foot together are the strip, with 
     CHECK (shows (foot, BandParam::fmode));
     CHECK_FALSE (shows (foot, BandParam::key));
 }
+
+TEST_CASE ("presentation: every foot control has one place; nothing sits beneath a mode's choice; modes share what they share")
+{
+    using P = BandParam;
+
+    // A mode's choice is alone in its block's first column.
+    for (const auto mode : { P::qmode, P::gmode, P::fmode, P::key })
+    {
+        CHECK (footPlaceOf (mode).column == 0);
+        CHECK (footPlaceOf (mode).row == 0);
+    }
+
+    // Range is where it is in Dynamic and in Transient (it is the same parameter); Low and High likewise.
+    CHECK (footPlaceOf (P::range) == FootPlace { FootBlock::gain, 2, 0 });
+    CHECK (footPlaceOf (P::flo) == FootPlace { FootBlock::frequency, 2, 0 });
+    CHECK (footPlaceOf (P::fhi) == FootPlace { FootBlock::frequency, 2, 1 });
+
+    // The author's order for Dynamic: Acts over Threshold, Range over Ratio, Attack over Release, then Knee.
+    CHECK (footPlaceOf (P::ddir) == FootPlace { FootBlock::gain, 1, 0 });
+    CHECK (footPlaceOf (P::thresh) == FootPlace { FootBlock::gain, 1, 1 });
+    CHECK (footPlaceOf (P::ratio) == FootPlace { FootBlock::gain, 2, 1 });
+    CHECK (footPlaceOf (P::atk) == FootPlace { FootBlock::gain, 3, 0 });
+    CHECK (footPlaceOf (P::rel) == FootPlace { FootBlock::gain, 3, 1 });
+    CHECK (footPlaceOf (P::knee) == FootPlace { FootBlock::gain, 4, 0 });
+
+    for (int type = 0; type < dsp::numBandTypes; ++type)
+        for (int gmode = 0; gmode < dsp::numGainModes; ++gmode)
+            for (int fmode = 0; fmode < dsp::numFrequencyModes; ++fmode)
+                for (int dfilt = 0; dfilt < dsp::numDetectorFilters; ++dfilt)
+                {
+                    dsp::BandSettings s;
+                    s.type = static_cast<dsp::BandType> (type);
+                    s.gmode = static_cast<dsp::GainMode> (gmode);
+                    s.fmode = static_cast<dsp::FrequencyMode> (fmode);
+                    s.dfilt = static_cast<dsp::DetectorFilter> (dfilt);
+
+                    std::vector<BandParam> shown;
+
+                    for (const auto& section : footOf (s))
+                        shown.insert (shown.end(), section.params.begin(), section.params.end());
+
+                    for (std::size_t i = 0; i < shown.size(); ++i)
+                    {
+                        const auto place = footPlaceOf (shown[i]);
+                        INFO ("type " << type << ", gain mode " << gmode << ", frequency mode " << fmode
+                              << ", detector " << dfilt << ", parameter " << static_cast<int> (shown[i]));
+
+                        // Inside its block.
+                        CHECK (place.column >= 0);
+                        CHECK (place.column < footColumns[static_cast<int> (place.block)]);
+                        CHECK (place.row >= 0);
+                        CHECK (place.row < footRows);
+
+                        // Nothing beneath a mode's choice.
+                        CHECK_FALSE ((place.column == 0 && place.row == 1));
+
+                        // No two controls shown together in one place.
+                        for (std::size_t j = i + 1; j < shown.size(); ++j)
+                            CHECK_FALSE (footPlaceOf (shown[j]) == place);
+                    }
+                }
+}

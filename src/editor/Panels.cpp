@@ -223,13 +223,25 @@ namespace likyu::editor
     {
         constexpr int footTitleHeight = 26;
         constexpr int blockTitleHeight = 20;
-        constexpr int cellWidth = 92, cellHeight = 76;
+        constexpr int cellWidth = 78, cellHeight = 76;
+        constexpr int minimumCellWidth = 52;
         constexpr int blockGap = 22;
-        constexpr int rows = 2;
+        constexpr int footMargin = 12;
 
-        int columnsFor (std::size_t count)
+        /** A mode's choice has more room than a dial needs: "Proportional" is read whole. */
+        constexpr int choiceExtra = 22;
+
+        /** The channels' cells keep the right of the panel, at the least this much of it. */
+        constexpr int channelsWidth = 190;
+
+        int totalColumns()
         {
-            return static_cast<int> ((count + rows - 1) / rows);
+            auto columns = 0;
+
+            for (const auto count : presentation::footColumns)
+                columns += count;
+
+            return columns;
         }
     }
 
@@ -340,11 +352,9 @@ namespace likyu::editor
 
     void FootPanel::show (int bandIn, const dsp::BandSettings& settings)
     {
-        const auto sections = presentation::footOf (settings);
-
         std::vector<dsp::BandParam> now;
 
-        for (const auto& section : sections)
+        for (const auto& section : presentation::footOf (settings))
             now.insert (now.end(), section.params.begin(), section.params.end());
 
         if (bandIn == band && now == shown)
@@ -352,54 +362,53 @@ namespace likyu::editor
 
         band = bandIn;
         shown = now;
-        rebuild (sections);
+        rebuild();
     }
 
-    void FootPanel::rebuild (const std::vector<presentation::StripSection>& sections)
+    void FootPanel::rebuild()
     {
         controls.clear();
-        blocks.clear();
 
         const auto accent = palette::band (band);
         const auto& table = dsp::parameterTable();
 
-        for (const auto& section : sections)
+        for (const auto p : shown)
         {
-            Block block;
-            block.title = juce::String (section.title);
-            block.first = controls.size();
-            block.count = section.params.size();
-            blocks.push_back (block);
+            const auto index = dsp::indexOf (band, p);
+            const auto name = labelFor (p);
+            std::unique_ptr<ParamControl> control;
 
-            for (const auto p : section.params)
+            switch (table[static_cast<std::size_t> (index)].kind)
             {
-                const auto index = dsp::indexOf (band, p);
-                const auto name = labelFor (p);
-                std::unique_ptr<ParamControl> control;
+                case dsp::ParamKind::toggle:
+                    control = std::make_unique<ParamToggle> (host, index, name, accent, true);
+                    break;
 
-                switch (table[static_cast<std::size_t> (index)].kind)
-                {
-                    case dsp::ParamKind::toggle:
-                        control = std::make_unique<ParamToggle> (host, index, name, accent, true);
-                        break;
+                case dsp::ParamKind::choice:
+                    control = std::make_unique<ParamChoice> (host, index, name, accent, true);
+                    break;
 
-                    case dsp::ParamKind::choice:
-                        control = std::make_unique<ParamChoice> (host, index, name, accent, true);
-                        break;
-
-                    case dsp::ParamKind::continuous:
-                        control = std::make_unique<ParamDial> (host, index, name, accent);
-                        break;
-                }
-
-                addAndMakeVisible (*control);
-                control->refresh();
-                controls.push_back (std::move (control));
+                case dsp::ParamKind::continuous:
+                    control = std::make_unique<ParamDial> (host, index, name, accent);
+                    break;
             }
+
+            addAndMakeVisible (*control);
+            control->refresh();
+            controls.push_back (std::move (control));
         }
 
         resized();
         repaint();
+    }
+
+    juce::Rectangle<int> FootPanel::boundsOf (dsp::BandParam p) const
+    {
+        for (std::size_t i = 0; i < shown.size() && i < controls.size(); ++i)
+            if (shown[i] == p)
+                return controls[i]->getBounds();
+
+        return {};
     }
 
     void FootPanel::refresh()
@@ -423,44 +432,51 @@ namespace likyu::editor
         }
     }
 
+    /*  A column's width: its own where the panel has room for every block
+        and the channels, narrower and all alike where it has not. It depends
+        on the panel's width alone, never on the band's modes. */
+    int FootPanel::cellWidthNow() const
+    {
+        const auto room = getWidth() - 2 * footMargin - channelsWidth
+                          - (blockGap + choiceExtra) * presentation::numFootBlocks;
+        return std::clamp (room / totalColumns(), minimumCellWidth, cellWidth);
+    }
+
+    juce::Rectangle<int> FootPanel::blockArea (presentation::FootBlock block) const
+    {
+        const auto cell = cellWidthNow();
+        auto x = footMargin;
+
+        for (int b = 0; b < static_cast<int> (block); ++b)
+            x += presentation::footColumns[b] * cell + choiceExtra + blockGap;
+
+        return { x, footTitleHeight, presentation::footColumns[static_cast<int> (block)] * cell + choiceExtra,
+                 blockTitleHeight + presentation::footRows * cellHeight };
+    }
+
     void FootPanel::resized()
     {
-        auto columns = 0;
-
-        for (const auto& block : blocks)
-            columns += columnsFor (block.count);
-
-        if (columns == 0)
-            return;
-
-        // The channels' cells keep the right of the panel, at the least this much of it.
-        constexpr int channelsWidth = 190;
-
-        // Cells at their own width where there is room; narrower, all alike, where there is not.
-        const auto room = getWidth() - 24 - channelsWidth - blockGap * static_cast<int> (blocks.size());
-        const auto cell = std::clamp (room / columns, 48, cellWidth);
-
-        auto x = 12;
+        const auto cell = cellWidthNow();
         const auto top = footTitleHeight + blockTitleHeight;
 
-        for (auto& block : blocks)
+        // Every control at its own place (Presentation.h, footPlaceOf), whatever else is shown.
+        for (std::size_t i = 0; i < shown.size() && i < controls.size(); ++i)
         {
-            const auto wide = columnsFor (block.count);
-            block.area = { x, footTitleHeight, wide * cell, blockTitleHeight + rows * cellHeight };
+            const auto place = presentation::footPlaceOf (shown[i]);
+            const auto block = blockArea (place.block);
 
-            for (std::size_t i = 0; i < block.count; ++i)
-            {
-                // Down the first column, then the next: a mode's choice sits above its first control.
-                const auto column = static_cast<int> (i) / rows, row = static_cast<int> (i) % rows;
-                controls[block.first + i]->setBounds (juce::Rectangle<int> (x + column * cell, top + row * cellHeight, cell, cellHeight)
-                                                          .reduced (5, 4));
-            }
+            // The block's first column, the mode's choice, is the wider one.
+            const auto x = block.getX() + place.column * cell + (place.column > 0 ? choiceExtra : 0);
+            const auto width = cell + (place.column == 0 ? choiceExtra : 0);
 
-            x += wide * cell + blockGap;
+            controls[i]->setBounds (juce::Rectangle<int> (x, top + place.row * cellHeight, width, cellHeight).reduced (4, 4));
         }
 
         // What is left, to the right: the band's channels under their own title.
-        cellsTitle = { x, footTitleHeight, std::max (0, getWidth() - 12 - x), blockTitleHeight };
+        const auto last = blockArea (presentation::FootBlock::key);
+        const auto x = last.getRight() + blockGap;
+
+        cellsTitle = { x, footTitleHeight, std::max (0, getWidth() - footMargin - x), blockTitleHeight };
         cells.setBounds (cellsTitle.getX(), top + 6, cellsTitle.getWidth(),
                          std::max (0, getHeight() - top - 12));
     }
@@ -483,12 +499,15 @@ namespace likyu::editor
 
         g.setFont (fontOf (11.0f));
 
-        for (const auto& block : blocks)
+        // Every block's title, always: a block with nothing to show keeps its room.
+        for (int b = 0; b < presentation::numFootBlocks; ++b)
         {
-            const auto title = block.area.withHeight (blockTitleHeight);
+            const auto block = static_cast<presentation::FootBlock> (b);
+            const auto title = blockArea (block).withHeight (blockTitleHeight);
 
             g.setColour (palette::textSecondary);
-            g.drawText (block.title.toUpperCase(), title.withTrimmedLeft (4), juce::Justification::centredLeft, false);
+            g.drawText (juce::String (presentation::footTitle (block)).toUpperCase(), title.withTrimmedLeft (4),
+                        juce::Justification::centredLeft, false);
 
             g.setColour (palette::gridLine);
             g.fillRect (title.getX(), title.getBottom() - 1, title.getWidth(), 1);
