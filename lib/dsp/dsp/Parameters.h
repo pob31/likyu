@@ -35,6 +35,7 @@
 */
 
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace likyu::dsp
@@ -99,6 +100,29 @@ namespace likyu::dsp
 
     /** The table, numParams entries, built once. */
     const std::vector<ParamSpec>& parameterTable();
+
+    /** The table index of an ID; -1 when the table has no such ID. Not for
+        the audio thread (its lookup is built on first use). */
+    int indexOfId (std::string_view id);
+
+    //==========================================================================
+    /*  A HOST'S 0 TO 1, AND BACK. Linear, or logarithmic (equal steps of the
+        host's range are equal ratios of the value); a choice's index spread
+        evenly; a toggle at 0 and 1. The shims build their ranges from these,
+        and the tests check against them, so the two cannot drift apart. */
+
+    /** Into [0, 1], the value clamped to its range first. */
+    double toNormalised (const ParamSpec& spec, double value) noexcept;
+
+    /** From [0, 1], clamped. Not rounded: a choice's caller rounds. */
+    double fromNormalised (const ParamSpec& spec, double normalised) noexcept;
+
+    /** A value within a millionth of a round number becomes that number
+        (six significant digits). A host's float mapping returns 5 ms as
+        5.0000024; this gives it back as 5, so every default maps to itself
+        (auval warned on 18 of them, Phase 1). Anything farther from a round
+        number is left exactly as it is. */
+    double snapToRound (double value) noexcept;
 
     constexpr int indexOf (GlobalParam p) noexcept
     {

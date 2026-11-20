@@ -16,8 +16,10 @@
 
 #include "PluginProcessor.h"
 
-#include <core/ProvisionalState.h>
+#include <core/ValueText.h>
+#include <dsp/rt/RtCheck.h>
 
+#include <algorithm>
 #include <cmath>
 
 namespace likyu
@@ -33,19 +35,30 @@ namespace likyu
             return channels == 1 ? juce::AudioChannelSet::mono() : juce::AudioChannelSet::stereo();
         }
 
+        /*  A continuous parameter's 0 to 1: the table's own mapping
+            (dsp/Parameters.h), and a snap that gives back a value within a
+            millionth of a round number as that number, so that every default
+            maps to itself through JUCE's float arithmetic (auval warned on 18
+            that did not, Phase 1). `spec` lives in the table, which lives as
+            long as the program. */
         juce::NormalisableRange<float> rangeFor (const dsp::ParamSpec& spec)
         {
-            const auto minimum = static_cast<float> (spec.minimum);
-            const auto maximum = static_cast<float> (spec.maximum);
+            const auto* s = &spec;
 
-            if (spec.skew == dsp::ParamSkew::linear)
-                return { minimum, maximum };
-
-            // Equal steps of the host's 0 to 1 are equal ratios of the value.
-            return { minimum, maximum,
-                     [] (float lo, float hi, float proportion) { return lo * std::pow (hi / lo, proportion); },
-                     [] (float lo, float hi, float value)      { return std::log (value / lo) / std::log (hi / lo); },
-                     [] (float lo, float hi, float value)      { return juce::jlimit (lo, hi, value); } };
+            return { static_cast<float> (spec.minimum), static_cast<float> (spec.maximum),
+                     [s] (float, float, float proportion)
+                     {
+                         return static_cast<float> (dsp::fromNormalised (*s, static_cast<double> (proportion)));
+                     },
+                     [s] (float, float, float value)
+                     {
+                         return static_cast<float> (dsp::toNormalised (*s, static_cast<double> (value)));
+                     },
+                     [s] (float, float, float value)
+                     {
+                         const auto clamped = std::clamp (static_cast<double> (value), s->minimum, s->maximum);
+                         return static_cast<float> (dsp::snapToRound (clamped));
+                     } };
         }
 
         std::unique_ptr<juce::RangedAudioParameter> makeParameter (const dsp::ParamSpec& spec)
@@ -76,10 +89,24 @@ namespace likyu
                     break;
             }
 
+            /*  The unit is in the value text (core/ValueText.h), where the
+                hosts of Phase 1 show it; not also as a label, which some hosts
+                print after the text. */
+            const auto* s = &spec;
+
             return std::make_unique<juce::AudioParameterFloat> (
                 id, name, rangeFor (spec), static_cast<float> (spec.defaultValue),
-                juce::AudioParameterFloatAttributes().withLabel (juce::String (spec.unit))
-                                                     .withAutomatable (spec.automatable));
+                juce::AudioParameterFloatAttributes()
+                    .withAutomatable (spec.automatable)
+                    .withStringFromValueFunction ([s] (float value, int maximumLength)
+                    {
+                        const auto text = core::valueText (*s, static_cast<double> (value));
+                        return maximumLength > 0 ? text.substring (0, maximumLength) : text;
+                    })
+                    .withValueFromStringFunction ([s] (const juce::String& text)
+                    {
+                        return static_cast<float> (core::valueFromText (*s, text));
+                    }));
         }
     }
 
@@ -95,11 +122,19 @@ namespace likyu
     {
         const auto& table = dsp::parameterTable();
         parameters.reserve (table.size());
+        readers.reserve (table.size());
 
         for (const auto& spec : table)
         {
             auto parameter = makeParameter (spec);
             parameters.push_back (parameter.get());
+
+            Reader reader;
+            reader.continuous = dynamic_cast<juce::AudioParameterFloat*> (parameter.get());
+            reader.choice = dynamic_cast<juce::AudioParameterChoice*> (parameter.get());
+            reader.toggle = dynamic_cast<juce::AudioParameterBool*> (parameter.get());
+            readers.push_back (reader);
+
             addParameter (parameter.release());
         }
 
@@ -159,6 +194,10 @@ namespace likyu
         return true;
     }
 
+    /*  Called often (twice per play in Samplitude, at a lookahead change in
+        Live and Bitwig: Phase 1): with the same rate and width as before,
+        the lookahead and the chain keep everything, so it neither costs nor
+        clicks. */
     void LikyuProcessor::prepareToPlay (double sampleRate, int)
     {
         currentSampleRate = sampleRate;
@@ -169,6 +208,7 @@ namespace likyu
 
         lookaheadFloat.prepare (channels, longest);
         lookaheadDouble.prepare (channels, longest);
+        chain.prepare (sampleRate, channels);
 
         updateLatency();
     }
@@ -179,6 +219,7 @@ namespace likyu
     {
         lookaheadFloat.reset();
         lookaheadDouble.reset();
+        chain.reset();
     }
 
     //==========================================================================
@@ -210,52 +251,86 @@ namespace likyu
     }
 
     //==========================================================================
-    template <typename Sample>
-    void LikyuProcessor::process (juce::AudioBuffer<Sample>& buffer, dsp::Lookahead<Sample>& lookahead)
+    float LikyuProcessor::Reader::read() const noexcept
     {
-        const juce::ScopedNoDenormals noDenormals;
+        if (continuous != nullptr)
+            return continuous->get();
+
+        if (choice != nullptr)
+            return static_cast<float> (choice->getIndex());
+
+        if (toggle != nullptr)
+            return toggle->get() ? 1.0f : 0.0f;
+
+        return 0.0f;
+    }
+
+    void LikyuProcessor::readParameters() noexcept
+    {
+        for (std::size_t i = 0; i < readers.size() && i < values.size(); ++i)
+            values[i] = readers[i].read();
+    }
+
+    template <typename Sample>
+    void LikyuProcessor::process (juce::AudioBuffer<Sample>& buffer, dsp::Lookahead<Sample>& lookahead, bool hostBypassed)
+    {
+        // One realtime region for the block; the lookahead's and the chain's nest inside it.
+        const dsp::rt::ScopedRealtimeCheck realtime;
 
         /*  The main bus is the buffer's first channels, input and output in
             place. A sidechain, when there is one, sits after them and is not
-            read yet. */
+            read yet. Flush-to-zero is the chain's own (dsp/Denormals.h). */
         const auto channels = juce::jmin (getMainBusNumInputChannels(), buffer.getNumChannels());
+        const auto samples = buffer.getNumSamples();
+        auto* const* audio = buffer.getArrayOfWritePointers();
+
+        readParameters();
+
+        if (hostBypassed)
+            values[static_cast<std::size_t> (dsp::indexOf (dsp::GlobalParam::bypass))] = 1.0f;
+
+        dispatch.apply (values, chain);
 
         lookahead.setDelay (delaySamples.load (std::memory_order_relaxed));
-        lookahead.process (buffer.getArrayOfWritePointers(), channels, buffer.getNumSamples());
+        lookahead.process (audio, channels, samples);
+        chain.process (audio, channels, samples);
     }
 
     void LikyuProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
     {
-        process (buffer, lookaheadFloat);
+        process (buffer, lookaheadFloat, false);
     }
 
     void LikyuProcessor::processBlock (juce::AudioBuffer<double>& buffer, juce::MidiBuffer&)
     {
-        process (buffer, lookaheadDouble);
+        process (buffer, lookaheadDouble, false);
     }
 
-    /*  Bypass keeps the lookahead delay in the path (PRD, Latency): bypassing
-        changes neither the latency nor the timing. In Phase 0 that is all the
-        plugin does anyway. */
+    /*  JUCE's wrappers call these only when the plugin has no bypass parameter
+        of its own (checked at the pin: VST3, AU, LV2 all test
+        getBypassParameter() first), so with ours a host's bypass arrives as
+        the `bypass` parameter. A host that calls them anyway gets the same:
+        the lookahead stays in the path (PRD, Latency) and the chain
+        crossfades to the delayed dry signal. */
     void LikyuProcessor::processBlockBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
     {
-        process (buffer, lookaheadFloat);
+        process (buffer, lookaheadFloat, true);
     }
 
     void LikyuProcessor::processBlockBypassed (juce::AudioBuffer<double>& buffer, juce::MidiBuffer&)
     {
-        process (buffer, lookaheadDouble);
+        process (buffer, lookaheadDouble, true);
     }
 
     //==========================================================================
     void LikyuProcessor::getStateInformation (juce::MemoryBlock& destination)
     {
-        std::vector<double> values (parameters.size());
+        std::vector<double> current (parameters.size());
 
-        for (std::size_t i = 0; i < values.size(); ++i)
-            values[i] = valueOf (static_cast<int> (i));
+        for (std::size_t i = 0; i < current.size(); ++i)
+            current[i] = valueOf (static_cast<int> (i));
 
-        const auto text = core::writeProvisionalState (values);
+        const auto text = stateChunk.write (current);
         destination.replaceAll (text.toRawUTF8(), text.getNumBytesAsUTF8());
     }
 
@@ -264,13 +339,16 @@ namespace likyu
         if (data == nullptr || sizeInBytes <= 0)
             return;
 
+        /*  It may come before any prepareToPlay (Bitwig) or just after the
+            first (Samplitude, Live): it only sets parameters, which the next
+            block reads. */
         const auto text = juce::String::fromUTF8 (static_cast<const char*> (data), sizeInBytes);
-        auto values = core::defaultParameterValues();
+        std::vector<double> loaded;
 
-        if (! core::readProvisionalState (text, values))
+        if (! stateChunk.read (text, loaded))
             return;
 
-        for (std::size_t i = 0; i < values.size() && i < parameters.size(); ++i)
-            setValue (static_cast<int> (i), values[i]);
+        for (std::size_t i = 0; i < loaded.size() && i < parameters.size(); ++i)
+            setValue (static_cast<int> (i), loaded[i]);
     }
 }

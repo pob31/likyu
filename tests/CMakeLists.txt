@@ -69,7 +69,9 @@ if(LIKYU_BUILD_PLUGINS)
         TestMain.cpp
         TestSupport.h
         LocaleTests.cpp
-        core/ProvisionalStateTests.cpp
+        core/DispatchTests.cpp
+        core/StateTests.cpp
+        core/ValueTextTests.cpp
         plugin/ProcessorTests.cpp
         support/RtAllocCounter.cpp
 
@@ -81,7 +83,7 @@ if(LIKYU_BUILD_PLUGINS)
     target_include_directories(likyu_tests PRIVATE "${PROJECT_SOURCE_DIR}/src/shims/juce")
 
     target_compile_definitions(likyu_tests PRIVATE
-        LIKYU_TEST_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
+        LIKYU_TEST_STATE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/state"
         LIKYU_LOCALE_FR="${LIKYU_LOCALE_FR}")
 
     # juce_audio_processors PRIVATE compiles the JUCE modules into this executable, as

@@ -30,8 +30,10 @@
     the lookahead on mid-stream reads real history and not what was left
     from the last time it was on.
 
-    prepare() allocates for the longest delay; nothing after it does.
-    Standard library only.
+    prepare() allocates for the longest delay; nothing after it does. Asked
+    again for the same width and length, it keeps the line as it is: hosts
+    prepare often, mid-stream (Phase 1), and the history is what a delay
+    plays next. Standard library only.
 */
 
 #include "rt/RtCheck.h"
@@ -46,11 +48,18 @@ namespace likyu::dsp
     class Lookahead
     {
     public:
-        /** Allocates. Not for the audio thread. */
+        /** Allocates. Not for the audio thread. The same width and length
+            again change nothing. */
         void prepare (int numChannelsToAllocate, int maxDelaySamples)
         {
-            channels = std::max (0, numChannelsToAllocate);
-            length = std::max (0, maxDelaySamples) + 1;
+            const auto wantedChannels = std::max (0, numChannelsToAllocate);
+            const auto wantedLength = std::max (0, maxDelaySamples) + 1;
+
+            if (wantedChannels == channels && wantedLength == length)
+                return;
+
+            channels = wantedChannels;
+            length = wantedLength;
             line.assign (static_cast<std::size_t> (channels) * static_cast<std::size_t> (length), Sample {});
             writeIndex = 0;
             delay = std::min (delay, length - 1);

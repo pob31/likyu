@@ -15,8 +15,10 @@
 */
 
 /*
-    The processor without a host (devplan, Phase 0b): parameters, buses,
-    latency, state. What a host then does with them is Phase 1's bench.
+    The processor without a host: parameters, buses, latency, state (Phase
+    0b), and the static EQ as a host drives it (Phase 2; acceptance rows
+    constant latency, layouts, realtime and state, their processor halves).
+    What a host then does with them is Phase 1's bench.
 */
 
 #include <doctest/doctest.h>
@@ -30,6 +32,7 @@
 
 #include <cmath>
 #include <cstring>
+#include <vector>
 
 using namespace likyu;
 
@@ -326,4 +329,295 @@ TEST_CASE ("processor: state saved by one instance is restored by another")
     const char garbage[] = "not a chunk";
     restored.setStateInformation (garbage, static_cast<int> (sizeof (garbage) - 1));
     CHECK (restored.valueOf (dsp::indexOf (2, dsp::BandParam::gain)) == doctest::Approx (-4.5));
+}
+
+//==============================================================================
+// Phase 2: the static EQ as a host drives it.
+
+namespace
+{
+    void setBand (LikyuProcessor& p, int b, bool on, dsp::BandType type, double hz, double q, double gain,
+                  dsp::QMode qmode = dsp::QMode::proportional)
+    {
+        p.setValue (dsp::indexOf (b, dsp::BandParam::on), on ? 1.0 : 0.0);
+        p.setValue (dsp::indexOf (b, dsp::BandParam::type), static_cast<double> (type));
+        p.setValue (dsp::indexOf (b, dsp::BandParam::freq), hz);
+        p.setValue (dsp::indexOf (b, dsp::BandParam::q), q);
+        p.setValue (dsp::indexOf (b, dsp::BandParam::gain), gain);
+        p.setValue (dsp::indexOf (b, dsp::BandParam::qmode), static_cast<double> (qmode));
+    }
+
+    /** Every band on, each a different type, none at 0 dB. */
+    void setEveryType (LikyuProcessor& p)
+    {
+        for (int b = 0; b < dsp::numBands; ++b)
+            setBand (p, b, true, static_cast<dsp::BandType> (b % dsp::numBandTypes), 60.0 * std::pow (2.0, b), 0.5 + b, b % 2 == 0 ? 6.0 : -6.0,
+                     b % 2 == 0 ? dsp::QMode::proportional : dsp::QMode::constant);
+    }
+
+    juce::AudioBuffer<float> noiseBuffer (int channels, int samples, int seed)
+    {
+        juce::Random random (seed);
+        juce::AudioBuffer<float> buffer (channels, samples);
+
+        for (int c = 0; c < channels; ++c)
+            for (int n = 0; n < samples; ++n)
+                buffer.setSample (c, n, random.nextFloat() - 0.5f);
+
+        return buffer;
+    }
+
+    bool sameChannel (const juce::AudioBuffer<float>& a, int ca, const juce::AudioBuffer<float>& b, int cb)
+    {
+        return a.getNumSamples() == b.getNumSamples()
+            && std::memcmp (a.getReadPointer (ca), b.getReadPointer (cb), static_cast<std::size_t> (a.getNumSamples()) * sizeof (float)) == 0;
+    }
+}
+
+TEST_CASE ("processor: every default maps to itself through the host's float mapping")
+{
+    LikyuProcessor processor;
+    const auto& table = dsp::parameterTable();
+
+    for (int i = 0; i < dsp::numParams; ++i)
+    {
+        const auto& spec = table[static_cast<std::size_t> (i)];
+        auto& parameter = processor.parameterAt (i);
+        const auto expected = static_cast<float> (spec.defaultValue);
+
+        INFO ("id: " << spec.id);
+        CHECK (parameter.convertFrom0to1 (parameter.getDefaultValue()) == expected);
+        CHECK (parameter.convertFrom0to1 (parameter.convertTo0to1 (expected)) == expected);
+    }
+}
+
+TEST_CASE ("processor: a host reads each value with its unit, and reads typed text back")
+{
+    LikyuProcessor processor;
+    auto& frequency = processor.parameterAt (dsp::indexOf (0, dsp::BandParam::freq));
+    auto& gain = processor.parameterAt (dsp::indexOf (0, dsp::BandParam::gain));
+
+    CHECK (frequency.getText (frequency.convertTo0to1 (1200.0f), 64).toStdString() == "1.20 kHz");
+    CHECK (gain.getText (gain.convertTo0to1 (-4.5f), 64).toStdString() == "-4.5 dB");
+    CHECK (frequency.convertFrom0to1 (frequency.getValueForText ("2k")) == doctest::Approx (2000.0f));
+    CHECK (gain.convertFrom0to1 (gain.getValueForText ("+3 dB")) == doctest::Approx (3.0f));
+
+    // Choices and toggles keep the table's names.
+    auto& type = processor.parameterAt (dsp::indexOf (0, dsp::BandParam::type));
+    CHECK (type.getText (type.convertTo0to1 (3.0f), 64).toStdString() == "High-pass");
+}
+
+TEST_CASE ("processor: bells and shelves at 0 dB pass the input bit for bit; a gain away from 0 does not")
+{
+    LikyuProcessor processor;
+
+    for (int b = 0; b < dsp::numBands; ++b)
+        setBand (processor, b, true, static_cast<dsp::BandType> (b % 3), 100.0 * (b + 1), 1.0 + b, 0.0);
+
+    processor.setRateAndBufferSizeDetails (48000.0, 512);
+    processor.prepareToPlay (48000.0, 512);
+
+    auto buffer = noiseBuffer (2, 512, 5);
+    const auto input = buffer;
+    juce::MidiBuffer midi;
+    processor.processBlock (buffer, midi);
+
+    CHECK (sameChannel (buffer, 0, input, 0));
+    CHECK (sameChannel (buffer, 1, input, 1));
+
+    processor.setValue (dsp::indexOf (3, dsp::BandParam::gain), 6.0);
+    auto next = noiseBuffer (2, 512, 6);
+    const auto nextInput = next;
+    processor.processBlock (next, midi);
+    CHECK_FALSE (sameChannel (next, 0, nextInput, 0));
+}
+
+TEST_CASE ("processor: a host that calls processBlockBypassed hears its input, bit for bit")
+{
+    LikyuProcessor processor;
+    setEveryType (processor);
+    processor.setRateAndBufferSizeDetails (48000.0, 256);
+    processor.prepareToPlay (48000.0, 256);
+
+    auto buffer = noiseBuffer (2, 256, 7);
+    const auto input = buffer;
+    juce::MidiBuffer midi;
+    processor.processBlockBypassed (buffer, midi);
+
+    CHECK (sameChannel (buffer, 0, input, 0));
+    CHECK (sameChannel (buffer, 1, input, 1));
+}
+
+TEST_CASE ("processor: constant latency, reported equals measured, whatever the bands, bypassed or not")
+{
+    for (const auto rate : { 44100.0, 96000.0 })
+    {
+        for (int choice = 0; choice < dsp::numLookaheadChoices; ++choice)
+        {
+            // Each type alone, then all eight bands at once.
+            for (int type = 0; type <= dsp::numBandTypes; ++type)
+            {
+                for (const auto bypassed : { false, true })
+                {
+                    LikyuProcessor processor;
+                    setLookahead (processor, choice);
+
+                    if (type < dsp::numBandTypes)
+                        setBand (processor, 2, true, static_cast<dsp::BandType> (type), 1000.0, 2.0, 9.0);
+                    else
+                        setEveryType (processor);
+
+                    processor.setRateAndBufferSizeDetails (rate, 64);
+                    processor.prepareToPlay (rate, 64);
+
+                    const auto expected = dsp::lookaheadSamples (choice, rate);
+
+                    INFO ("rate " << rate << ", lookahead " << choice << ", type " << type << ", bypassed " << bypassed);
+                    CHECK (processor.getLatencySamples() == expected);
+                    CHECK (measuredDelay (processor, bypassed) == expected);
+                }
+            }
+        }
+    }
+}
+
+TEST_CASE ("processor: layouts, every channel as if it ran alone, the sidechain untouched")
+{
+    const auto fiveOne = juce::AudioChannelSet::create5point1();
+    const auto wide = juce::AudioChannelSet::discreteChannels (64);
+    constexpr int samples = 1024;
+
+    for (const auto& main : { mono, stereo, fiveOne, wide })
+    {
+        for (const auto& sidechain : { none, mono, stereo })
+        {
+            LikyuProcessor processor;
+            REQUIRE (processor.setBusesLayout (layout (main, sidechain)));
+            setEveryType (processor);
+            processor.setRateAndBufferSizeDetails (48000.0, samples);
+            processor.prepareToPlay (48000.0, samples);
+
+            const auto mainChannels = main.size();
+            const auto total = processor.getTotalNumInputChannels();
+            REQUIRE (total == mainChannels + sidechain.size());
+
+            auto buffer = noiseBuffer (total, samples, 11);
+            const auto input = buffer;
+            juce::MidiBuffer midi;
+            processor.processBlock (buffer, midi);
+
+            INFO ("main " << main.getDescription().toStdString() << ", sidechain " << sidechain.size());
+
+            for (int c = mainChannels; c < total; ++c)
+                CHECK (sameChannel (buffer, c, input, c));
+
+            // A few channels against a mono instance fed that channel alone.
+            for (const auto c : { 0, mainChannels / 2, mainChannels - 1 })
+            {
+                LikyuProcessor alone (1);
+                setEveryType (alone);
+                alone.setRateAndBufferSizeDetails (48000.0, samples);
+                alone.prepareToPlay (48000.0, samples);
+
+                juce::AudioBuffer<float> one (1, samples);
+                one.copyFrom (0, 0, input, c, 0, samples);
+                alone.processBlock (one, midi);
+
+                INFO ("channel " << c);
+                CHECK (sameChannel (buffer, c, one, 0));
+            }
+        }
+    }
+}
+
+TEST_CASE ("processor: 500 blocks with every band on and parameters moving allocate nothing")
+{
+    namespace rt = likyu::dsp::rt;
+    REQUIRE (rt::isCounting());
+
+    LikyuProcessor processor;
+    setEveryType (processor);
+    processor.setRateAndBufferSizeDetails (96000.0, 64);
+    processor.prepareToPlay (96000.0, 64);
+
+    juce::AudioBuffer<float> buffer (2, 64);
+    juce::MidiBuffer midi;
+
+    rt::resetCounts();
+
+    for (int block = 0; block < 500; ++block)
+    {
+        if (block % 10 == 0)
+        {
+            // Outside the process call, as a host does: a gain, a type, a bypass.
+            processor.setValue (dsp::indexOf (block % dsp::numBands, dsp::BandParam::gain), (block % 61) - 30.0);
+            processor.setValue (dsp::indexOf ((block / 10) % dsp::numBands, dsp::BandParam::type), (block / 10) % dsp::numBandTypes);
+            processor.setValue (dsp::indexOf (dsp::GlobalParam::bypass), (block / 50) % 2);
+        }
+
+        buffer.clear();
+        buffer.setSample (0, 0, 1.0f);
+        processor.processBlock (buffer, midi);
+    }
+
+    CHECK (rt::regions() == 500);
+    CHECK (rt::violations() == 0);
+}
+
+TEST_CASE ("processor: a state loaded before prepareToPlay plays from its first block (Bitwig's order)")
+{
+    LikyuProcessor source;
+    setEveryType (source);
+    source.setValue (dsp::indexOf (dsp::GlobalParam::outGain), -3.0);
+
+    juce::MemoryBlock chunk;
+    source.getStateInformation (chunk);
+
+    LikyuProcessor loadedFirst;
+    loadedFirst.setStateInformation (chunk.getData(), static_cast<int> (chunk.getSize()));
+    loadedFirst.setRateAndBufferSizeDetails (48000.0, 256);
+    loadedFirst.prepareToPlay (48000.0, 256);
+
+    LikyuProcessor setDirectly;
+    setEveryType (setDirectly);
+    setDirectly.setValue (dsp::indexOf (dsp::GlobalParam::outGain), -3.0);
+    setDirectly.setRateAndBufferSizeDetails (48000.0, 256);
+    setDirectly.prepareToPlay (48000.0, 256);
+
+    auto a = noiseBuffer (2, 256, 21);
+    auto b = a;
+    juce::MidiBuffer midi;
+    loadedFirst.processBlock (a, midi);
+    setDirectly.processBlock (b, midi);
+
+    CHECK (sameChannel (a, 0, b, 0));
+    CHECK (sameChannel (a, 1, b, 1));
+}
+
+TEST_CASE ("processor: prepareToPlay again at the same rate keeps the sound going (Samplitude, Live)")
+{
+    LikyuProcessor once, twice;
+
+    for (auto* p : { &once, &twice })
+    {
+        setEveryType (*p);
+        p->setRateAndBufferSizeDetails (48000.0, 256);
+        p->prepareToPlay (48000.0, 256);
+    }
+
+    juce::MidiBuffer midi;
+
+    for (int block = 0; block < 4; ++block)
+    {
+        if (block == 2)
+            twice.prepareToPlay (48000.0, 256);
+
+        auto a = noiseBuffer (2, 256, 30 + block);
+        auto b = a;
+        once.processBlock (a, midi);
+        twice.processBlock (b, midi);
+
+        INFO ("block " << block);
+        CHECK (sameChannel (a, 0, b, 0));
+    }
 }

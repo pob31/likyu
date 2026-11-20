@@ -47,9 +47,9 @@ namespace likyutest
     void registerShutdownHook (std::function<void()> hook);
     void runShutdownHooks();
 
-    /** A file under tests/fixtures/, by its path relative to that folder. */
-    inline juce::File fixture (const juce::String& relativePath)
+    /** A state chunk fixture under tests/state/ (PRD: a fixture per version). */
+    inline juce::File stateFixture (const juce::String& name)
     {
-        return juce::File (juce::String (LIKYU_TEST_FIXTURES_DIR)).getChildFile (relativePath);
+        return juce::File (juce::String (LIKYU_TEST_STATE_DIR)).getChildFile (name);
     }
 }

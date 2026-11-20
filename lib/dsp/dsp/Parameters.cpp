@@ -16,8 +16,12 @@
 
 #include "Parameters.h"
 
+#include "Math.h"
+
 #include <algorithm>
 #include <cmath>
+#include <functional>
+#include <map>
 
 namespace likyu::dsp
 {
@@ -136,6 +140,56 @@ namespace likyu::dsp
     {
         static const std::vector<ParamSpec> table = buildTable();
         return table;
+    }
+
+    int indexOfId (std::string_view id)
+    {
+        static const auto byId = []
+        {
+            std::map<std::string, int, std::less<>> map;
+            const auto& table = parameterTable();
+
+            for (std::size_t i = 0; i < table.size(); ++i)
+                map.emplace (table[i].id, static_cast<int> (i));
+
+            return map;
+        }();
+
+        const auto found = byId.find (id);
+        return found == byId.end() ? -1 : found->second;
+    }
+
+    //==========================================================================
+    double toNormalised (const ParamSpec& spec, double value) noexcept
+    {
+        const auto v = std::clamp (value, spec.minimum, spec.maximum);
+
+        if (spec.skew == ParamSkew::logarithmic)
+            return std::clamp (std::log (v / spec.minimum) / std::log (spec.maximum / spec.minimum), 0.0, 1.0);
+
+        return (v - spec.minimum) / (spec.maximum - spec.minimum);
+    }
+
+    double fromNormalised (const ParamSpec& spec, double normalised) noexcept
+    {
+        const auto p = std::clamp (normalised, 0.0, 1.0);
+
+        if (spec.skew == ParamSkew::logarithmic)
+            return std::clamp (spec.minimum * std::pow (spec.maximum / spec.minimum, p), spec.minimum, spec.maximum);
+
+        return spec.minimum + p * (spec.maximum - spec.minimum);
+    }
+
+    double snapToRound (double value) noexcept
+    {
+        if (! std::isfinite (value) || exactlyEqual (value, 0.0))
+            return value;
+
+        const auto magnitude = std::floor (std::log10 (std::abs (value)));
+        const auto scale = std::pow (10.0, 5.0 - magnitude);
+        const auto round = std::round (value * scale) / scale;
+
+        return std::abs (round - value) <= 1.0e-6 * std::abs (value) ? round : value;
     }
 
     //==========================================================================

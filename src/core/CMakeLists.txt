@@ -16,11 +16,15 @@
 # chunk, the meter snapshot. One STATIC target that the shims and the editor link; juce_core
 # and nothing else of JUCE, so a headless test drives all of it. Includes as <core/...>.
 #
-# Phase 0 holds the provisional state chunk only.
+# Phase 2: the dispatch of parameter values to the chain, their text, the state chunk.
 
 add_library(likyu_core STATIC
-    ProvisionalState.h
-    ProvisionalState.cpp)
+    Dispatch.h
+    Dispatch.cpp
+    State.h
+    State.cpp
+    ValueText.h
+    ValueText.cpp)
 add_library(likyu::core ALIAS likyu_core)
 
 set_target_properties(likyu_core PROPERTIES POSITION_INDEPENDENT_CODE ON)

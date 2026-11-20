@@ -255,3 +255,30 @@ TEST_CASE ("realtime check: an allocation inside a region is counted")
     CHECK (rt::violations() >= 1);
     rt::resetCounts();
 }
+
+TEST_CASE ("lookahead: prepared again with the same width and length, it keeps its history")
+{
+    Lookahead<float> line;
+    line.prepare (1, 144);
+    line.setDelay (48);
+
+    const auto input = noise<float> (2000, 9);
+    auto signal = input;
+
+    float* first = signal.data();
+    line.process (&first, 1, 1000);
+
+    line.prepare (1, 144);      // a host's second prepareToPlay, mid-stream
+    float* second = signal.data() + 1000;
+    line.process (&second, 1, 1000);
+
+    for (std::size_t n = 1000; n < 2000; ++n)
+        REQUIRE (signal[n] == input[n - 48]);
+
+    // Another length is another line, cleared: what comes out 48 samples late is silence.
+    line.prepare (1, 576);
+    float sample = 1.0f;
+    float* one = &sample;
+    line.process (&one, 1, 1);
+    CHECK (sample == 0.0f);
+}
