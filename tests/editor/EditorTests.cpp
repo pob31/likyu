@@ -968,3 +968,70 @@ TEST_CASE ("editor: Listen, Reset and Flatten want a long press")
         CHECK (processor.valueOf (dsp::indexOf (dsp::GlobalParam::outGain)) == doctest::Approx (-3.0));
     }
 }
+
+TEST_CASE ("editor: any values of the 284 parameters paint, as a validator throws them at it")
+{
+    /*  What pluginval does with the editor open (its "Editor Automation" and
+        "Fuzz parameters"): every parameter at a random place of its range,
+        again and again. Here with audio running between, so the meters move
+        too. With LIKYU_SNAPSHOT_DIR set, each configuration is written as
+        likyu-fuzz-NN.png, to look at what a validator shows for an instant. */
+    Opened opened;
+    auto& processor = opened.processor;
+    auto& root = opened.window->editorRoot();
+    const auto folder = juce::SystemStats::getEnvironmentVariable ("LIKYU_SNAPSHOT_DIR", {});
+
+    juce::Random random (20261120);
+    constexpr int configurations = 48;
+
+    for (int n = 0; n < configurations; ++n)
+    {
+        for (int i = 0; i < dsp::numParams; ++i)
+            processor.parameterAt (i).setValueNotifyingHost (random.nextFloat());
+
+        // Not bypassed, or there is nothing to see move; and a band to look at.
+        processor.setValue (dsp::indexOf (dsp::GlobalParam::bypass), 0.0);
+        root.selectBand (random.nextInt (dsp::numBands));
+
+        run (processor, 200.0 + 4000.0 * random.nextDouble(), 0.4, 40);
+        opened.refresh();
+
+        const auto image = opened.window->createComponentSnapshot (opened.window->getLocalBounds());
+        REQUIRE (image.isValid());
+
+        // Every control the foot shows is inside it and none overlaps another, whatever the modes.
+        const auto children = root.footPanel().getChildren();
+
+        for (int a = 0; a < children.size(); ++a)
+        {
+            if (! children[a]->isVisible())
+                continue;
+
+            CHECK (root.footPanel().getLocalBounds().contains (children[a]->getBounds()));
+
+            for (int b = a + 1; b < children.size(); ++b)
+                if (children[b]->isVisible())
+                    CHECK_FALSE (children[a]->getBounds().intersects (children[b]->getBounds()));
+        }
+
+        if (folder.isNotEmpty())
+        {
+            const auto file = juce::File (folder).getChildFile ("likyu-fuzz-" + juce::String (n).paddedLeft ('0', 2) + ".png");
+            file.deleteFile();
+
+            if (juce::FileOutputStream stream (file); stream.openedOk())
+                juce::PNGImageFormat().writeImageToStream (image, stream);
+        }
+    }
+
+    // Every value was in range: nothing the editor read was a NaN, and the meters still publish.
+    core::Meters meters;
+    processor.meters().read (meters);
+    CHECK (meters.block > 0);
+
+    for (const auto& band : meters.bands)
+    {
+        CHECK (std::isfinite (band.offsetDb));
+        CHECK (std::isfinite (band.frequencyHz));
+    }
+}
