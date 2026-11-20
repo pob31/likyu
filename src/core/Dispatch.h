@@ -29,10 +29,10 @@
     output gain or the link did. The comparison is of bits, so a value that a
     host sets again unchanged costs nothing.
 
-    Since Phase 3 a band reads its type, frequency, Q, gain and Q mode, its
-    gain mode, key and detector, and the Dynamic mode's values; Transient,
-    Env and Track's values are carried and ignored until Phases 4 and 5 give
-    them a use. Choices are rounded to their index and clamped; a toggle is
+    A band reads all 35 of its values: type, frequency, Q, gain and Q mode;
+    its gain mode, key and detector; the Dynamic mode's values (Phase 3),
+    Transient's (Phase 4), and its frequency mode with Env's and Track's
+    (Phase 5). Choices are rounded to their index and clamped; a toggle is
     on from 0.5.
 
     No allocation; nothing of JUCE.

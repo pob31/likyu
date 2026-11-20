@@ -84,6 +84,19 @@ namespace likyu::core
         s.transientSustainPercent = static_cast<double> (bandValue (values, band, P::tsus));
         s.transientTime = static_cast<double> (bandValue (values, band, P::ttime));
         s.transientFloorDb = static_cast<double> (bandValue (values, band, P::tfloor));
+
+        s.fmode = static_cast<dsp::FrequencyMode> (choiceIndex (bandValue (values, band, P::fmode), dsp::numFrequencyModes));
+        s.lowHz = static_cast<double> (bandValue (values, band, P::flo));
+        s.highHz = static_cast<double> (bandValue (values, band, P::fhi));
+        s.speedMs = static_cast<double> (bandValue (values, band, P::fspeed));
+        s.envDirection = static_cast<dsp::EnvDirection> (choiceIndex (bandValue (values, band, P::fdir), dsp::numEnvDirections));
+        s.sensitivityDb = static_cast<double> (bandValue (values, band, P::fsens));
+        s.spanDb = static_cast<double> (bandValue (values, band, P::fspan));
+        s.envAttackMs = static_cast<double> (bandValue (values, band, P::fatk));
+        s.envReleaseMs = static_cast<double> (bandValue (values, band, P::frel));
+        s.confidencePercent = static_cast<double> (bandValue (values, band, P::fconf));
+        s.holdMs = static_cast<double> (bandValue (values, band, P::fhold));
+        s.confidenceScalesGain = isOn (bandValue (values, band, P::fcgain));
         return s;
     }
 

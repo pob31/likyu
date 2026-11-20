@@ -74,6 +74,18 @@ namespace likyu::dsp
     inline constexpr double minTransientFloorDb = -90.0;
     inline constexpr double maxTransientFloorDb = -20.0;
 
+    /** The ranges of the frequency modes' parameters, which Env and Track
+        clamp to as the table does (dsp/Env.h, dsp/Tracker.h). Env's attack
+        and release are the Dynamic mode's ranges; Speed is *tune*. */
+    inline constexpr double minSensitivityDb = -80.0;
+    inline constexpr double maxSensitivityDb = 0.0;
+    inline constexpr double minSpanDb = 6.0;
+    inline constexpr double maxSpanDb = 60.0;
+    inline constexpr double minSpeedMs = 1.0;
+    inline constexpr double maxSpeedMs = 1000.0;
+    inline constexpr double maxConfidencePercent = 100.0;
+    inline constexpr double maxHoldMs = 2000.0;
+
     enum class ParamKind { toggle, choice, continuous };
 
     /** How a continuous parameter is laid along a host's 0 to 1. */

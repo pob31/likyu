@@ -172,6 +172,57 @@ TEST_CASE ("dispatch: a band's detector, Dynamic and Transient values, and the l
     CHECK_FALSE (core::chainSettingsFrom (global).linked);
 }
 
+TEST_CASE ("dispatch: a band's frequency mode and the Env and Track values, as the chain takes them")
+{
+    using P = dsp::BandParam;
+
+    auto values = defaults();
+    band (values, 6, P::fmode) = 1.0f;
+    band (values, 6, P::flo) = 300.0f;
+    band (values, 6, P::fhi) = 4800.0f;
+    band (values, 6, P::fspeed) = 20.0f;
+    band (values, 6, P::fdir) = 1.0f;
+    band (values, 6, P::fsens) = -52.0f;
+    band (values, 6, P::fspan) = 24.0f;
+    band (values, 6, P::fatk) = 2.0f;
+    band (values, 6, P::frel) = 300.0f;
+    band (values, 6, P::fconf) = 45.0f;
+    band (values, 6, P::fhold) = 500.0f;
+    band (values, 6, P::fcgain) = 1.0f;
+
+    const auto s = core::bandSettingsFrom (values, 6);
+    CHECK (s.fmode == dsp::FrequencyMode::env);
+    CHECK (s.lowHz == 300.0);
+    CHECK (s.highHz == 4800.0);
+    CHECK (s.speedMs == 20.0);
+    CHECK (s.envDirection == dsp::EnvDirection::down);
+    CHECK (s.sensitivityDb == -52.0);
+    CHECK (s.spanDb == 24.0);
+    CHECK (s.envAttackMs == 2.0);
+    CHECK (s.envReleaseMs == 300.0);
+    CHECK (s.confidencePercent == 45.0);
+    CHECK (s.holdMs == 500.0);
+    CHECK (s.confidenceScalesGain);
+
+    // Out of range, rounded and clamped like every choice.
+    band (values, 6, P::fmode) = 9.0f;
+    CHECK (core::bandSettingsFrom (values, 6).fmode == dsp::FrequencyMode::track);
+
+    // The defaults: Fixed, Up, the table's values; Low and High an octave
+    // either side of band 7's default frequency (7 kHz).
+    const auto d = core::bandSettingsFrom (defaults(), 6);
+    CHECK (d.fmode == dsp::FrequencyMode::fixed);
+    CHECK (d.envDirection == dsp::EnvDirection::up);
+    CHECK (d.lowHz == 3500.0);
+    CHECK (d.highHz == 14000.0);
+    CHECK (d.speedMs == 50.0);
+    CHECK (d.sensitivityDb == -40.0);
+    CHECK (d.spanDb == 30.0);
+    CHECK (d.confidencePercent == 30.0);
+    CHECK (d.holdMs == 200.0);
+    CHECK_FALSE (d.confidenceScalesGain);
+}
+
 TEST_CASE ("dispatch: the link, when it moves, reaches the chain")
 {
     // Stereo, a loud left: linked, a dynamic band cuts the right as much as the left.

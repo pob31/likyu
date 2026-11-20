@@ -203,6 +203,29 @@ namespace likyutest::dsp
         return s;
     }
 
+    /** A band in Env mode (Static gain), its detector its own band-pass at
+        `detectorHz` so that its level is the key's level there. */
+    inline likyu::dsp::BandSettings envBand (likyu::dsp::BandType type, double gainDb, double lowHz, double highHz,
+                                             double sensitivityDb, double spanDb, double detectorHz,
+                                             likyu::dsp::EnvDirection direction = likyu::dsp::EnvDirection::up,
+                                             double attackMs = 5.0, double releaseMs = 120.0)
+    {
+        auto s = band (true, type, 1000.0, 2.0, gainDb);
+        s.fmode = likyu::dsp::FrequencyMode::env;
+        s.lowHz = lowHz;
+        s.highHz = highHz;
+        s.sensitivityDb = sensitivityDb;
+        s.spanDb = spanDb;
+        s.envDirection = direction;
+        s.envAttackMs = attackMs;
+        s.envReleaseMs = releaseMs;
+        s.dfilt = likyu::dsp::DetectorFilter::own;
+        s.dtype = likyu::dsp::DetectorType::bandPass;
+        s.detectorFrequency = detectorHz;
+        s.detectorQ = 0.5;
+        return s;
+    }
+
     /** A sine of peak `amplitude`. */
     template <typename Sample>
     std::vector<Sample> tone (int length, double hz, double amplitude, double rate, double phase = 0.0)

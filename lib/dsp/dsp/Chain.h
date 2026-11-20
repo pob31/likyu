@@ -83,6 +83,17 @@
     and the lane's three envelopes (Transient, Phase 4; dsp/Transient.h).
     Everything after the offset is the same for both.
 
+    FREQUENCY PER LANE (PRD, Frequency modes; Phase 5). A band in Env or
+    Track has lanes on its key whatever its gain mode, and each lane its own
+    frequency: Env's follower maps the lane's level (dsp/Env.h). At each grid
+    point a lane's frequency as it stood at the end of the step before
+    becomes the g the band reaches at this step's end, interpolated
+    linearly from the last one (PRD, Filter core, update rates): the
+    frequency path is one control step late, and the output still depends
+    on nothing but the sample index. A Follow detector on such a band
+    follows its lane's frequency (PRD, Detection). A lane at the band's own
+    frequency takes the band's own g, so it is Phase 2's band, bit for bit.
+
     A DYNAMIC OFFSET OF EXACTLY 0 IS PHASE 2. A sample whose offset is 0 is
     computed with the band's own Phase 2 coefficients, and an identity is
     skipped wherever it falls, as on Phase 2's paths; so which path a
@@ -96,9 +107,10 @@
     change of band goes out and back in. The bypass, after it, still wins.
 
     METERS: per band, the offset now (the largest over its lanes), the
-    frequency now, the tracker's confidence (0 until Phase 5) and whether
-    the key fell back to Self. Read on the audio thread after process();
-    likyu::core publishes them (core/MeterSnapshot.h).
+    frequency now (the link lane's, for a band in Env or Track), the
+    tracker's confidence and whether the key fell back to Self. Read on the
+    audio thread after process(); likyu::core publishes them
+    (core/MeterSnapshot.h).
 
     THREADS. setBand(), setChain(), setLinkExclusions(), setListen(),
     setLookahead(), setTransientTimes() are called on the audio thread, before process(), with values read from the
@@ -219,6 +231,16 @@ namespace likyu::dsp
         /** The dynamic offset of `band` (from 0) on `channel` now, in dB: 0
             for a band that is not dynamic. For tests and the meters. */
         double offsetDb (int band, int channel) const noexcept;
+
+        /** The frequency of `band` (from 0) on `channel` now, in Hz: what its
+            Env or Track lane asks for at the end of the last sample, or the
+            band's own frequency. For tests and the meters. */
+        double frequencyHz (int band, int channel) const noexcept;
+
+        /** The frequency behind the g the band's filter reaches at the end of
+            the current control step, on `channel`: frequencyHz() as it stood
+            at the step before's end. For tests. */
+        double appliedFrequencyHz (int band, int channel) const noexcept;
 
         /** What `band` (from 0) shows now. */
         BandMeter bandMeter (int band) const noexcept;
@@ -360,15 +382,21 @@ namespace likyu::dsp
             when anything is to be written back (the touched marks say what). */
         bool runStep (int numChannels, int n) noexcept LIKYU_AUDIO_THREAD;
 
-        /** One band's detectors and lanes over the key: its offsets for the stretch. */
+        /** One band's detectors and lanes over the key: its offsets for the
+            stretch, and its Env lanes' frequencies at the stretch's end. */
         void detect (int band, int numChannels, int n) noexcept LIKYU_AUDIO_THREAD;
 
         /** One band over the work buffer, marking what it changed. */
         void runBand (int band, int numChannels, int n) noexcept LIKYU_AUDIO_THREAD;
 
-        /** The same for a band with a dynamic offset in the stretch: apart, so
-            that the Phase 2 paths stay as small as they were. */
-        void runBandWithOffsets (int band, int numChannels, int n) noexcept LIKYU_AUDIO_THREAD;
+        /** The same for a band with a dynamic offset or a lane off its own
+            frequency in the stretch: apart, so that the Phase 2 paths stay as
+            small as they were. */
+        void runBandPerLane (int band, int numChannels, int n) noexcept LIKYU_AUDIO_THREAD;
+
+        /** At a grid point: each lane's g for the step, from its frequency at
+            the end of the step before, and its Follow detector. */
+        void updateFrequencies (int band) noexcept LIKYU_AUDIO_THREAD;
 
         /** The lanes of a band for its shape in effect; offsets back to 0. */
         void buildLanes (int band) noexcept LIKYU_AUDIO_THREAD;
@@ -379,6 +407,20 @@ namespace likyu::dsp
         {
             return static_cast<std::size_t> (slot * numBands + band);
         }
+
+        /** A lane's frequency, Phase 5. */
+        struct LaneFrequency
+        {
+            double logHz = 0.0;         // the modulator's output at the end of the last stretch, log2 Hz
+            double applied = 0.0;       // log2 Hz behind g1
+            double g0 = 0.0, g1 = 0.0;  // the step's start and end
+            bool hasOutput = false;     // logHz holds a value
+            bool started = false;       // g1 holds a value
+            bool own = false;           // at the band's own frequency: its own g
+        };
+
+        /** The lane of `channel` in `band`, or -1 when the band has none. */
+        int laneOf (int band, int channel) const noexcept;
 
         std::array<Band, numBands> bands {};
         std::array<bool, numBands> stateInUse {};
@@ -398,6 +440,11 @@ namespace likyu::dsp
         std::array<bool, numBands> anyOffset {};
         std::vector<double> offsets;            // band * channels + lane: the smoothed offset, dB
         std::vector<TransientEnvelopes> envelopes;   // the same: a Transient lane's envelopes
+        std::vector<LaneFrequency> laneFrequencies;  // the same: an Env or Track lane's frequency
+        std::vector<EnvState> envStates;             // the same: an Env lane's follower
+        std::vector<DetectorCoefficients> laneDetectors;   // the same: a Follow detector on a lane's frequency
+        std::array<bool, numBands> modulated {};     // this step, some lane is off the band's own frequency
+        std::array<bool, numBands> perLaneDetector {};     // this step, the detector follows each lane
         std::array<Lanes, numBands> lanes {};
         std::array<int, numBands> lanesBuiltFor {};      // the band's shape revision
 
