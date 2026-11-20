@@ -20,6 +20,7 @@
 #include <dsp/rt/RtCheck.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 
 namespace likyu
@@ -216,6 +217,13 @@ namespace likyu
         lookaheadDouble.prepare (channels, longest);
         chain.prepare (sampleRate, channels);
 
+        // The key's copy, a chunk long: assign() keeps the memory when the size is the same.
+        const auto keySize = static_cast<std::size_t> (channels * chunkSamples);
+        keyFloat.assign (keySize, 0.0f);
+        keyDouble.assign (keySize, 0.0);
+        keyChannels = channels;
+
+        updateLayout();
         updateLatency();
     }
 
@@ -226,6 +234,52 @@ namespace likyu
         lookaheadFloat.reset();
         lookaheadDouble.reset();
         chain.reset();
+    }
+
+    void LikyuProcessor::processorLayoutsChanged()
+    {
+        updateLayout();
+    }
+
+    //==========================================================================
+    juce::String LikyuProcessor::currentLayoutName() const
+    {
+        return getChannelLayoutOfBus (true, 0).getSpeakerArrangementAsString();
+    }
+
+    core::LinkList LikyuProcessor::getLinkList() const
+    {
+        const juce::ScopedLock lock (linkLock);
+        return linkList;
+    }
+
+    void LikyuProcessor::setLinkList (const core::LinkList& list)
+    {
+        {
+            const juce::ScopedLock lock (linkLock);
+            linkList = list;
+        }
+
+        updateLinkMask();
+    }
+
+    void LikyuProcessor::updateLayout()
+    {
+        {
+            const juce::ScopedLock lock (linkLock);
+            layoutName = currentLayoutName();
+            layoutChannels = getMainBusNumInputChannels();
+        }
+
+        updateLinkMask();
+    }
+
+    /*  The list applies only to the layout it was made for (decided by the
+        author 2026-11-20): a host's layout of a moment erases nothing. */
+    void LikyuProcessor::updateLinkMask()
+    {
+        const juce::ScopedLock lock (linkLock);
+        linkMask.store (core::effectiveMask (linkList, layoutName, layoutChannels), std::memory_order_relaxed);
     }
 
     //==========================================================================
@@ -278,17 +332,35 @@ namespace likyu
     }
 
     template <typename Sample>
-    void LikyuProcessor::process (juce::AudioBuffer<Sample>& buffer, dsp::Lookahead<Sample>& lookahead, bool hostBypassed)
+    void LikyuProcessor::process (juce::AudioBuffer<Sample>& buffer, dsp::Lookahead<Sample>& lookahead,
+                                  std::vector<Sample>& keyStore, bool hostBypassed)
     {
         // One realtime region for the block; the lookahead's and the chain's nest inside it.
         const dsp::rt::ScopedRealtimeCheck realtime;
 
         /*  The main bus is the buffer's first channels, input and output in
-            place. A sidechain, when there is one, sits after them and is not
-            read yet. Flush-to-zero is the chain's own (dsp/Denormals.h). */
-        const auto channels = juce::jmin (getMainBusNumInputChannels(), buffer.getNumChannels());
+            place. A sidechain, when the host has it enabled, sits after them:
+            absent or disabled, it has no channels, and a Sidechain band falls
+            back to Self. Flush-to-zero is the chain's own (dsp/Denormals.h). */
+        const auto channels = juce::jmin (getMainBusNumInputChannels(), buffer.getNumChannels(), maxChannels);
         const auto samples = buffer.getNumSamples();
         auto* const* audio = buffer.getArrayOfWritePointers();
+
+        std::array<const Sample*, dsp::Chain::maxSidechainChannels> sidechain {};
+        int sidechainChannels = 0;
+
+        if (const auto* bus = getBus (true, 1); bus != nullptr && bus->isEnabled())
+        {
+            const auto count = juce::jmin (bus->getNumberOfChannels(), dsp::Chain::maxSidechainChannels);
+
+            for (int s = 0; s < count; ++s)
+            {
+                const auto index = getChannelIndexInProcessBlockBuffer (true, 1, s);
+
+                if (index >= channels && index < buffer.getNumChannels())
+                    sidechain[static_cast<std::size_t> (sidechainChannels++)] = buffer.getReadPointer (index);
+            }
+        }
 
         readParameters();
 
@@ -296,20 +368,60 @@ namespace likyu
             values[static_cast<std::size_t> (dsp::indexOf (dsp::GlobalParam::bypass))] = 1.0f;
 
         dispatch.apply (values, chain);
-
+        chain.setLinkExclusions (linkMask.load (std::memory_order_relaxed));
         lookahead.setDelay (delaySamples.load (std::memory_order_relaxed));
-        lookahead.process (audio, channels, samples);
-        chain.process (audio, channels, samples);
+
+        /*  In chunks: the key is the main input copied before the lookahead
+            delays it in place, so that detection reads the undelayed signal
+            (PRD, Signal flow). The chain's grid makes the chunks invisible. */
+        std::array<Sample*, maxChannels> at {};
+        std::array<const Sample*, maxChannels> keyAt {};
+        std::array<const Sample*, dsp::Chain::maxSidechainChannels> sidechainAt {};
+        const auto keyed = juce::jmin (channels, keyChannels);
+
+        for (int offset = 0; offset < samples; offset += chunkSamples)
+        {
+            const auto n = juce::jmin (chunkSamples, samples - offset);
+
+            for (int c = 0; c < channels; ++c)
+            {
+                const auto i = static_cast<std::size_t> (c);
+                at[i] = audio[c] + offset;
+
+                if (c < keyed)
+                {
+                    auto* copy = keyStore.data() + c * chunkSamples;
+                    std::copy (at[i], at[i] + n, copy);
+                    keyAt[i] = copy;
+                }
+                else
+                {
+                    keyAt[i] = nullptr;
+                }
+            }
+
+            for (int s = 0; s < sidechainChannels; ++s)
+                sidechainAt[static_cast<std::size_t> (s)] = sidechain[static_cast<std::size_t> (s)] + offset;
+
+            dsp::Key<Sample> key;
+            key.self = keyAt.data();
+            key.selfChannels = channels;
+            key.sidechain = sidechainChannels > 0 ? sidechainAt.data() : nullptr;
+            key.sidechainChannels = sidechainChannels;
+
+            lookahead.process (at.data(), channels, n);
+            chain.process (at.data(), channels, key, n);
+        }
     }
 
     void LikyuProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
     {
-        process (buffer, lookaheadFloat, false);
+        process (buffer, lookaheadFloat, keyFloat, false);
     }
 
     void LikyuProcessor::processBlock (juce::AudioBuffer<double>& buffer, juce::MidiBuffer&)
     {
-        process (buffer, lookaheadDouble, false);
+        process (buffer, lookaheadDouble, keyDouble, false);
     }
 
     /*  JUCE's wrappers call these only when the plugin has no bypass parameter
@@ -320,12 +432,12 @@ namespace likyu
         crossfades to the delayed dry signal. */
     void LikyuProcessor::processBlockBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
     {
-        process (buffer, lookaheadFloat, true);
+        process (buffer, lookaheadFloat, keyFloat, true);
     }
 
     void LikyuProcessor::processBlockBypassed (juce::AudioBuffer<double>& buffer, juce::MidiBuffer&)
     {
-        process (buffer, lookaheadDouble, true);
+        process (buffer, lookaheadDouble, keyDouble, true);
     }
 
     //==========================================================================
@@ -336,7 +448,7 @@ namespace likyu
         for (std::size_t i = 0; i < current.size(); ++i)
             current[i] = valueOf (static_cast<int> (i));
 
-        const auto text = stateChunk.write (current);
+        const auto text = stateChunk.write (current, getLinkList());
         destination.replaceAll (text.toRawUTF8(), text.getNumBytesAsUTF8());
     }
 
@@ -350,11 +462,15 @@ namespace likyu
             block reads. */
         const auto text = juce::String::fromUTF8 (static_cast<const char*> (data), sizeInBytes);
         std::vector<double> loaded;
+        core::LinkList link;
 
-        if (! stateChunk.read (text, loaded))
+        if (! stateChunk.read (text, loaded, link))
             return;
 
         for (std::size_t i = 0; i < loaded.size() && i < parameters.size(); ++i)
             setValue (static_cast<int> (i), loaded[i]);
+
+        // Kept as loaded, whatever the layout now: it applies once the layout is its own.
+        setLinkList (link);
     }
 }

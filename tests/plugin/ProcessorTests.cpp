@@ -32,6 +32,7 @@
 
 #include <cmath>
 #include <cstring>
+#include <utility>
 #include <vector>
 
 using namespace likyu;
@@ -372,6 +373,39 @@ namespace
         return a.getNumSamples() == b.getNumSamples()
             && std::memcmp (a.getReadPointer (ca), b.getReadPointer (cb), static_cast<std::size_t> (a.getNumSamples()) * sizeof (float)) == 0;
     }
+
+    /** A band in Dynamic mode at 0 dB static, its detector following it. */
+    void setDynamic (LikyuProcessor& p, int b, dsp::BandType type, double hz, double thresholdDb, double rangeDb,
+                     dsp::KeySource key = dsp::KeySource::self, double attackMs = 1.0, double releaseMs = 50.0)
+    {
+        setBand (p, b, true, type, hz, 1.0, 0.0);
+        p.setValue (dsp::indexOf (b, dsp::BandParam::gmode), static_cast<double> (dsp::GainMode::dynamic));
+        p.setValue (dsp::indexOf (b, dsp::BandParam::key), static_cast<double> (key));
+        p.setValue (dsp::indexOf (b, dsp::BandParam::thresh), thresholdDb);
+        p.setValue (dsp::indexOf (b, dsp::BandParam::range), rangeDb);
+        p.setValue (dsp::indexOf (b, dsp::BandParam::ratio), 20.0);
+        p.setValue (dsp::indexOf (b, dsp::BandParam::atk), attackMs);
+        p.setValue (dsp::indexOf (b, dsp::BandParam::rel), releaseMs);
+    }
+
+    void addTone (juce::AudioBuffer<float>& buffer, int channel, double hz, double amplitude, int from, int to)
+    {
+        for (int n = from; n < to; ++n)
+            buffer.addSample (channel, n, static_cast<float> (amplitude * std::sin (2.0 * 3.14159265358979323846 * hz * n / 48000.0)));
+    }
+
+    /** `buffer` through `p` in blocks of `block`. */
+    void processInBlocks (LikyuProcessor& p, juce::AudioBuffer<float>& buffer, int block)
+    {
+        juce::MidiBuffer midi;
+
+        for (int start = 0; start < buffer.getNumSamples(); start += block)
+        {
+            const auto n = juce::jmin (block, buffer.getNumSamples() - start);
+            juce::AudioBuffer<float> part (buffer.getArrayOfWritePointers(), buffer.getNumChannels(), start, n);
+            p.processBlock (part, midi);
+        }
+    }
 }
 
 TEST_CASE ("processor: every default maps to itself through the host's float mapping, and each end to itself")
@@ -629,4 +663,292 @@ TEST_CASE ("processor: prepareToPlay again at the same rate keeps the sound goin
         INFO ("block " << block);
         CHECK (sameChannel (a, 0, b, 0));
     }
+}
+
+//==============================================================================
+TEST_CASE ("processor: detectors read the input undelayed: with a lookahead, a dynamic band's cut is in place when the delayed burst arrives")
+{
+    constexpr int onset = 2400, length = 9600;
+
+    const auto firstOfBurst = [] (int lookahead)
+    {
+        LikyuProcessor processor;
+        setLookahead (processor, lookahead);
+        setDynamic (processor, 0, dsp::BandType::bell, 3000.0, -40.0, -20.0, dsp::KeySource::self, 1.0, 100.0);
+        processor.setRateAndBufferSizeDetails (48000.0, 64);
+        processor.prepareToPlay (48000.0, 64);
+
+        juce::AudioBuffer<float> buffer (2, length);
+        buffer.clear();
+        addTone (buffer, 0, 3000.0, 0.5, onset, length);
+        addTone (buffer, 1, 3000.0, 0.5, onset, length);
+        const auto input = buffer;
+        processInBlocks (processor, buffer, 64);
+
+        /*  The energy of the burst's first 2 ms as it comes out, against the
+            same samples going in. Energy, not the peak: a filter cut to -19 dB
+            still lets a sudden sine through for the few samples its band-pass
+            takes to answer. */
+        const auto delay = processor.getLatencySamples();
+        double in = 0.0, out = 0.0;
+
+        for (int n = 0; n < 96; ++n)
+        {
+            in += std::pow (static_cast<double> (input.getSample (0, onset + n)), 2.0);
+            out += std::pow (static_cast<double> (buffer.getSample (0, onset + delay + n)), 2.0);
+        }
+
+        return 10.0 * std::log10 (out / in);
+    };
+
+    const auto without = firstOfBurst (0), with = firstOfBurst (3);
+
+    INFO ("the burst's first 2 ms: " << without << " dB without lookahead, " << with << " dB with 3 ms");
+    CHECK (with < without - 6.0);
+    CHECK (with < -12.0);
+}
+
+TEST_CASE ("processor: a Sidechain band is keyed by the bus; disabled, it falls back to Self; enabled at exact zeros, it is keyed by silence")
+{
+    constexpr int length = 4800;
+
+    const auto run = [] (const juce::AudioChannelSet& sidechain, dsp::KeySource key, bool loudMain, bool loudSidechain)
+    {
+        LikyuProcessor processor;
+        REQUIRE (processor.setBusesLayout (layout (stereo, sidechain)));
+        setDynamic (processor, 0, dsp::BandType::bell, 2000.0, -40.0, -12.0, key);
+        processor.setRateAndBufferSizeDetails (48000.0, 256);
+        processor.prepareToPlay (48000.0, 256);
+
+        juce::AudioBuffer<float> buffer (processor.getTotalNumInputChannels(), length);
+        buffer.clear();
+
+        for (int c = 0; c < 2; ++c)
+            if (loudMain)
+                addTone (buffer, c, 2000.0, 0.5, 0, length);
+            else
+                for (int n = 0; n < length; ++n)
+                    buffer.setSample (c, n, 1.0e-4f * static_cast<float> ((n * 7919 + c * 31) % 200 - 100) / 100.0f);
+
+        if (loudSidechain)
+            for (int c = 2; c < buffer.getNumChannels(); ++c)
+                addTone (buffer, c, 2000.0, 0.5, 0, length);
+
+        const auto input = buffer;
+        processInBlocks (processor, buffer, 256);
+        return std::pair { input, buffer };
+    };
+
+    // Enabled and fed: the quiet main is cut by the sidechain's tone.
+    {
+        const auto [in, out] = run (stereo, dsp::KeySource::sidechain, false, true);
+        CHECK_FALSE (sameChannel (out, 0, in, 0));
+
+        // The sidechain never reaches the output.
+        CHECK (sameChannel (out, 2, in, 2));
+    }
+
+    // Enabled at exact zeros: a key of silence, so the loud main passes untouched.
+    {
+        const auto [in, out] = run (stereo, dsp::KeySource::sidechain, true, false);
+        CHECK (sameChannel (out, 0, in, 0));
+        CHECK (sameChannel (out, 1, in, 1));
+    }
+
+    // Disabled: the band runs on Self, exactly as a Self band does.
+    {
+        const auto [in, fellBack] = run (none, dsp::KeySource::sidechain, true, false);
+        const auto [unused, self] = run (none, dsp::KeySource::self, true, false);
+        CHECK_FALSE (sameChannel (fellBack, 0, in, 0));
+        CHECK (sameChannel (fellBack, 0, self, 0));
+        CHECK (sameChannel (fellBack, 1, self, 1));
+    }
+}
+
+TEST_CASE ("processor: link exclusion on 5.1: the list applies to its layout, survives state, and any other layout has every channel in")
+{
+    constexpr int lfe = 3, length = 4800;
+    const auto fiveOne = juce::AudioChannelSet::create5point1();
+    const auto sevenOne = juce::AudioChannelSet::create7point1();
+    const auto wide = juce::AudioChannelSet::discreteChannels (64);
+
+    const auto makeProcessor = [] (LikyuProcessor& p, const juce::AudioChannelSet& main)
+    {
+        REQUIRE (p.setBusesLayout (layout (main, none)));
+        setDynamic (p, 0, dsp::BandType::lowShelf, 80.0, -30.0, -9.0);
+        p.setRateAndBufferSizeDetails (48000.0, 256);
+        p.prepareToPlay (48000.0, 256);
+    };
+
+    /*  Quiet noise everywhere, the key under the threshold, and a burst at
+        80 Hz on the LFE: a channel whose gain moves is not the input any more,
+        and one whose gain does not is the input, bit for bit. A second of the
+        quiet noise first, for what came before to return to zero. */
+    const auto moved = [] (LikyuProcessor& p)
+    {
+        const auto channels = p.getTotalNumInputChannels();
+
+        auto settle = noiseBuffer (channels, 48000, 40);
+        settle.applyGain (1.0e-4f);
+        processInBlocks (p, settle, 256);
+
+        auto buffer = noiseBuffer (channels, length, 41);
+        buffer.applyGain (1.0e-4f);
+        addTone (buffer, lfe, 80.0, 0.5, 480, length);
+        const auto input = buffer;
+        processInBlocks (p, buffer, 256);
+
+        std::vector<bool> result;
+
+        for (int c = 0; c < channels; ++c)
+            result.push_back (! sameChannel (buffer, c, input, c));
+
+        return result;
+    };
+
+    LikyuProcessor first;
+    makeProcessor (first, fiveOne);
+    CHECK (first.currentLayoutName() == "L R C Lfe Ls Rs");
+
+    // Every channel in, the default: the LFE's burst moves all six.
+    CHECK (moved (first) == std::vector<bool> (6, true));
+
+    // The LFE left out: its burst moves it alone.
+    const core::LinkList lfeOut { first.currentLayoutName(), 6, std::uint64_t (1) << lfe };
+    first.setLinkList (lfeOut);
+    CHECK (moved (first) == std::vector<bool> { false, false, false, true, false, false });
+
+    juce::MemoryBlock chunk;
+    first.getStateInformation (chunk);
+
+    // A second instance on 5.1, loaded from the first: the same list, the same behaviour.
+    {
+        LikyuProcessor second;
+        makeProcessor (second, fiveOne);
+        second.setStateInformation (chunk.getData(), static_cast<int> (chunk.getSize()));
+        CHECK (second.getLinkList() == lfeOut);
+        CHECK (moved (second) == std::vector<bool> { false, false, false, true, false, false });
+    }
+
+    // On 7.1 the list is kept but not applied: every channel in.
+    {
+        LikyuProcessor other;
+        makeProcessor (other, sevenOne);
+        other.setStateInformation (chunk.getData(), static_cast<int> (chunk.getSize()));
+        CHECK (other.getLinkList() == lfeOut);
+        CHECK (moved (other) == std::vector<bool> (8, true));
+    }
+
+    // Bitwig's order, state before the layout: the list applies once the layout is its own.
+    {
+        LikyuProcessor bitwig;
+        bitwig.setStateInformation (chunk.getData(), static_cast<int> (chunk.getSize()));
+        makeProcessor (bitwig, fiveOne);
+        CHECK (moved (bitwig) == std::vector<bool> { false, false, false, true, false, false });
+    }
+
+    // REAPER's 64 channels for an instant while loading erase nothing.
+    {
+        LikyuProcessor reaper;
+        makeProcessor (reaper, fiveOne);
+        reaper.setStateInformation (chunk.getData(), static_cast<int> (chunk.getSize()));
+        reaper.releaseResources();
+        makeProcessor (reaper, wide);
+        reaper.releaseResources();
+        makeProcessor (reaper, fiveOne);
+        CHECK (reaper.getLinkList() == lfeOut);
+        CHECK (moved (reaper) == std::vector<bool> { false, false, false, true, false, false });
+    }
+}
+
+TEST_CASE ("processor: blocks longer than the chunk and than maximumBlockSize give what blocks of 64 give, with a lookahead")
+{
+    constexpr int length = 6000;
+
+    const auto make = [] (LikyuProcessor& p)
+    {
+        setLookahead (p, 2);
+        setDynamic (p, 0, dsp::BandType::bell, 1000.0, -40.0, -12.0);
+        setDynamic (p, 4, dsp::BandType::highShelf, 6000.0, -50.0, 6.0);
+        p.setRateAndBufferSizeDetails (48000.0, 64);
+        p.prepareToPlay (48000.0, 64);
+    };
+
+    LikyuProcessor small, large;
+    make (small);
+    make (large);
+
+    auto a = noiseBuffer (2, length, 51);
+    auto b = a;
+    const auto input = a;
+    processInBlocks (small, a, 64);
+    processInBlocks (large, b, length);     // one block, 94 times the announced size
+
+    CHECK_FALSE (sameChannel (a, 0, input, 0));
+    CHECK (sameChannel (a, 0, b, 0));
+    CHECK (sameChannel (a, 1, b, 1));
+}
+
+TEST_CASE ("processor: constant latency with dynamic bands on both keys, reported equals measured, bypassed or not")
+{
+    for (int choice = 0; choice < dsp::numLookaheadChoices; ++choice)
+    {
+        for (const auto bypassed : { false, true })
+        {
+            LikyuProcessor processor;
+            REQUIRE (processor.setBusesLayout (layout (stereo, stereo)));
+            setLookahead (processor, choice);
+
+            for (int b = 0; b < dsp::numBands; ++b)
+                setDynamic (processor, b, static_cast<dsp::BandType> (b % 3), 60.0 * std::pow (2.0, b), -60.0, b % 2 == 0 ? -12.0 : 6.0,
+                            b % 2 == 0 ? dsp::KeySource::self : dsp::KeySource::sidechain);
+
+            processor.setRateAndBufferSizeDetails (48000.0, 64);
+            processor.prepareToPlay (48000.0, 64);
+
+            const auto expected = dsp::lookaheadSamples (choice, 48000.0);
+
+            INFO ("lookahead " << choice << ", bypassed " << bypassed);
+            CHECK (processor.getLatencySamples() == expected);
+            CHECK (measuredDelay (processor, bypassed) == expected);
+        }
+    }
+}
+
+TEST_CASE ("processor: 500 blocks of dynamic bands, a sidechain, the link and its list moving allocate nothing")
+{
+    namespace rt = likyu::dsp::rt;
+    REQUIRE (rt::isCounting());
+
+    LikyuProcessor processor;
+    REQUIRE (processor.setBusesLayout (layout (stereo, stereo)));
+
+    for (int b = 0; b < dsp::numBands; ++b)
+        setDynamic (processor, b, static_cast<dsp::BandType> (b % 3), 60.0 * std::pow (2.0, b), -50.0, -9.0,
+                    b % 2 == 0 ? dsp::KeySource::self : dsp::KeySource::sidechain);
+
+    setLookahead (processor, 2);
+    processor.setRateAndBufferSizeDetails (96000.0, 64);
+    processor.prepareToPlay (96000.0, 64);
+
+    auto buffer = noiseBuffer (4, 64, 61);
+    juce::MidiBuffer midi;
+
+    rt::resetCounts();
+
+    for (int block = 0; block < 500; ++block)
+    {
+        if (block % 10 == 0)
+        {
+            // Outside the process call, as a host or the editor does.
+            processor.setValue (dsp::indexOf (dsp::GlobalParam::link), (block / 10) % 2);
+            processor.setValue (dsp::indexOf (block % dsp::numBands, dsp::BandParam::thresh), -60.0 + block % 50);
+            processor.setLinkList ({ processor.currentLayoutName(), 2, static_cast<std::uint64_t> ((block / 20) % 4) });
+        }
+
+        processor.processBlock (buffer, midi);
+    }
+
+    CHECK (rt::regions() == 500);
+    CHECK (rt::violations() == 0);
 }

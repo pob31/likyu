@@ -19,29 +19,38 @@
 /*
     THE JUCE SHIM: one AudioProcessor for VST3, AU and LV2 (PRD, Formats).
 
-    PHASE 2 (devplan): a static EQ.
+    PHASE 3 (devplan): a dynamic EQ.
 
       - The buses: main in and out with the same layout, 1 to 64 channels,
-        and one optional sidechain input, mono or stereo, not read yet.
+        and one optional sidechain input, mono or stereo, which keys the
+        bands set to Sidechain. A bus that is absent or disabled gives them
+        Self instead; one that is enabled and silent is a key (PRD, Band
+        model; Phase 1 bench).
       - The 284 parameters of dsp/Parameters.h, in real units, each with its
-        own value text (core/ValueText.h). The bands' type, frequency, Q,
-        gain and Q mode, the bypass and the output gain act; the others wait
-        for Phases 3 to 5.
-      - The audio path: the lookahead delay (the only latency, set only by
-        the `lookahead` parameter), then the chain of eight bands
-        (dsp/Chain.h), its output gain and its bypass crossfade.
-      - The state chunk, version 1 (core/State.h).
+        own value text (core/ValueText.h). Static and Dynamic act; Transient,
+        Env and Track wait for Phases 4 and 5.
+      - The audio path, in chunks of at most 256 samples: the main input is
+        copied as the KEY, undelayed, before the lookahead delay (the only
+        latency, set only by the `lookahead` parameter); then the chain of
+        eight bands (dsp/Chain.h) reads that key and the sidechain, and
+        applies its output gain and its bypass crossfade.
+      - The state chunk, version 1 (core/State.h), with the list of channels
+        left out of the link (core/LinkList.h), which applies only to the
+        layout it was made for.
 
     The editor until Phase 6 is JUCE's generic one (createEditor()).
 
     THREADS. Once per block the audio thread reads every parameter's value
     from its atomic and core::Dispatch hands the chain what moved; it also
-    reads one more atomic, the delay in samples. The reported latency is set
-    from the message thread only: a change of the lookahead parameter
-    arriving on another thread is deferred to it.
+    reads two more atomics, the delay in samples and the link's mask. The
+    reported latency is set from the message thread only: a change of the
+    lookahead parameter arriving on another thread is deferred to it. The
+    link list and the layout it is compared with are kept under a lock that
+    the audio thread never takes.
 */
 
 #include <core/Dispatch.h>
+#include <core/LinkList.h>
 #include <core/State.h>
 #include <dsp/Chain.h>
 #include <dsp/Lookahead.h>
@@ -50,6 +59,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include <atomic>
+#include <cstdint>
 #include <vector>
 
 namespace likyu
@@ -65,6 +75,10 @@ namespace likyu
     public:
         /** The widest main bus the plugin accepts (PRD, non-goals). */
         static constexpr int maxChannels = 64;
+
+        /** The longest stretch processed at once: the key's copy is this long.
+            A fixed size, because hosts send blocks longer than they announce. */
+        static constexpr int chunkSamples = 256;
 
         /** `defaultChannels` is the width of the main bus before a host asks
             for another: 2, or 1 for the mono LV2 variant, whose ports JUCE
@@ -100,6 +114,7 @@ namespace likyu
         void prepareToPlay (double sampleRate, int maximumBlockSize) override;
         void releaseResources() override;
         void reset() override;
+        void processorLayoutsChanged() override;
 
         void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
         void processBlock (juce::AudioBuffer<double>&, juce::MidiBuffer&) override;
@@ -122,6 +137,17 @@ namespace likyu
         /** Sets a parameter from real units, telling the host. */
         void setValue (int index, double value);
 
+        //======================================================================
+        /** The channels left out of the link, and the layout they were left
+            out of (core/LinkList.h). Not for the audio thread. */
+        core::LinkList getLinkList() const;
+
+        /** For the editor (Phase 6) and the tests. Takes effect at the next block. */
+        void setLinkList (const core::LinkList& list);
+
+        /** The main bus's layout as a link list names it: its speaker arrangement. */
+        juce::String currentLayoutName() const;
+
     private:
         void parameterValueChanged (int parameterIndex, float newValue) override;
         void parameterGestureChanged (int, bool) override {}
@@ -131,11 +157,15 @@ namespace likyu
             sample rate, to the audio thread and to the host. */
         void updateLatency();
 
+        /** The main bus's layout now, and the link's mask for it. */
+        void updateLayout();
+        void updateLinkMask();
+
         /** `hostBypassed`: called through processBlockBypassed, which a host
             only does when it owns the bypass; the chain then crossfades out
             as for the bypass parameter. */
         template <typename Sample>
-        void process (juce::AudioBuffer<Sample>&, dsp::Lookahead<Sample>&, bool hostBypassed);
+        void process (juce::AudioBuffer<Sample>&, dsp::Lookahead<Sample>&, std::vector<Sample>& keyStore, bool hostBypassed);
 
         /** Audio thread: every parameter's real value, from its atomic. */
         void readParameters() noexcept;
@@ -161,6 +191,18 @@ namespace likyu
         dsp::Lookahead<double> lookaheadDouble;
         std::atomic<int> delaySamples { 0 };
         double currentSampleRate = 0.0;
+
+        // The undelayed main input, chunkSamples per channel, for the detectors.
+        std::vector<float> keyFloat;
+        std::vector<double> keyDouble;
+        int keyChannels = 0;
+
+        // The link list, and the layout it is compared with.
+        mutable juce::CriticalSection linkLock;
+        core::LinkList linkList;
+        juce::String layoutName;
+        int layoutChannels = 0;
+        std::atomic<std::uint64_t> linkMask { 0 };
 
         core::StateChunk stateChunk;   // holds the fields kept from the last chunk loaded
 
