@@ -40,8 +40,8 @@ using namespace likyu::editor::geometry;
 
 namespace
 {
-    /** The plot at the editor's default size (editor/EditorRoot.h). */
-    constexpr Plot defaultPlot { 44.0, 12.0, 900.0, 340.0 };
+    /** The plot at the editor's default size. */
+    constexpr Plot defaultPlot = plotWithin (defaultCurveWidth, defaultCurveHeight);
 
     /** The eight bands as a new instance has them: the table's defaults, all at 0 dB. */
     Places defaultPlaces (const Plot& plot)

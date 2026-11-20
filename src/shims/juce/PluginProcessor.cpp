@@ -16,6 +16,8 @@
 
 #include "PluginProcessor.h"
 
+#include "EditorWindow.h"
+
 #include <core/ValueText.h>
 #include <dsp/rt/RtCheck.h>
 
@@ -185,9 +187,19 @@ namespace likyu
         parameter.setValueNotifyingHost (parameter.convertTo0to1 (static_cast<float> (value)));
     }
 
+    void LikyuProcessor::beginGesture (int index)
+    {
+        parameterAt (index).beginChangeGesture();
+    }
+
+    void LikyuProcessor::endGesture (int index)
+    {
+        parameterAt (index).endChangeGesture();
+    }
+
     juce::AudioProcessorEditor* LikyuProcessor::createEditor()
     {
-        return new juce::GenericAudioProcessorEditor (*this);
+        return new EditorWindow (*this);
     }
 
     juce::AudioProcessorParameter* LikyuProcessor::getBypassParameter() const

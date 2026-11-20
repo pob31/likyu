@@ -70,6 +70,8 @@ function(likyu_add_plugin target product plugin_name bundle_id lv2_uri default_c
         PluginProcessor.h
         PluginProcessor.cpp
         PluginEntry.cpp
+        EditorWindow.h
+        EditorWindow.cpp
 
         # The core's object files go INTO the plugin's shared-code archive rather than
         # beside it: GNU ld scans an archive once, in order, and the format targets put the
@@ -87,8 +89,10 @@ function(likyu_add_plugin target product plugin_name bundle_id lv2_uri default_c
     target_link_libraries(${target}
         PRIVATE
             likyu::core
+            likyu::editor
             likyu::dsp
             juce::juce_audio_processors
+            juce::juce_gui_basics
             likyu::juce_config
             likyu::warnings
             juce::juce_recommended_config_flags)

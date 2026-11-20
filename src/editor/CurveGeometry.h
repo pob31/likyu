@@ -64,6 +64,20 @@ namespace likyu::editor::geometry
         double bottom() const noexcept  { return y + height; }
     };
 
+    /** The curve's size in a window of the default size, and the room the
+        axis labels take around the plot. */
+    inline constexpr double defaultCurveWidth = 960.0;
+    inline constexpr double defaultCurveHeight = 380.0;
+    inline constexpr double marginLeft = 44.0, marginTop = 12.0, marginRight = 16.0, marginBottom = 28.0;
+
+    /** The plot inside a curve component of this size. */
+    constexpr Plot plotWithin (double width, double height) noexcept
+    {
+        return { marginLeft, marginTop,
+                 width > marginLeft + marginRight ? width - marginLeft - marginRight : 0.0,
+                 height > marginTop + marginBottom ? height - marginTop - marginBottom : 0.0 };
+    }
+
     inline const double decades = std::log10 (dsp::maxFrequency / dsp::minFrequency);
 
     inline double xOfHz (const Plot& plot, double hz) noexcept

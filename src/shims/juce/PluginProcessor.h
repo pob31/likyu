@@ -104,11 +104,11 @@ namespace likyu
         const juce::String getProgramName (int) override            { return {}; }
         void changeProgramName (int, const juce::String&) override  {}
 
-        /*  TEMPORARY, until the editor of Phase 6 replaces it (decided by the
-            author, 2026-11-20): JUCE's generic editor, one control per
-            parameter. Live lists no parameter of a plugin until something
-            moves it from the plugin's side (Phase 1, finding 6), so without
-            an editor a Live user could not reach the EQ at all. */
+        /*  The editor (EditorWindow.h, around editor/EditorRoot.h). Until its
+            strip exists (devplan 6d) it still carries JUCE's generic editor
+            below the curve, the stand-in since Phase 2: Live lists no
+            parameter of a plugin until something moves it from the plugin's
+            side (Phase 1, finding 6). */
         bool hasEditor() const override                             { return true; }
         juce::AudioProcessorEditor* createEditor() override;
 
@@ -141,6 +141,11 @@ namespace likyu
 
         /** Sets a parameter from real units, telling the host. */
         void setValue (int index, double value);
+
+        /** Around the setValue calls of one drag, for the editor: a host
+            records one move, and Live lists the parameter. */
+        void beginGesture (int index);
+        void endGesture (int index);
 
         //======================================================================
         /** The channels left out of the link, and the layout they were left

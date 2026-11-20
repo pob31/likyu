@@ -86,13 +86,17 @@ if(LIKYU_BUILD_PLUGINS)
         core/StateTests.cpp
         core/ValueTextTests.cpp
         editor/CurveGeometryTests.cpp
+        editor/EditorTests.cpp
         editor/PresentationTests.cpp
         plugin/ProcessorTests.cpp
         support/RtAllocCounter.cpp
 
-        # The processor itself, without PluginEntry.cpp: no format wrapper here.
+        # The processor itself and its editor window, without PluginEntry.cpp: no format
+        # wrapper here. The editor's own sources come with likyu::editor.
         "${PROJECT_SOURCE_DIR}/src/shims/juce/PluginProcessor.h"
-        "${PROJECT_SOURCE_DIR}/src/shims/juce/PluginProcessor.cpp")
+        "${PROJECT_SOURCE_DIR}/src/shims/juce/PluginProcessor.cpp"
+        "${PROJECT_SOURCE_DIR}/src/shims/juce/EditorWindow.h"
+        "${PROJECT_SOURCE_DIR}/src/shims/juce/EditorWindow.cpp")
 
     target_include_directories(likyu_tests SYSTEM PRIVATE "${PROJECT_SOURCE_DIR}/ThirdParty/doctest")
     target_include_directories(likyu_tests PRIVATE "${PROJECT_SOURCE_DIR}/src/shims/juce")
@@ -106,8 +110,10 @@ if(LIKYU_BUILD_PLUGINS)
     target_link_libraries(likyu_tests
         PRIVATE
             likyu::core
+            likyu::editor
             likyu::dsp
             juce::juce_audio_processors
+            juce::juce_gui_basics
             likyu::juce_config
             likyu::warnings
             juce::juce_recommended_config_flags)
