@@ -20,9 +20,9 @@
     in seconds anywhere, the farm included.
 
       likyu_bench time [--rate 96000] [--block 64] [--channels 2] [--bands 8]
-                       [--scenario static|moving|decay|dynamic|unlinked]
-                       [--buffers float|double] [--seconds 10] [--warmup 200]
-                       [--json out.json]
+                       [--scenario static|moving|decay|dynamic|unlinked|transient]
+                       [--lookahead 0|1|2|3] [--buffers float|double]
+                       [--seconds 10] [--warmup 200] [--json out.json]
 
         The chain's process call timed per block, back to back after a
         warm-up: microseconds per block (min, median, p99, p999, max, mean)
@@ -41,10 +41,18 @@
                    sidechain of noise, linked, every band acting all the time:
                    the PRD's budget case without Track (Phase 3);
           unlinked the same keyed by the input, unlinked: one gain computer
-                   and one set of coefficients per channel per band.
+                   and one set of coefficients per channel per band;
+          transient eight bells and shelves in Transient mode, keyed by a
+                   stereo sidechain of noise bursts (40 ms on, 40 ms 60 dB
+                   down), linked, so that every shaper attacks, sustains and
+                   gates all the time (Phase 4).
 
-        NOT INCLUDED: the shim's reading of 284 parameters per block, the
-        key's copy and the lookahead delay. The figure is the DSP's.
+        --lookahead takes the parameter's choice (Off, 0.25, 1, 3 ms). The
+        delay line is the chain's since Phase 4 and runs at every setting, Off
+        included, so every figure counts it.
+
+        NOT INCLUDED: the shim's reading of the parameters per block. The
+        figure is the DSP's.
 
       likyu_bench precision [--seconds 10]
 
@@ -135,6 +143,7 @@ namespace
         int channels = 2;
         int bands = numBands;
         std::string scenario = "static";
+        int lookahead = 0;
         std::string buffers = "float";
         double seconds = 10.0;
         int warmup = 200;
@@ -172,6 +181,25 @@ namespace
         return s;
     }
 
+    /** For `transient`: bells and shelves, both amounts, keyed by the sidechain. */
+    BandSettings transientBand (int b)
+    {
+        static constexpr BandType types[] = { BandType::bell, BandType::lowShelf, BandType::highShelf };
+        BandSettings s;
+        s.on = true;
+        s.type = types[static_cast<std::size_t> (b % 3)];
+        s.qmode = b % 2 == 0 ? QMode::proportional : QMode::constant;
+        s.frequency = 40.0 * std::pow (2.0, 1.2 * b);
+        s.q = 0.7 + 0.5 * b;
+        s.gainDb = b % 2 == 0 ? 3.0 : -2.0;
+        s.gmode = GainMode::transient;
+        s.key = KeySource::sidechain;
+        s.rangeDb = b % 2 == 0 ? -12.0 : 6.0;
+        s.transientAttackPercent = b % 2 == 0 ? -80.0 : 60.0;
+        s.transientSustainPercent = b % 2 == 0 ? 50.0 : -70.0;
+        return s;
+    }
+
     /** For `moving`: a new target every block, so no ramp ever lands. */
     BandSettings movingBand (int b, int block)
     {
@@ -190,12 +218,16 @@ namespace
         chain.prepare (config.rate, config.channels);
 
         const auto dynamic = config.scenario == "dynamic", unlinked = config.scenario == "unlinked";
+        const auto transient = config.scenario == "transient";
+        const auto keyed = dynamic || transient;   // by the sidechain
 
         for (int b = 0; b < config.bands; ++b)
-            chain.setBand (b, dynamic || unlinked ? dynamicBand (b, dynamic) : staticBand (b));
+            chain.setBand (b, transient ? transientBand (b) : dynamic || unlinked ? dynamicBand (b, dynamic) : staticBand (b));
 
         if (unlinked)
             chain.setChain ({ false, 0.0, false });
+
+        chain.setLookahead (lookaheadSamples (config.lookahead, config.rate));
 
         // Two seconds of noise per channel, precomputed, read round.
         const auto ring = static_cast<int> (2.0 * config.rate);
@@ -218,14 +250,15 @@ namespace
         for (auto& channel : buffer)
             pointers.push_back (channel.data());
 
-        // A stereo sidechain of its own noise, for `dynamic`.
+        // A stereo sidechain of its own noise, for `dynamic`; in bursts, for `transient`.
         std::vector<std::vector<Sample>> side (2, std::vector<Sample> (static_cast<std::size_t> (config.block)));
         const Sample* sidePointers[] = { side[0].data(), side[1].data() };
+        const auto burst = static_cast<long long> (0.040 * config.rate);
         Key<Sample> key;
         key.self = pointers.data();
         key.selfChannels = config.channels;
 
-        if (dynamic)
+        if (keyed)
         {
             key.sidechain = sidePointers;
             key.sidechainChannels = 2;
@@ -249,10 +282,13 @@ namespace
                                                                    : from[static_cast<std::size_t> ((start + i) % ring)];
             }
 
-            if (dynamic)
+            if (keyed)
                 for (std::size_t s = 0; s < side.size(); ++s)
                     for (int i = 0; i < config.block; ++i)
-                        side[s][static_cast<std::size_t> (i)] = source[s % source.size()][static_cast<std::size_t> ((start + i + 7919LL * static_cast<long long> (s + 1)) % ring)];
+                    {
+                        const auto gate = transient && ((start + i) / burst) % 2 != 0 ? Sample (0.001) : Sample (1);
+                        side[s][static_cast<std::size_t> (i)] = gate * source[s % source.size()][static_cast<std::size_t> ((start + i + 7919LL * static_cast<long long> (s + 1)) % ring)];
+                    }
 
             if (config.scenario == "moving")
                 for (int b = 0; b < config.bands; ++b)
@@ -301,9 +337,9 @@ namespace
         const auto decay = config.scenario == "decay";
         const auto micros = timeBlocks<Sample> (config, totalBlocks, decay);
 
-        std::printf ("likyu_bench time: %s, %d bands, %d channels, %.0f Hz, blocks of %d, %s buffers, %.1f s, warm-up %d blocks\n",
+        std::printf ("likyu_bench time: %s, %d bands, %d channels, %.0f Hz, blocks of %d, lookahead %d samples, %s buffers, %.1f s, warm-up %d blocks\n",
                      config.scenario.c_str(), config.bands, config.channels, config.rate, config.block,
-                     config.buffers.c_str(), config.seconds, config.warmup);
+                     lookaheadSamples (config.lookahead, config.rate), config.buffers.c_str(), config.seconds, config.warmup);
 
         std::vector<Report> reports;
 
@@ -331,6 +367,7 @@ namespace
             out.precision (6);
             out << "{\n  \"scenario\": \"" << config.scenario << "\", \"rate\": " << config.rate << ", \"block\": " << config.block
                 << ", \"channels\": " << config.channels << ", \"bands\": " << config.bands
+                << ", \"lookaheadSamples\": " << lookaheadSamples (config.lookahead, config.rate)
                 << ", \"buffers\": \"" << config.buffers << "\", \"seconds\": " << config.seconds
                 << ", \"periodUs\": " << 1.0e6 * config.block / config.rate << ",\n  \"runs\": [\n";
 
@@ -443,8 +480,9 @@ namespace
     {
         std::fprintf (stderr,
             "usage: likyu_bench time [--rate 96000] [--block 64] [--channels 2] [--bands 8]\n"
-            "                        [--scenario static|moving|decay|dynamic|unlinked]\n"
-            "                        [--buffers float|double] [--seconds 10] [--warmup 200] [--json out.json]\n"
+            "                        [--scenario static|moving|decay|dynamic|unlinked|transient]\n"
+            "                        [--lookahead 0|1|2|3] [--buffers float|double]\n"
+            "                        [--seconds 10] [--warmup 200] [--json out.json]\n"
             "       likyu_bench precision [--seconds 10]\n");
     }
 }
@@ -479,6 +517,7 @@ int main (int argc, char* argv[])
         else if (arg == "--channels")   config.channels = std::atoi (value.c_str());
         else if (arg == "--bands")      config.bands = std::atoi (value.c_str());
         else if (arg == "--scenario")   config.scenario = value;
+        else if (arg == "--lookahead")  config.lookahead = std::atoi (value.c_str());
         else if (arg == "--buffers")    config.buffers = value;
         else if (arg == "--seconds")    config.seconds = precisionSeconds = std::atof (value.c_str());
         else if (arg == "--warmup")     config.warmup = std::atoi (value.c_str());
@@ -503,7 +542,8 @@ int main (int argc, char* argv[])
     if (! (config.rate > 0.0) || config.block <= 0 || config.channels <= 0 || config.channels > Chain::maxChannels
         || config.bands < 0 || config.bands > numBands || ! (config.seconds > 0.0) || config.warmup < 0
         || (config.scenario != "static" && config.scenario != "moving" && config.scenario != "decay"
-            && config.scenario != "dynamic" && config.scenario != "unlinked")
+            && config.scenario != "dynamic" && config.scenario != "unlinked" && config.scenario != "transient")
+        || config.lookahead < 0 || config.lookahead >= numLookaheadChoices
         || (config.buffers != "float" && config.buffers != "double"))
     {
         usage();

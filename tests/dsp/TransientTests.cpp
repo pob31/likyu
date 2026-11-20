@@ -257,6 +257,7 @@ TEST_CASE ("transient: the attack amount moves the offset at a rise, with its si
     // Under the floor, then 40 dB over it.
     std::vector<double> levels (static_cast<std::size_t> (length), -70.0);
     std::fill (levels.begin() + rise, levels.end(), levelDb);
+    double worstDb = 0.0, worstTiming = 0.0;
 
     for (const auto time : { 0.5, 1.0, 2.0 })
     {
@@ -276,6 +277,8 @@ TEST_CASE ("transient: the attack amount moves the offset at a rise, with its si
             CHECK (peak.value * amount > 0.0);
             CHECK (std::abs (peak.value - value) < 0.25);
             CHECK (std::abs (atMs - expected.atMs) < 0.1 * expected.atMs);
+            worstDb = std::max (worstDb, std::abs (peak.value - value));
+            worstTiming = std::max (worstTiming, std::abs (atMs - expected.atMs) / expected.atMs);
 
             // Back to exactly 0 once the two have met at the level.
             CHECK (allZero (offsets, length - samplesOf (100.0), length));
@@ -285,6 +288,8 @@ TEST_CASE ("transient: the attack amount moves the offset at a rise, with its si
         CHECK (allZero (shape (levels, 0.0, 100.0, time, floorDb), 0, length));
         MESSAGE ("transient, attack: Time " << time << ", the attack signal peaks at " << expected.atMs << " ms");
     }
+
+    MESSAGE ("transient, attack: worst peak " << worstDb << " dB off, its time " << 100.0 * worstTiming << " % off");
 }
 
 TEST_CASE ("transient: the sustain amount moves the offset as the level falls, with its sign, and Time scales the timing")
@@ -294,6 +299,7 @@ TEST_CASE ("transient: the sustain amount moves the offset as the level falls, w
 
     std::vector<double> levels (static_cast<std::size_t> (length), fromDb);
     std::fill (levels.begin() + fall, levels.end(), toDb);
+    double worstDb = 0.0, worstTiming = 0.0;
 
     for (const auto time : { 0.5, 1.0, 2.0 })
     {
@@ -313,12 +319,16 @@ TEST_CASE ("transient: the sustain amount moves the offset as the level falls, w
             CHECK (peak.value * amount > 0.0);
             CHECK (std::abs (peak.value - value) < 0.25);
             CHECK (std::abs (atMs - expected.atMs) < 0.1 * expected.atMs);
+            worstDb = std::max (worstDb, std::abs (peak.value - value));
+            worstTiming = std::max (worstTiming, std::abs (atMs - expected.atMs) / expected.atMs);
         }
 
         // The attack pair releases as one: a fall has no attack signal at all.
         CHECK (allZero (shape (levels, 100.0, 0.0, time, floorDb), 0, length));
         MESSAGE ("transient, sustain: Time " << time << ", the sustain signal peaks at " << expected.atMs << " ms");
     }
+
+    MESSAGE ("transient, sustain: worst peak " << worstDb << " dB off, its time " << 100.0 * worstTiming << " % off");
 }
 
 TEST_CASE ("transient: the offset never passes |Range|, and nothing moves while the level stays under the floor")
@@ -586,6 +596,7 @@ TEST_CASE_TEMPLATE ("exact bypass, return: Transient bands at 0 dB, a loud passa
     const auto tau = transientFastReleaseMs * 0.001 * rate;
     const auto bound = 3.0 * std::abs (rangeDb) * std::pow (peakDb - floorDb, 2.0) / (transientGateWidthDb * transientGateWidthDb * returnToZeroDb);
     const auto stated = loud + static_cast<int> (std::ceil (0.5 * tau * std::log (bound))) + controlStep;
+    int latest = -1;
 
     for (const auto& sizes : { fixedBlocks (64), fixedBlocks (1), randomBlocks (17) })
     {
@@ -602,10 +613,12 @@ TEST_CASE_TEMPLATE ("exact bypass, return: Transient bands at 0 dB, a loud passa
             INFO ("channel " << c << ": the last sample changed is " << lastDifferent << ", the stated time " << stated);
             CHECK (lastDifferent > loud / 2);   // the bands did act
             CHECK (lastDifferent < stated);
+            latest = std::max (latest, lastDifferent);
         }
     }
 
-    MESSAGE ("exact bypass, return (Transient): stated " << msOf (stated - loud) << " ms after the key fell");
+    MESSAGE ("exact bypass, return (Transient): stated " << msOf (stated - loud) << " ms after the key fell, measured "
+                                                         << msOf (latest + 1 - loud) << " ms");
 }
 
 //==============================================================================
