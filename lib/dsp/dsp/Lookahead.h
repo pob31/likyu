@@ -20,7 +20,12 @@
     THE LOOKAHEAD DELAY (PRD, Latency): one delay for the whole instance,
     ahead of band 1, the only thing that gives the plugin latency. Detection
     reads the undelayed signals, so every detector sees the audio that much
-    early.
+    early. Since Phase 4 the chain owns it (dsp/Chain.h) and runs it one
+    control step at a time, in place, after reading that step's key.
+
+    A BIT-EXACT COPY in the host's own sample type: samples are only moved,
+    never converted, so -0 and denormals come out as they went in, and
+    flush-to-zero, which acts on arithmetic only, does not touch them.
 
     A whole number of samples, every channel the same. At a delay of 0 the
     output is the input, bit for bit: each sample is written to the line and
@@ -84,6 +89,13 @@ namespace likyu::dsp
         /** In place. Channels beyond those prepared are left as they are. */
         void process (Sample* const* audio, int numChannels, int numSamples) noexcept LIKYU_AUDIO_THREAD
         {
+            process (audio, numChannels, 0, numSamples);
+        }
+
+        /** In place, on samples `startSample` to `startSample + numSamples - 1`
+            of each channel. */
+        void process (Sample* const* audio, int numChannels, int startSample, int numSamples) noexcept LIKYU_AUDIO_THREAD
+        {
             const rt::ScopedRealtimeCheck realtime;
 
             const auto used = std::min (numChannels, channels);
@@ -94,7 +106,7 @@ namespace likyu::dsp
             for (int channel = 0; channel < used; ++channel)
             {
                 auto* const history = line.data() + static_cast<std::size_t> (channel) * static_cast<std::size_t> (length);
-                auto* const samples = audio[channel];
+                auto* const samples = audio[channel] + startSample;
                 auto write = writeIndex;
 
                 for (int n = 0; n < numSamples; ++n)

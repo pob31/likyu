@@ -19,7 +19,7 @@
 /*
     THE JUCE SHIM: one AudioProcessor for VST3, AU and LV2 (PRD, Formats).
 
-    PHASE 3 (devplan): a dynamic EQ.
+    PHASE 4 (devplan): a dynamic EQ and transient designer.
 
       - The buses: main in and out with the same layout, 1 to 64 channels,
         and one optional sidechain input, mono or stereo, which keys the
@@ -27,13 +27,13 @@
         Self instead; one that is enabled and silent is a key (PRD, Band
         model; Phase 1 bench).
       - The 284 parameters of dsp/Parameters.h, in real units, each with its
-        own value text (core/ValueText.h). Static and Dynamic act; Transient,
-        Env and Track wait for Phases 4 and 5.
-      - The audio path, in chunks of at most 256 samples: the main input is
-        copied as the KEY, undelayed, before the lookahead delay (the only
-        latency, set only by the `lookahead` parameter); then the chain of
-        eight bands (dsp/Chain.h) reads that key and the sidechain, and
-        applies its output gain and its bypass crossfade.
+        own value text (core/ValueText.h). Static, Dynamic and Transient act;
+        Env and Track wait for Phase 5.
+      - The audio path, the host's block in place: the chain (dsp/Chain.h)
+        reads the main input as the KEY, undelayed, and the sidechain, then
+        delays the audio by the lookahead (the only latency, set only by the
+        `lookahead` parameter) and runs its eight bands, its output gain and
+        its bypass crossfade.
       - The state chunk, version 1 (core/State.h), with the list of channels
         left out of the link (core/LinkList.h), which applies only to the
         layout it was made for.
@@ -59,7 +59,6 @@
 #include <core/MeterSnapshot.h>
 #include <core/State.h>
 #include <dsp/Chain.h>
-#include <dsp/Lookahead.h>
 #include <dsp/Parameters.h>
 
 #include <juce_audio_processors/juce_audio_processors.h>
@@ -81,10 +80,6 @@ namespace likyu
     public:
         /** The widest main bus the plugin accepts (PRD, non-goals). */
         static constexpr int maxChannels = 64;
-
-        /** The longest stretch processed at once: the key's copy is this long.
-            A fixed size, because hosts send blocks longer than they announce. */
-        static constexpr int chunkSamples = 256;
 
         /** `defaultChannels` is the width of the main bus before a host asks
             for another: 2, or 1 for the mono LV2 variant, whose ports JUCE
@@ -177,7 +172,7 @@ namespace likyu
             only does when it owns the bypass; the chain then crossfades out
             as for the bypass parameter. */
         template <typename Sample>
-        void process (juce::AudioBuffer<Sample>&, dsp::Lookahead<Sample>&, std::vector<Sample>& keyStore, bool hostBypassed);
+        void process (juce::AudioBuffer<Sample>&, bool hostBypassed);
 
         /** Audio thread: every parameter's real value, from its atomic. */
         void readParameters() noexcept;
@@ -201,17 +196,10 @@ namespace likyu
 
         core::Dispatch dispatch;
         core::Dispatch::Values values {};
-        dsp::Chain chain;
+        dsp::Chain chain;   // the lookahead's delay line included
 
-        dsp::Lookahead<float> lookaheadFloat;
-        dsp::Lookahead<double> lookaheadDouble;
         std::atomic<int> delaySamples { 0 };
         double currentSampleRate = 0.0;
-
-        // The undelayed main input, chunkSamples per channel, for the detectors.
-        std::vector<float> keyFloat;
-        std::vector<double> keyDouble;
-        int keyChannels = 0;
 
         // The link list, and the layout it is compared with.
         mutable juce::CriticalSection linkLock;

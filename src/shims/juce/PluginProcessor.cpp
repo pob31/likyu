@@ -215,19 +215,8 @@ namespace likyu
     {
         currentSampleRate = sampleRate;
 
-        // Sized for the longest lookahead at this rate (PRD, Realtime rules).
-        const auto channels = getMainBusNumInputChannels();
-        const auto longest = dsp::maxLookaheadSamples (sampleRate);
-
-        lookaheadFloat.prepare (channels, longest);
-        lookaheadDouble.prepare (channels, longest);
-        chain.prepare (sampleRate, channels);
-
-        // The key's copy, a chunk long: assign() keeps the memory when the size is the same.
-        const auto keySize = static_cast<std::size_t> (channels * chunkSamples);
-        keyFloat.assign (keySize, 0.0f);
-        keyDouble.assign (keySize, 0.0);
-        keyChannels = channels;
+        // The chain sizes its delay line for the longest lookahead at this rate (PRD, Realtime rules).
+        chain.prepare (sampleRate, getMainBusNumInputChannels());
 
         updateLayout();
         updateLatency();
@@ -237,8 +226,6 @@ namespace likyu
 
     void LikyuProcessor::reset()
     {
-        lookaheadFloat.reset();
-        lookaheadDouble.reset();
         chain.reset();
     }
 
@@ -338,10 +325,9 @@ namespace likyu
     }
 
     template <typename Sample>
-    void LikyuProcessor::process (juce::AudioBuffer<Sample>& buffer, dsp::Lookahead<Sample>& lookahead,
-                                  std::vector<Sample>& keyStore, bool hostBypassed)
+    void LikyuProcessor::process (juce::AudioBuffer<Sample>& buffer, bool hostBypassed)
     {
-        // One realtime region for the block; the lookahead's and the chain's nest inside it.
+        // One realtime region for the block; the chain's nests inside it.
         const dsp::rt::ScopedRealtimeCheck realtime;
 
         /*  The main bus is the buffer's first channels, input and output in
@@ -376,49 +362,18 @@ namespace likyu
         dispatch.apply (values, chain);
         chain.setLinkExclusions (linkMask.load (std::memory_order_relaxed));
         chain.setListen (listenParameter != nullptr ? listenParameter->getIndex() - 1 : -1);
-        lookahead.setDelay (delaySamples.load (std::memory_order_relaxed));
+        chain.setLookahead (delaySamples.load (std::memory_order_relaxed));
 
-        /*  In chunks: the key is the main input copied before the lookahead
-            delays it in place, so that detection reads the undelayed signal
-            (PRD, Signal flow). The chain's grid makes the chunks invisible. */
-        std::array<Sample*, maxChannels> at {};
-        std::array<const Sample*, maxChannels> keyAt {};
-        std::array<const Sample*, dsp::Chain::maxSidechainChannels> sidechainAt {};
-        const auto keyed = juce::jmin (channels, keyChannels);
+        /*  The key is the main input itself, undelayed: the chain reads each
+            stretch of it before it delays and writes that stretch (PRD,
+            Signal flow). The whole block at once, however long. */
+        dsp::Key<Sample> key;
+        key.self = audio;
+        key.selfChannels = channels;
+        key.sidechain = sidechainChannels > 0 ? sidechain.data() : nullptr;
+        key.sidechainChannels = sidechainChannels;
 
-        for (int offset = 0; offset < samples; offset += chunkSamples)
-        {
-            const auto n = juce::jmin (chunkSamples, samples - offset);
-
-            for (int c = 0; c < channels; ++c)
-            {
-                const auto i = static_cast<std::size_t> (c);
-                at[i] = audio[c] + offset;
-
-                if (c < keyed)
-                {
-                    auto* copy = keyStore.data() + c * chunkSamples;
-                    std::copy (at[i], at[i] + n, copy);
-                    keyAt[i] = copy;
-                }
-                else
-                {
-                    keyAt[i] = nullptr;
-                }
-            }
-
-            for (int s = 0; s < sidechainChannels; ++s)
-                sidechainAt[static_cast<std::size_t> (s)] = sidechain[static_cast<std::size_t> (s)] + offset;
-
-            dsp::Key<Sample> key;
-            key.self = keyAt.data();
-            key.selfChannels = channels;
-            key.sidechain = sidechainChannels > 0 ? sidechainAt.data() : nullptr;
-            key.sidechainChannels = sidechainChannels;
-
-            lookahead.process (at.data(), channels, n);
-            chain.process (at.data(), channels, key, n);
-        }
+        chain.process (audio, channels, key, samples);
 
         // The meters, for the editor.
         core::Meters meters;
@@ -440,12 +395,12 @@ namespace likyu
 
     void LikyuProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
     {
-        process (buffer, lookaheadFloat, keyFloat, false);
+        process (buffer, false);
     }
 
     void LikyuProcessor::processBlock (juce::AudioBuffer<double>& buffer, juce::MidiBuffer&)
     {
-        process (buffer, lookaheadDouble, keyDouble, false);
+        process (buffer, false);
     }
 
     /*  JUCE's wrappers call these only when the plugin has no bypass parameter
@@ -456,12 +411,12 @@ namespace likyu
         crossfades to the delayed dry signal. */
     void LikyuProcessor::processBlockBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
     {
-        process (buffer, lookaheadFloat, keyFloat, true);
+        process (buffer, true);
     }
 
     void LikyuProcessor::processBlockBypassed (juce::AudioBuffer<double>& buffer, juce::MidiBuffer&)
     {
-        process (buffer, lookaheadDouble, keyDouble, true);
+        process (buffer, true);
     }
 
     //==========================================================================

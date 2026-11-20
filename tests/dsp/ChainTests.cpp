@@ -476,3 +476,231 @@ TEST_CASE ("denormals: signal, then silence, and never a subnormal sample out")
             REQUIRE (channel[n] == 0.0);
     }
 }
+
+//==============================================================================
+/*  THE LOOKAHEAD IN THE CHAIN (Phase 4; PRD, Latency). Acceptance rows:
+    constant latency (its DSP half: every combination of gain modes, types
+    and keys, per lookahead, bypassed or not), exact bypass and block-size
+    invariance again with a delay, and the lookahead effect. */
+namespace
+{
+    /** `audio` delayed by `samples`, +0 before. */
+    template <typename Sample>
+    std::vector<std::vector<Sample>> delayed (const std::vector<std::vector<Sample>>& audio, int samples)
+    {
+        auto out = audio;
+
+        for (std::size_t c = 0; c < audio.size(); ++c)
+            for (std::size_t n = 0; n < audio[c].size(); ++n)
+                out[c][n] = static_cast<int> (n) >= samples ? audio[c][n - static_cast<std::size_t> (samples)] : Sample {};
+
+        return out;
+    }
+
+    /** The index of the first sample of channel 0 that is not exactly 0; -1 if none. */
+    template <typename Sample>
+    int firstNonZero (const std::vector<std::vector<Sample>>& audio)
+    {
+        for (std::size_t n = 0; n < audio[0].size(); ++n)
+            if (std::fpclassify (audio[0][n]) != FP_ZERO)
+                return static_cast<int> (n);
+
+        return -1;
+    }
+
+    /** Every band in `gmode`, the types and keys mixed, one detector of its own. */
+    void everyBandIn (Chain& c, GainMode gmode)
+    {
+        const BandType types[] = { BandType::bell, BandType::lowShelf, BandType::highShelf };
+
+        for (int b = 0; b < numBands; ++b)
+        {
+            auto s = transientBand (types[b % 3], 60.0 * std::pow (2.0, b), 0.7 + 0.3 * b, b % 2 == 0 ? 6.0 : -6.0,
+                                    b % 2 == 0 ? -100.0 : 100.0, 50.0, b % 2 == 0 ? -12.0 : 9.0);
+            s.gmode = gmode;
+            s.thresholdDb = -60.0;
+            s.key = b % 3 == 1 ? KeySource::sidechain : KeySource::self;
+
+            if (b == 5)
+            {
+                s.dfilt = DetectorFilter::own;
+                s.dtype = DetectorType::highPass;
+                s.detectorFrequency = 2000.0;
+            }
+
+            c.setBand (b, s);
+        }
+    }
+}
+
+TEST_CASE_TEMPLATE ("exact bypass with a lookahead: idle bands, or the instance bypassed, give the input delayed, bit for bit", Sample, float, double)
+{
+    const auto input = awkwardNoise<Sample> (20000);
+
+    for (const auto r : { 48000.0, 96000.0 })
+    {
+        for (int choice = 0; choice < numLookaheadChoices; ++choice)
+        {
+            const auto d = lookaheadSamples (choice, r);
+            const auto expected = delayed (input, d);
+
+            auto idle = idleAtZero();
+            idle.push_back ({ 0, [d] (Chain& c) { c.setLookahead (d); } });
+
+            const std::vector<Event> bypassed { { 0, [d] (Chain& c)
+            {
+                c.setBand (0, band (true, BandType::bell, 1000.0, 2.0, 9.0));
+                c.setBand (1, transientBand (BandType::lowShelf, 200.0, 0.7, -3.0, -100.0, 100.0, -12.0));
+                c.setChain ({ true, 6.0 });
+                c.setLookahead (d);
+            } } };
+
+            for (const auto& sizes : { fixedBlocks (64), randomBlocks (5) })
+            {
+                INFO ("rate " << r << ", lookahead " << d << " samples");
+                const auto a = render (r, input, idle, sizes);
+                const auto b = render (r, input, bypassed, sizes);
+
+                for (std::size_t c = 0; c < input.size(); ++c)
+                {
+                    CHECK (sameBits (a[c], expected[c]));
+                    CHECK (sameBits (b[c], expected[c]));
+                }
+            }
+        }
+    }
+}
+
+TEST_CASE ("constant latency, in the DSP: an impulse comes out `lookahead` samples late whatever the bands do, bypassed or not")
+{
+    constexpr int length = 2048;
+
+    for (const auto r : { 44100.0, 96000.0 })
+    {
+        for (int choice = 0; choice < numLookaheadChoices; ++choice)
+        {
+            const auto d = lookaheadSamples (choice, r);
+
+            for (const auto bypassed : { false, true })
+            {
+                // Each type alone, then all eight bands in each gain mode, both keys.
+                for (int config = 0; config < numBandTypes + numGainModes; ++config)
+                {
+                    std::vector<std::vector<double>> impulse (2, std::vector<double> (length, 0.0));
+                    impulse[0][0] = 1.0;
+                    impulse[1][0] = 0.5;
+                    const std::vector<std::vector<double>> sidechain { noise<double> (length, 81, 0.5) };
+
+                    const std::vector<Event> events { { 0, [=] (Chain& c)
+                    {
+                        if (config < numBandTypes)
+                            c.setBand (2, band (true, static_cast<BandType> (config), 1000.0, 2.0, 9.0));
+                        else
+                            everyBandIn (c, static_cast<GainMode> (config - numBandTypes));
+
+                        c.setChain ({ bypassed, -1.0 });
+                        c.setLookahead (d);
+                    } } };
+
+                    const auto output = render (r, impulse, events, fixedBlocks (64), sidechain);
+
+                    INFO ("rate " << r << ", lookahead " << d << ", configuration " << config << ", bypassed " << bypassed);
+                    CHECK (firstNonZero (output) == d);
+                }
+            }
+        }
+    }
+}
+
+TEST_CASE_TEMPLATE ("block-size invariance with a lookahead: the same output, bit for bit, and a change of the delay lands on the grid", Sample, float, double)
+{
+    auto events = everything();
+    events.push_back ({ 0, [] (Chain& c)
+    {
+        everyBandIn (c, GainMode::transient);
+        c.setBand (6, band (true, BandType::notch, 5000.0, 2.0, 0.0));
+        c.setLookahead (lookaheadSamples (3, rate));
+    } });
+    events.push_back ({ period + 5, [] (Chain& c) { c.setLookahead (lookaheadSamples (1, rate)); } });    // mid-step
+    events.push_back ({ 2 * period + 11, [] (Chain& c) { c.setLookahead (0); } });
+    events.push_back ({ 3 * period + 3, [] (Chain& c) { c.setLookahead (lookaheadSamples (2, rate)); } });
+
+    const auto input = awkwardNoise<Sample> (5 * period);
+    const std::vector<std::vector<Sample>> sidechain { as<Sample> (stereoNoise (5 * period, 0.3))[0] };
+    const auto reference = render (rate, input, events, fixedBlocks (64), sidechain);
+    CHECK_FALSE (sameBits (reference[0], input[0]));
+
+    struct Cut { std::string name; BlockSizes sizes; };
+    const std::vector<Cut> cuts {
+        { "1", fixedBlocks (1) }, { "7", fixedBlocks (7) }, { "128", fixedBlocks (128) },
+        { "4096", fixedBlocks (4096) }, { "random", randomBlocks (77) },
+    };
+
+    for (const auto& cut : cuts)
+    {
+        const auto output = render (rate, input, events, cut.sizes, sidechain);
+
+        INFO ("blocks of " << cut.name);
+
+        for (std::size_t c = 0; c < input.size(); ++c)
+            CHECK (sameBits (output[c], reference[c]));
+    }
+}
+
+TEST_CASE ("lookahead effect: a burst through a Transient band with a negative attack: with 1 ms of lookahead its leading edge is reduced; without, it passes")
+{
+    constexpr double hz = 3000.0;
+    constexpr int onset = 4800, length = 14400;
+
+    // `choice` -1: a static bell already at the full cut, the most a lookahead can give.
+    const auto leadingEdgeDb = [] (int choice, int samples)
+    {
+        const auto d = choice < 0 ? 0 : lookaheadSamples (choice, rate);
+        std::vector<double> burst (static_cast<std::size_t> (length), 0.0);
+
+        for (int n = onset; n < length; ++n)
+            burst[static_cast<std::size_t> (n)] = 0.5 * std::sin (2.0 * pi * hz * (n - onset) / rate);
+
+        const std::vector<Event> events { { 0, [d, choice] (Chain& c)
+        {
+            if (choice < 0)
+                c.setBand (0, band (true, BandType::bell, hz, 1.0, -12.0));
+            else
+                c.setBand (0, transientBand (BandType::bell, hz, 1.0, 0.0, -100.0, 0.0, -12.0));
+
+            c.setLookahead (d);
+        } } };
+
+        const auto output = render (rate, std::vector<std::vector<double>> { burst }, events, fixedBlocks (64))[0];
+
+        // Energy, not the peak: a bell cut by 12 dB still lets a sudden sine
+        // through for the few samples its band-pass takes to answer.
+        double in = 0.0, out = 0.0;
+
+        for (int n = 0; n < samples; ++n)
+        {
+            in += std::pow (burst[static_cast<std::size_t> (onset + n)], 2.0);
+            out += std::pow (output[static_cast<std::size_t> (onset + d + n)], 2.0);
+        }
+
+        return 10.0 * std::log10 (out / in);
+    };
+
+    for (const auto ms : { 0.125, 0.25, 0.5, 1.0, 2.0 })
+    {
+        const auto samples = static_cast<int> (std::lround (ms * 0.001 * rate));
+        const auto without = leadingEdgeDb (0, samples), with = leadingEdgeDb (2, samples), best = leadingEdgeDb (-1, samples);
+
+        MESSAGE ("lookahead effect, the burst's first " << ms << " ms: " << without << " dB without lookahead, " << with
+                 << " dB with 1 ms; a static bell at -12 dB, " << best << " dB");
+
+        /*  With 1 ms the cut is in place when the burst arrives: the band is
+            then the static bell at the full cut, which is the most any
+            lookahead can give. Without, the edge gets through first. */
+        CHECK (std::abs (with - best) < 0.01);
+        CHECK (with < without - 1.5);
+
+        if (ms < 0.2)
+            CHECK (without > -1.0);
+    }
+}

@@ -395,6 +395,18 @@ namespace
         p.setValue (dsp::indexOf (b, dsp::BandParam::rel), releaseMs);
     }
 
+    /** A band in Transient mode at 0 dB static, its detector following it. */
+    void setTransient (LikyuProcessor& p, int b, dsp::BandType type, double hz, double attackPercent, double sustainPercent,
+                       double rangeDb, dsp::KeySource key = dsp::KeySource::self)
+    {
+        setBand (p, b, true, type, hz, 1.0, 0.0);
+        p.setValue (dsp::indexOf (b, dsp::BandParam::gmode), static_cast<double> (dsp::GainMode::transient));
+        p.setValue (dsp::indexOf (b, dsp::BandParam::key), static_cast<double> (key));
+        p.setValue (dsp::indexOf (b, dsp::BandParam::tatk), attackPercent);
+        p.setValue (dsp::indexOf (b, dsp::BandParam::tsus), sustainPercent);
+        p.setValue (dsp::indexOf (b, dsp::BandParam::range), rangeDb);
+    }
+
     void addTone (juce::AudioBuffer<float>& buffer, int channel, double hz, double amplitude, int from, int to)
     {
         for (int n = from; n < to; ++n)
@@ -868,7 +880,7 @@ TEST_CASE ("processor: link exclusion on 5.1: the list applies to its layout, su
     }
 }
 
-TEST_CASE ("processor: blocks longer than the chunk and than maximumBlockSize give what blocks of 64 give, with a lookahead")
+TEST_CASE ("processor: one block far longer than maximumBlockSize gives what blocks of 64 give, with a lookahead")
 {
     constexpr int length = 6000;
 
@@ -896,29 +908,94 @@ TEST_CASE ("processor: blocks longer than the chunk and than maximumBlockSize gi
     CHECK (sameChannel (a, 1, b, 1));
 }
 
-TEST_CASE ("processor: constant latency with dynamic bands on both keys, reported equals measured, bypassed or not")
+TEST_CASE ("processor: constant latency with Dynamic and Transient bands on both keys, reported equals measured, bypassed or not")
 {
-    for (int choice = 0; choice < dsp::numLookaheadChoices; ++choice)
+    for (const auto gmode : { dsp::GainMode::dynamic, dsp::GainMode::transient })
     {
-        for (const auto bypassed : { false, true })
+        for (int choice = 0; choice < dsp::numLookaheadChoices; ++choice)
         {
-            LikyuProcessor processor;
-            REQUIRE (processor.setBusesLayout (layout (stereo, stereo)));
-            setLookahead (processor, choice);
+            for (const auto bypassed : { false, true })
+            {
+                LikyuProcessor processor;
+                REQUIRE (processor.setBusesLayout (layout (stereo, stereo)));
+                setLookahead (processor, choice);
 
-            for (int b = 0; b < dsp::numBands; ++b)
-                setDynamic (processor, b, static_cast<dsp::BandType> (b % 3), 60.0 * std::pow (2.0, b), -60.0, b % 2 == 0 ? -12.0 : 6.0,
-                            b % 2 == 0 ? dsp::KeySource::self : dsp::KeySource::sidechain);
+                for (int b = 0; b < dsp::numBands; ++b)
+                {
+                    const auto type = static_cast<dsp::BandType> (b % 3);
+                    const auto hz = 60.0 * std::pow (2.0, b);
+                    const auto key = b % 2 == 0 ? dsp::KeySource::self : dsp::KeySource::sidechain;
 
-            processor.setRateAndBufferSizeDetails (48000.0, 64);
-            processor.prepareToPlay (48000.0, 64);
+                    if (gmode == dsp::GainMode::dynamic)
+                        setDynamic (processor, b, type, hz, -60.0, b % 2 == 0 ? -12.0 : 6.0, key);
+                    else
+                        setTransient (processor, b, type, hz, b % 2 == 0 ? -100.0 : 100.0, 60.0, b % 2 == 0 ? -12.0 : 6.0, key);
+                }
 
-            const auto expected = dsp::lookaheadSamples (choice, 48000.0);
+                processor.setRateAndBufferSizeDetails (48000.0, 64);
+                processor.prepareToPlay (48000.0, 64);
 
-            INFO ("lookahead " << choice << ", bypassed " << bypassed);
-            CHECK (processor.getLatencySamples() == expected);
-            CHECK (measuredDelay (processor, bypassed) == expected);
+                const auto expected = dsp::lookaheadSamples (choice, 48000.0);
+
+                INFO ((gmode == dsp::GainMode::dynamic ? "Dynamic" : "Transient") << ", lookahead " << choice << ", bypassed " << bypassed);
+                CHECK (processor.getLatencySamples() == expected);
+                CHECK (measuredDelay (processor, bypassed) == expected);
+            }
         }
+    }
+}
+
+TEST_CASE ("processor: lookahead effect: a burst through a Transient bell with a negative attack: with 1 ms its leading edge is cut as a static cut would; without, it passes")
+{
+    constexpr int onset = 2400, length = 9600;
+
+    // `lookahead` -1: a static bell already at the full cut, the most a lookahead can give.
+    const auto leadingEdgeDb = [] (int lookahead, int samples)
+    {
+        LikyuProcessor processor;
+        setLookahead (processor, std::max (0, lookahead));
+
+        if (lookahead < 0)
+            setBand (processor, 0, true, dsp::BandType::bell, 3000.0, 1.0, -12.0);
+        else
+            setTransient (processor, 0, dsp::BandType::bell, 3000.0, -100.0, 0.0, -12.0);
+
+        processor.setRateAndBufferSizeDetails (48000.0, 64);
+        processor.prepareToPlay (48000.0, 64);
+
+        juce::AudioBuffer<float> buffer (2, length);
+        buffer.clear();
+
+        for (int n = onset; n < length; ++n)
+            for (int c = 0; c < 2; ++c)
+                buffer.setSample (c, n, static_cast<float> (0.5 * std::sin (2.0 * 3.14159265358979323846 * 3000.0 * (n - onset) / 48000.0)));
+
+        const auto input = buffer;
+        processInBlocks (processor, buffer, 64);
+
+        const auto delay = processor.getLatencySamples();
+        double in = 0.0, out = 0.0;
+
+        for (int n = 0; n < samples; ++n)
+        {
+            in += std::pow (static_cast<double> (input.getSample (0, onset + n)), 2.0);
+            out += std::pow (static_cast<double> (buffer.getSample (0, onset + delay + n)), 2.0);
+        }
+
+        return 10.0 * std::log10 (out / in);
+    };
+
+    for (const auto samples : { 6, 24, 48 })   // 0.125, 0.5 and 1 ms
+    {
+        const auto without = leadingEdgeDb (0, samples), with = leadingEdgeDb (2, samples), best = leadingEdgeDb (-1, samples);
+
+        INFO ("the burst's first " << samples << " samples: " << without << " dB without lookahead, " << with
+                                   << " dB with 1 ms, " << best << " dB through a static bell at -12 dB");
+        CHECK (std::abs (with - best) < 0.01);
+        CHECK (with < without - 1.5);
+
+        if (samples < 10)
+            CHECK (without > -1.0);
     }
 }
 

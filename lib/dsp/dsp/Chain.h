@@ -17,11 +17,19 @@
 #pragma once
 
 /*
-    THE CHAIN (PRD, Signal flow): eight bands in series, band 1 first, over 1
-    to 64 channels, then the output gain, then the bypass crossfade to the
-    chain's own input. In the plugin the lookahead delay sits ahead of it
-    (dsp/Lookahead.h), so the chain's input is the delayed dry signal the
-    PRD's bypass crossfades to.
+    THE CHAIN (PRD, Signal flow): the lookahead delay, then eight bands in
+    series, band 1 first, over 1 to 64 channels, then the output gain, then
+    the bypass crossfade to the delayed dry signal.
+
+    THE LOOKAHEAD (PRD, Latency; the chain's own since Phase 4) delays the
+    whole audio path by a whole number of samples, the same on every
+    channel, while every detector reads its key undelayed. It runs in place
+    on the host's buffer one stretch at a time, after that stretch's key has
+    been read, so the key may be the audio itself. It is a bit-exact copy in
+    the host's sample type (dsp/Lookahead.h): a sample that nothing else
+    alters is the delayed input, -0 and denormals included. A change of the
+    delay takes effect at the next grid point, at once: the lookahead is not
+    automatable (PRD), and the host realigns.
 
     ONE GRID. Processing runs in control steps of 16 samples (dsp/Band.h) on
     a counter that starts at prepare() and runs across calls; a host block
@@ -89,8 +97,8 @@
     the key fell back to Self. Read on the audio thread after process();
     likyu::core publishes them (core/MeterSnapshot.h).
 
-    THREADS. setBand(), setChain(), setLinkExclusions(), setListen() are
-    called on the audio thread, before process(), with values read from the
+    THREADS. setBand(), setChain(), setLinkExclusions(), setListen(),
+    setLookahead() are called on the audio thread, before process(), with values read from the
     host's atomics once per block (likyu::core does that); they take effect
     at the next grid point. prepare() allocates and belongs to the message
     thread.
@@ -101,6 +109,7 @@
 #include "Band.h"
 #include "Denormals.h"
 #include "FastLog.h"
+#include "Lookahead.h"
 #include "Parameters.h"
 #include "Smoother.h"
 #include "rt/RtCheck.h"
@@ -110,6 +119,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <type_traits>
 #include <vector>
 
 namespace likyu::dsp
@@ -183,6 +193,17 @@ namespace likyu::dsp
         /** The band listened to now, or -1; it stays until the fade out ends. */
         int getListenBand() const noexcept      { return listenBand; }
 
+        /** The lookahead in whole samples (dsp/Parameters.h, lookaheadSamples),
+            clamped to what prepare() allocated: the longest choice at its rate.
+            Takes effect at the next grid point. */
+        void setLookahead (int samples) noexcept;
+
+        /** The delay in effect, in samples: the chain's whole latency. */
+        int getLookahead() const noexcept       { return lineDouble.getDelay(); }
+
+        /** The longest delay prepare() allocated for. */
+        int getMaxLookahead() const noexcept    { return lineDouble.getMaxDelay(); }
+
         double getSampleRate() const noexcept   { return rate; }
         int getNumChannels() const noexcept     { return channels; }
 
@@ -193,9 +214,8 @@ namespace likyu::dsp
         /** What `band` (from 0) shows now. */
         BandMeter bandMeter (int band) const noexcept;
 
-        /** In place, keyed by the input itself and no sidechain: the plugin's
-            case with the lookahead off, and a native client's. Channels
-            beyond those prepared are left as they are. */
+        /** In place, keyed by the input itself, undelayed, and no sidechain.
+            Channels beyond those prepared are left as they are. */
         template <typename Sample>
         void process (Sample* const* audio, int numChannels, int numSamples) noexcept LIKYU_AUDIO_THREAD
         {
@@ -206,7 +226,8 @@ namespace likyu::dsp
         }
 
         /** In place, keyed by `key`, which may be the audio itself: every key
-            sample of a stretch is read before any audio of it is written. */
+            sample of a stretch is read before any audio of it is written,
+            the lookahead's included. The plugin's case. */
         template <typename Sample>
         void process (Sample* const* audio, int numChannels, const Key<Sample>& key, int numSamples) noexcept LIKYU_AUDIO_THREAD
         {
@@ -246,6 +267,10 @@ namespace likyu::dsp
                     for (int i = 0; i < n; ++i)
                         k[i] = in != nullptr ? static_cast<float> (in[done + i]) : 0.0f;
                 }
+
+                // The lookahead, in place: from here on the stretch holds the
+                // delayed input, which is what an untouched sample stays.
+                line<Sample>().process (audio, used, done, n);
 
                 for (int c = 0; c < used; ++c)
                 {
@@ -306,6 +331,19 @@ namespace likyu::dsp
             return n >= 32 ? 0xffffffffu : (1u << n) - 1u;
         }
 
+        /** The delay line of the host's sample type: one per type, so that a
+            sample is never converted on its way through. */
+        template <typename Sample>
+        Lookahead<Sample>& line() noexcept
+        {
+            static_assert (std::is_same_v<Sample, float> || std::is_same_v<Sample, double>);
+
+            if constexpr (std::is_same_v<Sample, float>)
+                return lineFloat;
+            else
+                return lineDouble;
+        }
+
         /** At a grid point: targets latched, ramps stepped, for the chain and its bands. */
         void beginStep() noexcept LIKYU_AUDIO_THREAD;
 
@@ -353,6 +391,11 @@ namespace likyu::dsp
         std::vector<TransientEnvelopes> envelopes;   // the same: a Transient lane's envelopes
         std::array<Lanes, numBands> lanes {};
         std::array<int, numBands> lanesBuiltFor {};      // the band's shape revision
+
+        Lookahead<float> lineFloat;
+        Lookahead<double> lineDouble;
+        int pendingLookahead = 0;
+        bool lookaheadPending = false;
 
         Ramp outputGain, bypassMix;
         ChainSettings pendingChain;

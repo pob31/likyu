@@ -78,6 +78,10 @@ namespace likyu::dsp
         for (auto& band : bands)
             band.prepare (rate);
 
+        // The longest lookahead at this rate; the delay in effect is kept.
+        lineFloat.prepare (channels, maxLookaheadSamples (rate));
+        lineDouble.prepare (channels, maxLookaheadSamples (rate));
+
         outputGain.setLength (rampSteps (smoothingSeconds, rate, controlStep));
         bypassMix.setLength (rampSteps (switchFadeSeconds, rate, controlStep));
         listenFade.setLength (rampSteps (switchFadeSeconds, rate, controlStep));
@@ -103,6 +107,9 @@ namespace likyu::dsp
 
         for (auto& band : bands)
             band.snap();
+
+        lineFloat.reset();
+        lineDouble.reset();
 
         position = 0;
         snapPending = true;
@@ -130,6 +137,12 @@ namespace likyu::dsp
     {
         pendingListen = band >= 0 && band < numBands ? band : -1;
         listenPending = true;
+    }
+
+    void Chain::setLookahead (int samples) noexcept
+    {
+        pendingLookahead = std::max (0, samples);
+        lookaheadPending = true;
     }
 
     BandMeter Chain::bandMeter (int band) const noexcept
@@ -196,6 +209,13 @@ namespace likyu::dsp
         {
             listenPending = false;
             listenTarget = pendingListen;
+        }
+
+        if (lookaheadPending)
+        {
+            lookaheadPending = false;
+            lineFloat.setDelay (pendingLookahead);
+            lineDouble.setDelay (pendingLookahead);
         }
 
         sidechainChannels = sidechainNow;
