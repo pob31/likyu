@@ -17,9 +17,11 @@
 
     scripts/bench-compare.py before.json after.json [more.json ...]
                              [--names Before After ...] [--figure trimmed|median]
+                             [--no-ratio]
 
 One row a case, one column a file: microseconds per block and the share of one core,
-then the last file against the first. The figure is the trimmed mean unless asked
+then the last file against the first (not with --no-ratio: three machines side by side
+are not a before and an after). The figure is the trimmed mean unless asked
 otherwise (tests/bench/BenchMain.cpp says why). A case missing from a file is a dash.
 
 Exit codes: 0 done, 2 usage or an unreadable file.
@@ -58,6 +60,7 @@ def main():
     parser.add_argument("files", nargs="+")
     parser.add_argument("--names", nargs="+", default=None)
     parser.add_argument("--figure", choices=["trimmed", "median"], default="trimmed")
+    parser.add_argument("--no-ratio", action="store_true")
     arguments = parser.parse_args()
 
     if len(arguments.files) < 2:
@@ -83,8 +86,9 @@ def main():
               f"{suite.get('runs', '?')} runs of {suite.get('seconds', '?')} s")
 
     print()
-    print("| Case | " + " | ".join(names) + f" | {names[-1]} / {names[0]} |")
-    print("| --- | " + " | ".join("---" for _ in names) + " | --- |")
+    ratio_head = "" if arguments.no_ratio else f" {names[-1]} / {names[0]} |"
+    print("| Case | " + " | ".join(names) + " |" + ratio_head)
+    print("| --- | " + " | ".join("---" for _ in names) + " |" + ("" if arguments.no_ratio else " --- |"))
 
     for name in order:
         cases = [table.get(name) for table in by_name]
@@ -94,7 +98,8 @@ def main():
         if first is not None and last is not None and first[arguments.figure + "Us"] > 0.0:
             ratio = f"{last[arguments.figure + 'Us'] / first[arguments.figure + 'Us']:.2f}"
 
-        print(f"| `{name}` | " + " | ".join(cell(case, arguments.figure) for case in cases) + f" | {ratio} |")
+        print(f"| `{name}` | " + " | ".join(cell(case, arguments.figure) for case in cases) + " |"
+              + ("" if arguments.no_ratio else f" {ratio} |"))
 
     return 0
 
