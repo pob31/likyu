@@ -94,8 +94,10 @@ Windows machine; on Windows and the NUC they have not changed since the baseline
 - **`exp/fused`** is a local branch with the experiment's one commit. It is not for `main`.
 - **An estimate is not a measurement.** The plan put 6 to 8 µs on the trackers' pair loops, from a
   fit to the band sweeps; they were 1 to 3 % of the time. `callgrind` on the NUC counts
-  instructions (`perf` is closed to users there); nothing on the three machines samples time yet.
-  On the Mac, `sample` and `xctrace` are installed and untried.
+  instructions (`perf` is closed to users there). For time, `sample` on the Mac works on a long
+  run of the bench (the foundations note says how): the tracker group is 31 % of the budget case
+  there, the seeding bank 19 %, coefficients and filters 17 %, detection 15 %, the library's
+  `exp2` 11 %.
 
 ## Next
 
@@ -104,6 +106,5 @@ Windows machine; on Windows and the NUC they have not changed since the baseline
    its three back-ends and their tests. Then the Windows figures for `moving` and `env` again.
 3. 7c: one coefficient routine; the sample loop outside in the bank, the detectors and the
    filters; then 7d's kernels, the seeding bank first.
-4. A time profile, on the Mac or by opening `perf` on the NUC, before choosing between 7d's
-   kernels: the tracker's feedback chain is the largest single cost and no instruction count
-   shows it.
+4. A time profile again after each kernel, on the Mac: the tracker's feedback chain is the largest
+   single cost, a third of the budget case, and no instruction count shows it.

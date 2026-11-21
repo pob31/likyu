@@ -119,6 +119,31 @@ The same profile, by instructions, for what it is worth as a map:
 | The seeding bank | 10 % |
 | `beginStep`, seeding decisions, the rest | 17 % |
 
+## Where the time goes, sampled
+
+The first profile by time: macOS's `sample` on the M4 Pro, eight seconds of the budget case at
+`fbef822` (not fused, the pair loops gone), 6218 samples at the top of the stack.
+
+| Part | Share of the time |
+| --- | --- |
+| The tracker group: coefficients, extraction, `tick` | 31 % |
+| `Chain::track` itself: the seeding bank, the mean key | 19 % |
+| The bands' coefficients and their filters, per lane | 17 % |
+| Detectors, levels and gain computers | 15 % |
+| The library's `exp2` | 11 % |
+| Seeding decisions, `updateFrequencies`, `beginStep`, the rest | 8 % |
+
+- **The bank is a fifth of the budget case** on its own, and it is thirty independent filters on
+  one signal: the first kernel to write, as the plan has it.
+- **The library's `exp2` is a tenth**, on this machine: more than MSVC's showed. Our own, written
+  once for one value or four, is 7b's next step.
+- **The tracker group is a third**, and is the part SIMD helps least: its time is the feedback
+  chain. The first-order update of g (7f, the author's) is what shortens it.
+
+How it was taken, for the next one: the bench runs far faster than real time, so
+`likyu_bench time --scenario track --seconds 500` gives it some fifteen seconds to be sampled in;
+then `sample <pid> 8 -file out.txt`, and the section "Sort by top of stack".
+
 ## Found on the way
 
 - **MSVC 19.52 miscompiles a conditional store under `/arch:AVX2`.** `for i: if (bit i of mask)
