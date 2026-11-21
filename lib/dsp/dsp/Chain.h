@@ -141,6 +141,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -346,9 +347,19 @@ namespace likyu::dsp
                         }
                         else
                         {
-                            for (int i = 0; i < n; ++i)
-                                if ((marked >> i) & 1u)
-                                    out[i] = static_cast<Sample> (w[i]);
+                            /*  Bit by bit, and not `for i: if (bit i) store`:
+                                MSVC 19.52 with /arch:AVX2 vectorises that
+                                conditional store of a double narrowed to
+                                float and writes zeros where the bit is clear
+                                (found 2026-11-21 by the block-size row of
+                                ChannelsTests in Release; ten lines reproduce
+                                it). A loop over the set bits is not a loop a
+                                vectoriser takes, and it is the sparse case. */
+                            for (auto left = marked & all; left != 0; left &= left - 1)
+                            {
+                                const auto i = std::countr_zero (left);
+                                out[i] = static_cast<Sample> (w[i]);
+                            }
                         }
                     }
                 }
