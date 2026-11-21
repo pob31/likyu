@@ -765,9 +765,16 @@ bench notes: [`2026-11-21-phase7-baseline.md`](bench/2026-11-21-phase7-baseline.
   loads: `moving` was half again its baseline until they became arrays. The Release suite failed
   on Linux CI at the baseline commit and passes since. The pair loops were 13 % of the
   instructions and 1 to 3 % of the time.
-- *Not yet:* the other kernels of 7d, in the order the handoff gives (coefficients and levels
-  along the samples, the tracker group's front half, the detectors, the filters across channels);
-  of 7c, the settled band and the lookahead; 7e, 7f, 7g.
+- *Done 2026-11-22:* 7d whole (the tracker group's front half, the coefficients along the
+  samples, the detectors eight bands to a register, the filters across channels with `work`
+  sample-major) and of 7c the quiet band, none changing a bit. **The budget's case: 2.96 % of a
+  core on the Windows machine, 2.28 % on the M4 Pro, 2.85 % on the Ryzen; 64 channels linked,
+  6.1 %, 5.0 %, 5.8 %.** Fourth bench note:
+  [`2026-11-22-phase7-kernels.md`](bench/2026-11-22-phase7-kernels.md).
+- *Left of 7c, by measurement:* the lookahead in runs (the whole frame with no band on is 0.5 µs
+  a block) and the processor's per-block setters only on a change (a few dozen nanoseconds, and
+  identical transient times leave a band quiet): not done.
+- *Not yet:* 7e, which may wait; 7f, the stop; 7g.
 
 ---
 
