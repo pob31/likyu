@@ -75,6 +75,10 @@ namespace likyutest::dsp
         return a.size() == b.size() && std::memcmp (a.data(), b.data(), a.size() * sizeof (Sample)) == 0;
     }
 
+    /** Adds bits to the ledger line of the running test case (DspTestMain.cpp;
+        devplan, Phase 7). `render` does it for every rendering. */
+    void ledgerAdd (const void* data, std::size_t size) noexcept;
+
     /** Something done to the chain before the sample `at`. */
     struct Event
     {
@@ -160,6 +164,18 @@ namespace likyutest::dsp
 
             run (position, size);
             position += size;
+        }
+
+        // The ledger: what came out, and what each band shows at the end.
+        for (const auto& channel : audio)
+            ledgerAdd (channel.data(), channel.size() * sizeof (Sample));
+
+        for (int b = 0; b < likyu::dsp::numBands; ++b)
+        {
+            const auto meter = chain.bandMeter (b);
+            ledgerAdd (&meter.offsetDb, sizeof (meter.offsetDb));
+            ledgerAdd (&meter.frequencyHz, sizeof (meter.frequencyHz));
+            ledgerAdd (&meter.confidence, sizeof (meter.confidence));
         }
 
         return audio;
