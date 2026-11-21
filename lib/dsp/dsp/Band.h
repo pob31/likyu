@@ -627,7 +627,7 @@ namespace likyu::dsp
                 return c;
 
             const auto w = smoothstep (position);
-            c.m0 = (1.0 - w) + w * c.m0;
+            c.m0 = mulAdd (w, c.m0, 1.0 - w);
             c.m1 *= w;
             c.m2 *= w;
             return c;

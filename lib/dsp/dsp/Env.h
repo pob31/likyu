@@ -149,7 +149,7 @@ namespace likyu::dsp
                     level = x;
                 }
 
-                level = x + (x > level ? attack : release) * (level - x);
+                level = mulAdd (x > level ? attack : release, level - x, x);
 
                 if (exactlyEqual (x, bottom) && std::abs (level - bottom) < envRestDb)
                     level = bottom;

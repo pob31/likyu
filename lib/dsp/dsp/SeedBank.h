@@ -127,7 +127,7 @@ namespace likyu::dsp
                 auto x1 = s1[index], x2 = s2[index], p = power[index], peak = 0.0f, output = 0.0f;
 
                 for (int i = 0; i < n; ++i)
-                    p += a * (detectorTick (key[i], x1, x2, peak, k, output) - p);
+                    p = mulAdd (a, detectorTick (key[i], x1, x2, peak, k, output) - p, p);
 
                 // A state that has decayed to nothing is nothing; one that is not finite is reset.
                 const auto clean = [] (float& v)

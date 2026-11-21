@@ -112,19 +112,21 @@ namespace likyu::dsp
     inline float detectorTick (float x, float& s1, float& s2, float& peak,
                                const DetectorCoefficients& c, float& output) noexcept
     {
+        // The tick of dsp/Svf.h, in float; then the high-pass output and the
+        // quadrature power, each product and sum that has the shape fused.
         const float v3 = x - s2;
-        const float v1 = c.a1 * s1 + c.a2 * v3;
-        const float v2 = s2 + c.a2 * s1 + c.a3 * v3;
-        s1 = 2.0f * v1 - s1;
-        s2 = 2.0f * v2 - s2;
+        const float v1 = mulAdd (c.a1, s1, c.a2 * v3);
+        const float v2 = mulAdd (c.a3, v3, mulAdd (c.a2, s1, s2));
+        s1 = mulAdd (2.0f, v1, -s1);
+        s2 = mulAdd (2.0f, v2, -s2);
 
-        const float hp = x - c.k * v1 - v2;
+        const float hp = mulAdd (-c.k, v1, x) - v2;
 
         switch (c.type)
         {
             case DetectorType::bandPass:
                 output = c.k * v1;
-                return c.k * c.k * std::max (0.0f, v1 * v1 - v2 * hp);
+                return c.k * c.k * std::max (0.0f, mulAdd (v1, v1, -(v2 * hp)));
 
             case DetectorType::highPass:
                 output = hp;

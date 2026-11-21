@@ -60,11 +60,11 @@ namespace likyu::dsp
         x (135135 - 17325 x^2 + 378 x^4 - x^6) / (135135 - 62370 x^2 + 3150 x^4 - 28 x^6).
         Integer coefficients, exact in any precision. */
     template <typename T>
-    constexpr T tanRational (T x) noexcept
+    inline T tanRational (T x) noexcept
     {
         const T y = x * x;
-        const T p = T (135135) + y * (T (-17325) + y * (T (378) + y * T (-1)));
-        const T q = T (135135) + y * (T (-62370) + y * (T (3150) + y * T (-28)));
+        const T p = mulAdd (y, mulAdd (y, mulAdd (y, T (-1), T (378)), T (-17325)), T (135135));
+        const T q = mulAdd (y, mulAdd (y, mulAdd (y, T (-28), T (3150)), T (-62370)), T (135135));
         return x * p / q;
     }
 
@@ -72,15 +72,17 @@ namespace likyu::dsp
         [0, 0.25 pi] (Lawson's iteration, 2026-11-20). Wrong outside it: used
         only where prepare() has checked the rate. */
     template <typename T>
-    constexpr T tanPolynomial (T x) noexcept
+    inline T tanPolynomial (T x) noexcept
     {
+        // Horner's rule, the highest power first, each step one mulAdd.
         const T y = x * x;
-        return x * (T (0.9999997745472344)
-                    + y * (T (0.3333594742443005)
-                    + y * (T (0.1328495807781988)
-                    + y * (T (0.057182138867633396)
-                    + y * (T (0.012532760831065859)
-                    + y * T (0.020387002666730214))))));
+        T p = T (0.020387002666730214);
+        p = mulAdd (y, p, T (0.012532760831065859));
+        p = mulAdd (y, p, T (0.057182138867633396));
+        p = mulAdd (y, p, T (0.1328495807781988));
+        p = mulAdd (y, p, T (0.3333594742443005));
+        p = mulAdd (y, p, T (0.9999997745472344));
+        return x * p;
     }
 
     constexpr TanForm tanFormFor (double sampleRate) noexcept

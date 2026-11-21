@@ -34,6 +34,8 @@
     arithmetic: no allocation, no library call.
 */
 
+#include "Math.h"
+
 #include <algorithm>
 #include <bit>
 #include <cstdint>
@@ -62,7 +64,7 @@ namespace likyu::dsp
         const auto exponent = static_cast<int> ((bits >> 23) & 0xffu) - 127;
         const auto u = std::bit_cast<float> ((bits & 0x007fffffu) | 0x3f800000u) - 1.0f;
 
-        return static_cast<float> (exponent) + u * (c1 + u * (c2 + u * c3));
+        return mulAdd (u, mulAdd (u, mulAdd (u, c3, c2), c1), static_cast<float> (exponent));
     }
 
     /** A power as a level in dB, within [-120, +60]. NaN is the floor. */

@@ -295,7 +295,7 @@ namespace likyu::dsp
         {
             const auto g = static_cast<float> (warp.g (std::exp2 (s.estimate)));
             TrackerCoefficients c;
-            c.a1 = 1.0f / (1.0f + g * (g + k));
+            c.a1 = 1.0f / mulAdd (g, g + k, 1.0f);
             c.a2 = g * c.a1;
             c.a3 = g * c.a2;
             return c;
@@ -306,10 +306,10 @@ namespace likyu::dsp
         static float extract (float key, TrackerState& s, const TrackerCoefficients& c) noexcept
         {
             const auto v3 = key - s.x2;
-            const auto v1 = c.a1 * s.x1 + c.a2 * v3;
-            const auto v2 = s.x2 + c.a2 * s.x1 + c.a3 * v3;
-            s.x1 = 2.0f * v1 - s.x1;
-            s.x2 = 2.0f * v2 - s.x2;
+            const auto v1 = mulAdd (c.a1, s.x1, c.a2 * v3);
+            const auto v2 = mulAdd (c.a3, v3, mulAdd (c.a2, s.x1, s.x2));
+            s.x1 = mulAdd (2.0f, v1, -s.x1);
+            s.x2 = mulAdd (2.0f, v2, -s.x2);
             return k * v1;
         }
 
@@ -328,10 +328,10 @@ namespace likyu::dsp
         void tick (float in, TrackerState& s, const TrackerCoefficients& c, MayLock&& mayLock) const noexcept
         {
             const auto v3 = in - s.s2;
-            const auto v1 = c.a1 * s.s1 + c.a2 * v3;
-            const auto v2 = s.s2 + c.a2 * s.s1 + c.a3 * v3;
-            s.s1 = 2.0f * v1 - s.s1;
-            s.s2 = 2.0f * v2 - s.s2;
+            const auto v1 = mulAdd (c.a1, s.s1, c.a2 * v3);
+            const auto v2 = mulAdd (c.a3, v3, mulAdd (c.a2, s.s1, s.s2));
+            s.s1 = mulAdd (2.0f, v1, -s.s1);
+            s.s2 = mulAdd (2.0f, v2, -s.s2);
 
             const auto bp = k * v1;
             const auto q = k * v2;
@@ -342,7 +342,7 @@ namespace likyu::dsp
             // within trackSettledDb of the input's power over one period.
             const auto inPower = static_cast<double> (in) * static_cast<double> (in);
             const auto ePower = static_cast<double> (e) * static_cast<double> (e);
-            s.fastPower += s.fastSmoothing * (inPower - s.fastPower);
+            s.fastPower = mulAdd (s.fastSmoothing, inPower - s.fastPower, s.fastPower);
 
             if (s.jumping)
                 s.jumping = ! (s.fastPower * settledRatio >= s.inputPower && s.fastPower <= s.inputPower * settledRatio);
@@ -350,8 +350,8 @@ namespace likyu::dsp
                 s.jumping = s.fastPower * jumpRatio < s.inputPower || s.fastPower > s.inputPower * jumpRatio;
 
             const auto smoothing = s.jumping ? s.fastSmoothing : s.smoothing;
-            s.inputPower += smoothing * (inPower - s.inputPower);
-            s.notchPower += smoothing * (ePower - s.notchPower);
+            s.inputPower = mulAdd (smoothing, inPower - s.inputPower, s.inputPower);
+            s.notchPower = mulAdd (smoothing, ePower - s.notchPower, s.notchPower);
             s.confidence = s.inputPower > static_cast<double> (powerFloor)
                                ? std::max (0.0, 1.0 - s.notchPower / s.inputPower) : 0.0;
 
@@ -398,19 +398,19 @@ namespace likyu::dsp
 
             if (released || (s.phase == TrackPhase::locked && ! s.jumping))
             {
-                const auto gradient = static_cast<double> (e * q) / static_cast<double> (bp * bp + q * q + trackerEpsilon);
-                s.estimate = std::clamp (s.estimate - now.mu * gradient, now.low, now.high);
+                const auto gradient = static_cast<double> (e * q) / static_cast<double> (mulAdd (bp, bp, q * q) + trackerEpsilon);
+                s.estimate = std::clamp (mulAdd (-now.mu, gradient, s.estimate), now.low, now.high);
             }
 
             // The others remove this one's component: all of it while it is
             // locked, as much as its confidence says otherwise.
             const auto weight = s.phase == TrackPhase::locked ? 1.0
                                 : now.threshold > 0.0 ? std::min (1.0, s.confidence / now.threshold) : 1.0;
-            s.weight += now.weight * (weight - s.weight);
+            s.weight = mulAdd (now.weight, weight - s.weight, s.weight);
 
             // The band's frequency glides to the estimate, or back to rest.
             const auto target = released ? now.rest : s.estimate;
-            s.output = target + now.glide * (s.output - target);
+            s.output = mulAdd (now.glide, s.output - target, target);
 
             if (released && std::abs (s.output - now.rest) < restSnap)
                 s.output = now.rest;

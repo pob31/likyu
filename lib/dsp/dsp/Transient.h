@@ -214,9 +214,9 @@ namespace likyu::dsp
                     fast = slowAttack = slowRelease = x;
                 }
 
-                fast = x + (x > fast ? fastAttack : fastRelease) * (fast - x);
-                slowAttack = x + (x > slowAttack ? slowAttackRate : fastRelease) * (slowAttack - x);
-                slowRelease = x + (x > slowRelease ? fastAttack : slowReleaseRate) * (slowRelease - x);
+                fast = mulAdd (x > fast ? fastAttack : fastRelease, fast - x, x);
+                slowAttack = mulAdd (x > slowAttack ? slowAttackRate : fastRelease, slowAttack - x, x);
+                slowRelease = mulAdd (x > slowRelease ? fastAttack : slowReleaseRate, slowRelease - x, x);
 
                 const auto attackSignal = std::max (0.0, fast - slowAttack);
                 const auto sustainSignal = std::max (0.0, slowRelease - fast);
@@ -224,7 +224,7 @@ namespace likyu::dsp
                 const auto s = moving ? lerpExact (start.sustain, end.sustain, t) : end.sustain;
                 const auto limit = std::abs (rangeMoving ? lerpExact (rangeStart, rangeEnd, t) : rangeEnd);
 
-                auto offset = std::clamp (a * attackSignal + s * sustainSignal, -limit, limit) * gate (fast - floorDb);
+                auto offset = std::clamp (mulAdd (a, attackSignal, s * sustainSignal), -limit, limit) * gate (fast - floorDb);
 
                 if (! (std::abs (offset) >= returnToZeroDb))
                     offset = 0.0;

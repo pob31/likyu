@@ -213,7 +213,7 @@ namespace likyu::dsp
         void smooth (double& offset, double target) const noexcept
         {
             const auto a = std::abs (target) > std::abs (offset) ? attack : release;
-            offset = target + a * (offset - target);
+            offset = mulAdd (a, offset - target, target);
 
             if (exactlyEqual (target, 0.0) && std::abs (offset) < returnToZeroDb)
                 offset = 0.0;
