@@ -107,6 +107,7 @@ namespace likyu::dsp
         keys.assign (slots * controlStep, 0.0f);
         listened.assign (slots * controlStep, 0.0f);
         lanePower.assign (stride * controlStep, 0.0f);
+        slotPower.assign (slots * controlStep * numBands, 0.0f);
         laneOffsets.assign (stride * controlStep, 0.0);
         offsets.assign (stride * numBands, 0.0);
         envelopes.assign (stride * numBands, TransientEnvelopes {});
@@ -624,6 +625,8 @@ namespace likyu::dsp
         if (anyTrack)
             track (n);
 
+        runDetectors (numChannels, n);
+
         for (int b = 0; b < numBands; ++b)
         {
             detect (b, numChannels, n);
@@ -936,6 +939,103 @@ namespace likyu::dsp
         }
     }
 
+    void Chain::runDetectors (int numChannels, int n) noexcept LIKYU_AUDIO_THREAD
+    {
+        const auto stride = laneStride (channels);
+        const auto stepEnds = position + n == controlStep;
+
+        // What each band's detector reads in this stretch, decided as detect() decides it.
+        struct Reads
+        {
+            bool dynamic = false, listening = false;
+            int first = 0, last = 0;
+            const DetectorCoefficients* perLane = nullptr;
+        };
+
+        std::array<Reads, numBands> reads {};
+        auto any = false;
+
+        for (int b = 0; b < numBands; ++b)
+        {
+            const auto index = static_cast<std::size_t> (b);
+            const auto& band = bands[index];
+            const auto& l = lanes[index];
+            auto& r = reads[index];
+            r.dynamic = band.usesDetector() && ! band.isIdle() && l.count > 0;
+            r.listening = b == listenBand;
+
+            if (! r.dynamic && ! r.listening)
+                continue;
+
+            const auto sidechain = band.detectorConfig().key == KeySource::sidechain;
+            r.first = sidechain ? channels : 0;
+            r.last = r.first + (sidechain ? sidechainChannels : numChannels);
+            r.perLane = perLaneDetector[index] && l.count > 0 ? laneDetectors.data() + b * stride : nullptr;
+            any = true;
+        }
+
+        if (! any)
+            return;
+
+        for (int slot = 0; slot < channels + maxSidechainChannels; ++slot)
+        {
+            // The bands that read this key channel: those that count it, and the one listened to.
+            DetectorLanes c;
+            auto active = false, heard = false;
+
+            for (int b = 0; b < numBands; ++b)
+            {
+                const auto index = static_cast<std::size_t> (b);
+                const auto& r = reads[index];
+
+                if (slot < r.first || slot >= r.last)
+                    continue;
+
+                const auto laneOfSlot = lanes[index].ofSlot[static_cast<std::size_t> (slot)];
+                const auto counted = r.dynamic && laneOfSlot != Lanes::noLane;
+
+                if (! counted && ! r.listening)
+                    continue;
+
+                c.set (b, r.perLane != nullptr && laneOfSlot != Lanes::noLane ? r.perLane[laneOfSlot]
+                                                                              : bands[index].detectorCoefficients());
+                active = true;
+                heard = heard || r.listening;
+            }
+
+            if (! active)
+                continue;
+
+            const auto i0 = slotIndex (slot, 0);
+            runDetectorLanes (keys.data() + slot * controlStep, n, detectorS1.data() + i0, detectorS2.data() + i0,
+                              detectorPeak.data() + i0, c, slotPower.data() + static_cast<std::size_t> (slot * controlStep) * numBands,
+                              heard ? slotOutput.data() : nullptr);
+
+            if (heard)
+            {
+                float* to = listened.data() + slot * controlStep;
+
+                for (int i = 0; i < n; ++i)
+                    to[i] = slotOutput[static_cast<std::size_t> (i * numBands + listenBand)];
+            }
+
+            // At the end of a control step, a state that has decayed to nothing is nothing.
+            if (stepEnds)
+            {
+                for (int b = 0; b < numBands; ++b)
+                {
+                    if (c.active[b] == 0)
+                        continue;
+
+                    const auto i = slotIndex (slot, b);
+                    cleanDetectorState (detectorS1[i]);
+                    cleanDetectorState (detectorS2[i]);
+                    cleanDetectorState (detectorPeak[i]);
+                }
+            }
+        }
+    }
+
     void Chain::detect (int b, int numChannels, int n) noexcept LIKYU_AUDIO_THREAD
     {
         const auto index = static_cast<std::size_t> (b);
@@ -961,57 +1061,29 @@ namespace likyu::dsp
 
         detectorInUse[index] = true;
 
-        const auto& shared = band.detectorCoefficients();
-        const auto* perLane = perLaneDetector[index] && l.count > 0
-                                  ? laneDetectors.data() + b * laneStride (channels) : nullptr;
         const auto sidechain = band.detectorConfig().key == KeySource::sidechain;
         const auto first = sidechain ? channels : 0;
         const auto last = first + (sidechain ? sidechainChannels : numChannels);
-        const auto stepEnds = position + n == controlStep;
 
         if (dynamic)
             for (int lane = 0; lane < l.count; ++lane)
                 std::fill (lanePower.begin() + lane * controlStep, lanePower.begin() + lane * controlStep + n, 0.0f);
 
-        // Every key channel's detector; the maximum of the powers into its lane.
-        for (int slot = first; slot < last; ++slot)
+        // The maximum of the key channels' powers into each lane, in their
+        // order; the detectors ran for every band at once (runDetectors). A
+        // channel the band does not apply to is no part of its key.
+        for (int slot = dynamic ? first : last; slot < last; ++slot)
         {
-            // A channel the band does not apply to is no part of its key; it is still heard under Listen.
             const auto laneOfSlot = l.ofSlot[static_cast<std::size_t> (slot)];
-            const auto counted = dynamic && laneOfSlot != Lanes::noLane;
 
-            if (! counted && ! listening)
+            if (laneOfSlot == Lanes::noLane)
                 continue;
 
-            const auto i0 = slotIndex (slot, b);
-            auto s1 = detectorS1[i0], s2 = detectorS2[i0], peak = detectorPeak[i0];
-            const float* x = keys.data() + slot * controlStep;
-            float* power = lanePower.data() + (counted ? laneOfSlot : 0) * controlStep;
-            float* heard = listened.data() + slot * controlStep;
-            float output = 0.0f;
-            const auto& k = perLane != nullptr && laneOfSlot != Lanes::noLane ? perLane[laneOfSlot] : shared;
+            const float* p = slotPower.data() + static_cast<std::size_t> (slot * controlStep) * numBands + index;
+            float* power = lanePower.data() + laneOfSlot * controlStep;
 
             for (int i = 0; i < n; ++i)
-            {
-                const auto p = detectorTick (x[i], s1, s2, peak, k, output);
-
-                if (counted)
-                    power[i] = std::max (power[i], p);
-
-                if (listening)
-                    heard[i] = output;
-            }
-
-            if (stepEnds)
-            {
-                cleanDetectorState (s1);
-                cleanDetectorState (s2);
-                cleanDetectorState (peak);
-            }
-
-            detectorS1[i0] = s1;
-            detectorS2[i0] = s2;
-            detectorPeak[i0] = peak;
+                power[i] = std::max (power[i], p[i * numBands]);
         }
 
         if (! dynamic)

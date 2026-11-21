@@ -169,6 +169,27 @@ TEST_CASE ("registers, eight floats: every operation gives the bits of the plain
     check ([] (Native a, Native b, Native) { return a / b; }, [] (Scalar a, Scalar b, Scalar) { return a / b; },
            [] (float a, float b, float) { return a / b; });
 
+    // A choice by flags, which the detectors' types are: every pattern of eight flags.
+    for (int pattern = 0; pattern < 256; ++pattern)
+    {
+        std::int32_t flags[8];
+
+        for (int lane = 0; lane < 8; ++lane)
+            flags[lane] = (pattern >> lane) & 1 ? -1 : 0;
+
+        const auto a = pick (values, static_cast<std::size_t> (pattern), 1), b = pick (values, static_cast<std::size_t> (pattern) * 7 + 3, 5);
+        std::array<float, 8> native {}, arrays {}, expected {};
+        select (simd::native::M32x8::load (flags), Native::load (a.data()), Native::load (b.data())).store (native.data());
+        select (simd::scalar::M32x8::load (flags), Scalar::load (a.data()), Scalar::load (b.data())).store (arrays.data());
+
+        for (std::size_t lane = 0; lane < 8; ++lane)
+            expected[lane] = flags[lane] != 0 ? a[lane] : b[lane];
+
+        different += sameBits (native, arrays) ? 0 : 1;
+        notTheExpression += sameBits (arrays, expected) ? 0 : 1;
+        ++cases;
+    }
+
     const std::string target = simd::targetName;
     MESSAGE ("registers: " << target << ", " << cases << " vectors of eight");
     CHECK (different == 0);

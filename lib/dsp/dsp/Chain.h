@@ -452,6 +452,13 @@ namespace likyu::dsp
 
         void clearDetectors (int band) noexcept LIKYU_AUDIO_THREAD;
 
+        /** Before the bands of a stretch: every key channel's detectors, the
+            eight bands its lanes (dsp/Detector.h, runDetectorLanes), each
+            band's power into slotPower and the listened band's signal into
+            `listened`. Which band reads which key channel is decided as
+            detect() decides it; detect() then takes the powers from there. */
+        void runDetectors (int numChannels, int n) noexcept LIKYU_AUDIO_THREAD;
+
         std::size_t slotIndex (int slot, int band) const noexcept
         {
             return static_cast<std::size_t> (slot * numBands + band);
@@ -485,6 +492,8 @@ namespace likyu::dsp
         std::vector<float> keys;                // slot * controlStep + sample
         std::vector<float> listened;            // the listened band's detector outputs, the same
         std::vector<float> lanePower;           // lane * controlStep + sample, one band at a time
+        std::vector<float> slotPower;           // (slot * controlStep + sample) * numBands + band: each detector's power
+        std::array<float, controlStep * numBands> slotOutput {};   // one key channel's detector signals, the same, for Listen
         std::vector<double> laneOffsets;        // the same, the offsets
         std::array<bool, numBands> anyOffset {};
         std::vector<double> offsets;            // band * channels + lane: the smoothed offset, dB

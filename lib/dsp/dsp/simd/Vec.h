@@ -27,6 +27,7 @@
 
         F32x8   eight floats: one AVX2 register, two NEON registers
         F64x4   four doubles: one AVX2 register, two NEON registers
+        M32x8   which of eight floats a choice takes, made from eight flags
         M64x4   which of four doubles a comparison held for
 
     and comes twice:
@@ -74,9 +75,12 @@ namespace likyu::dsp::simd
     //==========================================================================
     namespace scalar
     {
+        struct M32x8;
+
         struct F32x8
         {
             using Element = float;
+            using Mask = M32x8;
             static constexpr int lanes = 8;
 
             float v[lanes];
@@ -151,6 +155,31 @@ namespace likyu::dsp::simd
         {
             bool v[F64x4::lanes];
         };
+
+        struct M32x8
+        {
+            bool v[F32x8::lanes];
+
+            /** From eight flags, each 0 or -1. */
+            static LIKYU_INLINE M32x8 load (const std::int32_t* flags) noexcept
+            {
+                M32x8 m;
+
+                for (int i = 0; i < F32x8::lanes; ++i)
+                    m.v[i] = flags[i] != 0;
+
+                return m;
+            }
+        };
+
+        /** `yes` where the mask holds, `no` where it does not. */
+        LIKYU_INLINE F32x8 select (M32x8 m, F32x8 yes, F32x8 no) noexcept
+        {
+            for (int i = 0; i < F32x8::lanes; ++i)
+                no.v[i] = m.v[i] ? yes.v[i] : no.v[i];
+
+            return no;
+        }
 
         // Eight floats ------------------------------------------------------
         template <typename Operation>
@@ -295,9 +324,12 @@ namespace likyu::dsp::simd
 
     namespace native
     {
+        struct M32x8;
+
         struct F32x8
         {
             using Element = float;
+            using Mask = M32x8;
             static constexpr int lanes = 8;
 
             __m256 v;
@@ -330,6 +362,19 @@ namespace likyu::dsp::simd
         {
             __m256d m;
         };
+
+        struct M32x8
+        {
+            __m256 m;
+
+            static LIKYU_INLINE M32x8 load (const std::int32_t* flags) noexcept
+            {
+                return { _mm256_castsi256_ps (_mm256_loadu_si256 (reinterpret_cast<const __m256i*> (flags))) };
+            }
+        };
+
+        // blendv takes `yes` where the mask's sign bit is set: every bit of a flag of -1.
+        LIKYU_INLINE F32x8 select (M32x8 m, F32x8 yes, F32x8 no) noexcept   { return { _mm256_blendv_ps (no.v, yes.v, m.m) }; }
 
         LIKYU_INLINE F32x8 operator+ (F32x8 a, F32x8 b) noexcept            { return { _mm256_add_ps (a.v, b.v) }; }
         LIKYU_INLINE F32x8 operator- (F32x8 a, F32x8 b) noexcept            { return { _mm256_sub_ps (a.v, b.v) }; }
@@ -384,9 +429,12 @@ namespace likyu::dsp::simd
 
     namespace native
     {
+        struct M32x8;
+
         struct F32x8
         {
             using Element = float;
+            using Mask = M32x8;
             static constexpr int lanes = 8;
 
             float32x4_t lo, hi;
@@ -434,6 +482,22 @@ namespace likyu::dsp::simd
         {
             uint64x2_t lo, hi;
         };
+
+        struct M32x8
+        {
+            uint32x4_t lo, hi;
+
+            static LIKYU_INLINE M32x8 load (const std::int32_t* flags) noexcept
+            {
+                return { vreinterpretq_u32_s32 (vld1q_s32 (flags)), vreinterpretq_u32_s32 (vld1q_s32 (flags + 4)) };
+            }
+        };
+
+        // vbsl takes `yes` bit by bit where the mask is set: every bit of a flag of -1.
+        LIKYU_INLINE F32x8 select (M32x8 m, F32x8 yes, F32x8 no) noexcept
+        {
+            return { vbslq_f32 (m.lo, yes.lo, no.lo), vbslq_f32 (m.hi, yes.hi, no.hi) };
+        }
 
         LIKYU_INLINE F32x8 operator+ (F32x8 a, F32x8 b) noexcept            { return { vaddq_f32 (a.lo, b.lo), vaddq_f32 (a.hi, b.hi) }; }
         LIKYU_INLINE F32x8 operator- (F32x8 a, F32x8 b) noexcept            { return { vsubq_f32 (a.lo, b.lo), vsubq_f32 (a.hi, b.hi) }; }
@@ -515,5 +579,6 @@ namespace likyu::dsp::simd
 
     using F32x8 = native::F32x8;
     using F64x4 = native::F64x4;
+    using M32x8 = native::M32x8;
     using M64x4 = native::M64x4;
 }

@@ -296,6 +296,111 @@ namespace
 }
 
 //==============================================================================
+TEST_CASE ("kernel, the detectors of a key channel: registers, plain arrays and a band at a time give the same bits")
+{
+    constexpr int bands = DetectorLanes::lanes;
+    std::uint32_t state = 23;
+
+    const auto next = [&state]
+    {
+        state = state * 1664525u + 1013904223u;
+        return static_cast<double> (state >> 8) / 16777216.0;
+    };
+
+    auto different = 0, notTheTick = 0, stretches = 0;
+
+    for (const auto rate : { 44100.0, 96000.0 })
+    {
+        Warp warp;
+        warp.prepare (rate);
+        const auto key = awkwardKey (6000, rate);
+
+        for (int setting = 0; setting < 40; ++setting)
+        {
+            // Eight detectors of mixed types and frequencies; some bands do not read this key channel.
+            DetectorLanes c;
+            std::array<DetectorCoefficients, bands> each {};
+
+            for (int b = 0; b < bands; ++b)
+            {
+                const auto pick = next();
+                const auto type = pick < 0.5 ? DetectorType::bandPass : pick < 0.75 ? DetectorType::highPass : DetectorType::lowPass;
+                const auto hz = 30.0 * std::pow (2.0, 9.0 * next());
+                each[static_cast<std::size_t> (b)] = makeDetectorCoefficients (type, warp.g (hz), 1.0 / (0.3 + 8.0 * next()), hz, rate);
+
+                if (next() < 0.8)
+                    c.set (b, each[static_cast<std::size_t> (b)]);
+            }
+
+            const ScopedFlushToZero flushToZero;
+            std::array<float, bands> s1R {}, s2R {}, peakR {}, s1A {}, s2A {}, peakA {}, s1B {}, s2B {}, peakB {};
+
+            // States that are not at rest, so that a band left out must keep what it had.
+            for (int b = 0; b < bands; ++b)
+            {
+                const auto s = static_cast<std::size_t> (b);
+                s1R[s] = s1A[s] = s1B[s] = static_cast<float> (next() - 0.5);
+                s2R[s] = s2A[s] = s2B[s] = static_cast<float> (next() - 0.5);
+                peakR[s] = peakA[s] = peakB[s] = static_cast<float> (next());
+            }
+
+            for (int done = 0; done < static_cast<int> (key.size());)
+            {
+                const auto n = std::min (1 + static_cast<int> (next() * controlStep), static_cast<int> (key.size()) - done);
+                std::array<float, controlStep * bands> powerR {}, powerA {}, outputR {}, outputA {};
+
+                runDetectorLanes<simd::native::F32x8> (key.data() + done, n, s1R.data(), s2R.data(), peakR.data(), c, powerR.data(), outputR.data());
+                runDetectorLanes<simd::scalar::F32x8> (key.data() + done, n, s1A.data(), s2A.data(), peakA.data(), c, powerA.data(), outputA.data());
+
+                // A band at a time, through detectorTick, as detect() ran it before.
+                std::array<float, controlStep * bands> powerB {}, outputB {};
+
+                for (int b = 0; b < bands; ++b)
+                {
+                    if (c.active[b] == 0)
+                        continue;
+
+                    const auto s = static_cast<std::size_t> (b);
+
+                    for (int i = 0; i < n; ++i)
+                    {
+                        float output = 0.0f;
+                        const auto at = static_cast<std::size_t> (i * bands + b);
+                        powerB[at] = detectorTick (key[static_cast<std::size_t> (done + i)], s1B[s], s2B[s], peakB[s], each[s], output);
+                        outputB[at] = output;
+                    }
+                }
+
+                const auto bytes = static_cast<std::size_t> (n * bands) * sizeof (float);
+                different += std::memcmp (powerR.data(), powerA.data(), bytes) == 0 && std::memcmp (outputR.data(), outputA.data(), bytes) == 0
+                             && std::memcmp (s1R.data(), s1A.data(), sizeof (s1R)) == 0 && std::memcmp (s2R.data(), s2A.data(), sizeof (s2R)) == 0
+                             && std::memcmp (peakR.data(), peakA.data(), sizeof (peakR)) == 0 ? 0 : 1;
+
+                // Against the tick: the active bands' powers, outputs and states; the others' states untouched.
+                auto same = std::memcmp (s1A.data(), s1B.data(), sizeof (s1A)) == 0 && std::memcmp (s2A.data(), s2B.data(), sizeof (s2A)) == 0
+                            && std::memcmp (peakA.data(), peakB.data(), sizeof (peakA)) == 0;
+
+                for (int b = 0; b < bands; ++b)
+                    for (int i = 0; i < n && c.active[b] != 0; ++i)
+                    {
+                        const auto at = static_cast<std::size_t> (i * bands + b);
+                        same = same && std::memcmp (&powerA[at], &powerB[at], sizeof (float)) == 0
+                               && std::memcmp (&outputA[at], &outputB[at], sizeof (float)) == 0;
+                    }
+
+                notTheTick += same ? 0 : 1;
+                ++stretches;
+                done += n;
+            }
+        }
+    }
+
+    MESSAGE ("detectors of a key channel: " << stretches << " stretches");
+    CHECK (different == 0);
+    CHECK (notTheTick == 0);
+}
+
+//==============================================================================
 namespace
 {
     bool sameStretch (const StretchCoefficients& a, const StretchCoefficients& b, int n)

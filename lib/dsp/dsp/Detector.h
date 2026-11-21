@@ -55,6 +55,8 @@
 
 #include "Svf.h"
 
+#include "simd/Vec.h"
+
 #include <algorithm>
 #include <cmath>
 
@@ -139,5 +141,79 @@ namespace likyu::dsp
 
         peak = std::max (output * output, peak * c.release);
         return peak;
+    }
+
+    /** The detectors of one key channel, the eight bands its lanes (PRD,
+        Architecture: layout for speed; devplan, Phase 7): each band's
+        coefficients, its type as two flags, and whether it reads this key
+        channel now. A band that does not has coefficients of 0 here and its
+        state is left as it was. */
+    struct DetectorLanes
+    {
+        static constexpr int lanes = 8;
+
+        float a1[lanes] {}, a2[lanes] {}, a3[lanes] {}, k[lanes] {}, kSquared[lanes] {}, release[lanes] {};
+        std::int32_t bandPass[lanes] {}, highPass[lanes] {}, active[lanes] {};
+
+        void set (int lane, const DetectorCoefficients& c) noexcept
+        {
+            a1[lane] = c.a1;
+            a2[lane] = c.a2;
+            a3[lane] = c.a3;
+            k[lane] = c.k;
+            kSquared[lane] = c.k * c.k;
+            release[lane] = c.release;
+            bandPass[lane] = c.type == DetectorType::bandPass ? -1 : 0;
+            highPass[lane] = c.type == DetectorType::highPass ? -1 : 0;
+            active[lane] = -1;
+        }
+    };
+
+    /** `n` samples of one key channel through the eight bands' detectors at
+        once, over the register type `V` (dsp/simd/Vec.h): a lane does what
+        detectorTick does for its band, operation for operation, the types
+        blended where the scalar code branches. `s1`, `s2`, `peak` are the
+        eight bands' states of this key channel, side by side (dsp/Chain.h);
+        `power` takes eight powers a sample, the bands side by side, and
+        `output`, when not null, the eight detector signals the same way, for
+        Listen. */
+    template <typename V = simd::F32x8>
+    inline void runDetectorLanes (const float* key, int n, float* s1, float* s2, float* peak, const DetectorLanes& c,
+                                  float* power, float* output) noexcept
+    {
+        static_assert (V::lanes == DetectorLanes::lanes);
+        using Mask = typename V::Mask;
+
+        const auto a1 = V::load (c.a1), a2 = V::load (c.a2), a3 = V::load (c.a3);
+        const auto k = V::load (c.k), kSquared = V::load (c.kSquared), release = V::load (c.release);
+        const Mask bandPass = V::Mask::load (c.bandPass), highPass = V::Mask::load (c.highPass), active = V::Mask::load (c.active);
+        const auto two = splat<V> (2.0), zero = splat<V> (0.0);
+        const auto start1 = V::load (s1), start2 = V::load (s2), startPeak = V::load (peak);
+        auto x1 = start1, x2 = start2, p = startPeak;
+
+        for (int i = 0; i < n; ++i)
+        {
+            const auto x = splat<V> (key[i]);
+            const auto v3 = x - x2;
+            const auto v1 = mulAdd (a1, x1, a2 * v3);
+            const auto v2 = mulAdd (a3, v3, mulAdd (a2, x1, x2));
+            x1 = mulAdd (two, v1, -x1);
+            x2 = mulAdd (two, v2, -x2);
+
+            const auto hp = mulAdd (-k, v1, x) - v2;
+            const auto followed = select (highPass, hp, v2);
+            const auto follower = max (followed * followed, p * release);
+            const auto quadrature = kSquared * max (zero, mulAdd (v1, v1, -(v2 * hp)));
+
+            p = select (bandPass, p, follower);
+            select (bandPass, quadrature, follower).store (power + i * V::lanes);
+
+            if (output != nullptr)
+                select (bandPass, k * v1, followed).store (output + i * V::lanes);
+        }
+
+        select (active, x1, start1).store (s1);
+        select (active, x2, start2).store (s2);
+        select (active, p, startPeak).store (peak);
     }
 }
