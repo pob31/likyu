@@ -54,8 +54,20 @@ add_test(NAME dsp COMMAND likyu_dsp_tests)
 
 # The bench runner (devplan 2d, 2f): figures, not a gate. CTest only keeps it building and
 # running; the figures come from a Release build run by hand (docs/bench/).
-add_executable(likyu_bench bench/BenchMain.cpp)
+add_executable(likyu_bench bench/BenchMain.cpp bench/BenchThread.h bench/BenchThread.cpp)
 target_link_libraries(likyu_bench PRIVATE likyu::dsp likyu::warnings)
+
+# MMCSS, for the measuring thread's priority (bench/BenchThread.cpp).
+if(WIN32)
+    target_link_libraries(likyu_bench PRIVATE avrt)
+endif()
+
+# The bits ledger (devplan, Phase 7) is made and read back: the two must agree, here and
+# on every platform. Whether it is the ledger of the commit before is for whoever
+# optimises to check, on one machine, with --expect.
+add_test(NAME bench.hash.smoke COMMAND likyu_bench hash --out "${CMAKE_CURRENT_BINARY_DIR}/ledger-$<CONFIG>.txt")
+add_test(NAME bench.hash.again COMMAND likyu_bench hash --expect "${CMAKE_CURRENT_BINARY_DIR}/ledger-$<CONFIG>.txt")
+set_tests_properties(bench.hash.again PROPERTIES DEPENDS bench.hash.smoke)
 
 add_test(NAME bench.smoke COMMAND likyu_bench time --seconds 0.2 --warmup 10)
 add_test(NAME bench.dynamic.smoke COMMAND likyu_bench time --scenario dynamic --seconds 0.2 --warmup 10)
