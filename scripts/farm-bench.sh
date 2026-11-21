@@ -54,10 +54,13 @@ git branch -D farm-bench > /dev/null
 scp -q "$OUT/likyu.bundle" "$HOST:/tmp/likyu-bench.bundle"
 rm -f "$OUT/likyu.bundle"
 
-ssh "$HOST" bash -s -- "$SHA" "$VARIANT" "$HOST $SHORT $VARIANT" "$EXTRA" > "$OUT/log.txt" 2>&1 <<'REMOTE' || { tail -40 "$OUT/log.txt"; exit 1; }
+# The values go in the script itself, quoted for the far shell: ssh joins its arguments
+# with spaces and the far shell splits them again, so an argument with a space in it
+# arrives as several (the first runs of this script built the default tree under the
+# name of the scalar one that way).
+REMOTE=$(cat <<'REMOTE'
 set -euo pipefail
 export PATH=/opt/homebrew/bin:$PATH
-SHA=$1; VARIANT=$2; LABEL=$3; EXTRA=$4
 
 if [ ! -d "$HOME/likyu-bench/.git" ]; then
   git clone -q /tmp/likyu-bench.bundle "$HOME/likyu-bench"
@@ -85,6 +88,12 @@ echo "=== ledger"
 echo "=== bench"
 "$BUILD/tests/Release/likyu_bench" suite --label "$LABEL" --json "$RESULTS/suite.json"
 REMOTE
+)
+
+{
+  printf 'SHA=%q; VARIANT=%q; LABEL=%q; EXTRA=%q\n' "$SHA" "$VARIANT" "$HOST $SHORT $VARIANT" "$EXTRA"
+  printf '%s\n' "$REMOTE"
+} | ssh "$HOST" bash -s > "$OUT/log.txt" 2>&1 || { tail -40 "$OUT/log.txt"; exit 1; }
 
 scp -q "$HOST:likyu-bench/build/bench-$VARIANT/results/*" "$OUT/"
 sed -n '/^=== suite/,$p' "$OUT/log.txt"
