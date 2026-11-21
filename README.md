@@ -39,6 +39,16 @@ No linear phase, no FFT in the audio path, no multi-resonance suppression: one t
 band. No slopes steeper than 12 dB per octave in one band; stack bands for more. No per-band
 lookahead, no mid-side, no oversampling in the first version.
 
+## What it needs
+
+- **On Windows and Linux, an x86-64 processor with AVX2 and FMA**: Intel from Haswell (2013), AMD
+  from Excavator and Zen. Some Pentium, Celeron and Atom models of later years have neither. The
+  plugin built for such a processor is `-DLIKYU_SIMD=scalar` (below); it computes the same things
+  with no fused multiply-add, so its output differs from the others' in its last bits.
+- **On macOS, Apple silicon or Intel**, macOS 11 or later.
+- One instance of eight bands in Dynamic and Track, stereo, at 96 kHz, takes about 3 % of one core
+  of a recent laptop processor; the figures per case and per machine are in `docs/bench/`.
+
 ## Building
 
 CMake 3.22 or later, a C++20 compiler, and the submodules:
@@ -62,6 +72,11 @@ locale is missing (`sudo locale-gen fr_FR.UTF-8` on Debian and Ubuntu).
 The DSP is a library of its own, `lib/dsp`, with no JUCE dependency, so that it can be tested
 headless and linked outside the plugin. Its suite is the `likyu_dsp_tests` target and runs in
 well under a second.
+
+`LIKYU_SIMD` chooses what its kernels are written in: `auto` (the default: AVX2 with FMA on x86-64,
+NEON on arm64), `reference` (the same kernels on plain arrays, in the same arithmetic, which CI
+holds the others to bit for bit with `scripts/same-bits.sh`) or `scalar` (for an x86-64 without
+AVX2). The `reference` and `scalar` presets configure them without the plugins.
 
 Before pushing: `python3 scripts/check-claude-md.py`, `check-pins.py`, `check-headers.py` and
 `check-dsp-includes.py`, as CI's first job runs them.

@@ -746,8 +746,9 @@ author with figures first (7f).
 - **7g. The record:** the bench note before and after, the PRD's dated amendments, the README's
   processor requirement, a handoff.
 
-**Record so far, 2026-11-21.** Handoff:
-[`docs/handoffs/2026-11-21-phase7-foundations.md`](handoffs/2026-11-21-phase7-foundations.md);
+**Record so far, 2026-11-22.** Handoff:
+[`docs/handoffs/2026-11-22-phase7-optimisation.md`](handoffs/2026-11-22-phase7-optimisation.md)
+(it replaces the one of 2026-11-21);
 bench notes: [`2026-11-21-phase7-baseline.md`](bench/2026-11-21-phase7-baseline.md) and
 [`2026-11-21-phase7-foundations.md`](bench/2026-11-21-phase7-foundations.md).
 
@@ -774,7 +775,16 @@ bench notes: [`2026-11-21-phase7-baseline.md`](bench/2026-11-21-phase7-baseline.
 - *Left of 7c, by measurement:* the lookahead in runs (the whole frame with no band on is 0.5 µs
   a block) and the processor's per-block setters only on a change (a few dozen nanoseconds, and
   identical transient times leave a band quiet): not done.
-- *Not yet:* 7e, which may wait; 7f, the stop; 7g.
+- *7f, the stop, 2026-11-22* ([`2026-11-22-phase7-stop.md`](bench/2026-11-22-phase7-stop.md)):
+  the first-order update of the tracker's g, measured on a throwaway branch (`exp/first-order-g`,
+  local): every threshold holds, 0 to 5 % of the budget's case, 13 to 14 % for one Track band
+  alone; the bank only while a tracker is unlocked: no figure moves, no gain in the budget's case.
+  *Proposed:* neither. The x86_64 slice under Rosetta (macOS 15.8): the AVX2 build runs, at 8.4 %
+  of a core; the scalar build at 4.4 %. *Proposed:* the scalar build for the macOS installer's
+  x86_64 slice. Both wait for the author.
+- *7g, 2026-11-22:* the README says what processor the build needs and what `LIKYU_SIMD` chooses;
+  the bench notes and this record are the before and after.
+- *Not yet:* 7e, which may wait; the author's answers to 7f; the installers.
 
 ---
 
