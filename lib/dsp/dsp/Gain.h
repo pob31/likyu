@@ -20,17 +20,19 @@
     GAIN, IN dB AND AS A FACTOR (PRD, Filter core and Band model).
 
     dB TO FACTOR, EXACT AT 0 dB. The exact bypass requires that 0 dB give
-    exactly 1, whatever approximation is used. Here it is std::exp2 of an
-    exact product: exp2(0) is exactly 1 in every C library this builds with,
-    and tests/dsp/ResponseTests.cpp holds it to that. Phase 2 computes these
-    only while a gain moves; if the per-sample offsets of Phase 3 call for a
-    faster form, it answers to the same test.
+    exactly 1, whatever approximation is used. Here it is pow2 (dsp/Exp2.h)
+    of a product: lib/dsp's own 2^x since Phase 7, exactly 1 at 0, the same
+    bits on every machine and for one value or a register of them. It
+    replaced std::exp2, and answers to the same tests
+    (tests/dsp/ResponseTests.cpp, Exp2Tests.cpp).
 
     THE EFFECTIVE GAIN of a band (decided 2026-11-16): static gain plus the
     dynamic offset, the offset clamped to the Range and the sum to +-30 dB.
 
     Standard library only.
 */
+
+#include "Exp2.h"
 
 #include <algorithm>
 #include <cmath>
@@ -45,19 +47,19 @@ namespace likyu::dsp
     /** The PRD's A = 10^(dB / 40): its square is the band's gain as a factor. */
     inline double bandA (double dB) noexcept
     {
-        return std::exp2 (dB * (log2Of10 / 40.0));
+        return pow2 (dB * (log2Of10 / 40.0));
     }
 
     /** sqrt(A) = 10^(dB / 80), which rescales g for the shelves. */
     inline double bandSqrtA (double dB) noexcept
     {
-        return std::exp2 (dB * (log2Of10 / 80.0));
+        return pow2 (dB * (log2Of10 / 80.0));
     }
 
     /** 10^(dB / 20): a gain in dB as a factor (the output gain). */
     inline double dbToFactor (double dB) noexcept
     {
-        return std::exp2 (dB * (log2Of10 / 20.0));
+        return pow2 (dB * (log2Of10 / 20.0));
     }
 
     /** Static gain + dynamic offset: the offset within +-|range|, the sum

@@ -79,7 +79,7 @@ namespace likyu::dsp
     inline double svfMagnitudeDb (const SvfCoefficients<double>& c, double hz, double rate) noexcept
     {
         const auto magnitude = std::abs (svfResponse (c, hz, rate));
-        const auto floor = std::exp2 (responseFloorDb * (log2Of10 / 20.0));
+        const auto floor = pow2 (responseFloorDb * (log2Of10 / 20.0));
 
         return magnitude > floor ? 20.0 * std::log10 (magnitude) : responseFloorDb;
     }

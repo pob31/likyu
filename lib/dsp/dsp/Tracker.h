@@ -127,6 +127,7 @@
 */
 
 #include "Dynamics.h"
+#include "Exp2.h"
 #include "FastLog.h"
 #include "Frequency.h"
 #include "Math.h"
@@ -284,7 +285,7 @@ namespace likyu::dsp
                 s.atRest = true;
             }
 
-            const auto hz = warp.clamp (std::exp2 (s.estimate));
+            const auto hz = warp.clamp (pow2 (s.estimate));
             const auto seconds = std::max (confidencePeriods / hz, confidenceMinMs * 0.001);
             s.smoothing = rate > 0.0 ? 1.0 - std::exp (-1.0 / (seconds * rate)) : 1.0;
             s.fastSmoothing = rate > 0.0 ? 1.0 - std::exp (-hz / rate) : 1.0;
@@ -293,7 +294,7 @@ namespace likyu::dsp
         /** The filter coefficients at the tracker's estimate now. */
         TrackerCoefficients coefficients (const TrackerState& s) const noexcept
         {
-            const auto g = static_cast<float> (warp.g (std::exp2 (s.estimate)));
+            const auto g = static_cast<float> (warp.g (pow2 (s.estimate)));
             TrackerCoefficients c;
             c.a1 = 1.0f / mulAdd (g, g + k, 1.0f);
             c.a2 = g * c.a1;

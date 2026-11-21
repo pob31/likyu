@@ -27,6 +27,7 @@ add_library(likyu_dsp STATIC
     dsp/Detector.h
     dsp/Dynamics.h
     dsp/Env.h
+    dsp/Exp2.h
     dsp/FastLog.h
     dsp/Frequency.h
     dsp/Gain.h

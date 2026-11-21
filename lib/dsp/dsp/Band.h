@@ -449,7 +449,7 @@ namespace likyu::dsp
         }
 
         /** g = tan(pi f / fs) for a log2 frequency, clamped as the band's own. */
-        double warpG (double logHz) const noexcept          { return warp.g (std::exp2 (logHz)); }
+        double warpG (double logHz) const noexcept          { return warp.g (pow2 (logHz)); }
 
         /** The band's own g at the step's start and end. */
         double gStart() const noexcept                      { return g0; }
@@ -462,7 +462,7 @@ namespace likyu::dsp
             a band-pass at the band's unscaled 1/Q (dsp/Detector.h). */
         DetectorCoefficients followDetectorAt (double g, double logHz) const noexcept
         {
-            return makeDetectorCoefficients (DetectorType::bandPass, g, kq1, warp.clamp (std::exp2 (logHz)), rate);
+            return makeDetectorCoefficients (DetectorType::bandPass, g, kq1, warp.clamp (pow2 (logHz)), rate);
         }
 
         /** The coefficients of samples `from` to `from + n - 1` of the step,
@@ -590,7 +590,7 @@ namespace likyu::dsp
         }
 
         /** The band's frequency now, in Hz. */
-        double frequencyHz() const noexcept                 { return std::exp2 (lastLogFrequency); }
+        double frequencyHz() const noexcept                 { return pow2 (lastLogFrequency); }
 
     private:
         static constexpr bool isShelf (BandType type) noexcept
@@ -668,8 +668,8 @@ namespace likyu::dsp
         {
             lastLogFrequency = logFrequency.getCurrent();
             lastLogQ = logQ.getCurrent();
-            g1 = warp.g (std::exp2 (lastLogFrequency));
-            kq1 = std::exp2 (-lastLogQ);
+            g1 = warp.g (pow2 (lastLogFrequency));
+            kq1 = pow2 (-lastLogQ);
             db1 = gain.getCurrent();
             w1 = fade.getCurrent();
             updateAmplitude();
@@ -689,7 +689,7 @@ namespace likyu::dsp
             if (! exactlyEqual (lf, lastLogFrequency))
             {
                 lastLogFrequency = lf;
-                g1 = warp.g (std::exp2 (lf));
+                g1 = warp.g (pow2 (lf));
             }
 
             const auto lq = logQ.step();
@@ -697,7 +697,7 @@ namespace likyu::dsp
             if (! exactlyEqual (lq, lastLogQ))
             {
                 lastLogQ = lq;
-                kq1 = std::exp2 (-lq);
+                kq1 = pow2 (-lq);
             }
 
             const auto db = gain.step();
@@ -768,8 +768,8 @@ namespace likyu::dsp
             if (exactlyEqual (lf, detectorLf) && exactlyEqual (lq, detectorLq) && type == detector.type)
                 return;
 
-            const auto hz = warp.clamp (std::exp2 (lf));
-            const auto kq = own ? std::exp2 (-lq) : kq1;
+            const auto hz = warp.clamp (pow2 (lf));
+            const auto kq = own ? pow2 (-lq) : kq1;
             detectorLf = lf;
             detectorLq = lq;
             detector = makeDetectorCoefficients (type, own ? warp.g (hz) : g1, kq, hz, rate);

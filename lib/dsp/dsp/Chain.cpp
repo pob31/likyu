@@ -281,7 +281,7 @@ namespace likyu::dsp
         if (f.own || ! (f.hasOutput || f.started))
             return b.frequencyHz();
 
-        return std::exp2 (f.hasOutput ? f.logHz : f.applied);
+        return pow2 (f.hasOutput ? f.logHz : f.applied);
     }
 
     double Chain::appliedFrequencyHz (int band, int channel) const noexcept
@@ -296,7 +296,7 @@ namespace likyu::dsp
             return b.frequencyHz();
 
         const auto& f = laneFrequencies[static_cast<std::size_t> (band * laneStride (channels) + lane)];
-        return f.own || ! f.started ? b.frequencyHz() : std::exp2 (f.applied);
+        return f.own || ! f.started ? b.frequencyHz() : pow2 (f.applied);
     }
 
     //==========================================================================

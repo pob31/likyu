@@ -43,6 +43,7 @@
 */
 
 #include "Detector.h"
+#include "Exp2.h"
 #include "FastLog.h"
 #include "Tan.h"
 
@@ -81,7 +82,7 @@ namespace likyu::dsp
 
             for (int r = 0; r < numSeedRegions; ++r)
             {
-                const auto hz = std::exp2 (seedRegionLogHz (r));
+                const auto hz = pow2 (seedRegionLogHz (r));
 
                 if (hz > warp.getHighestFrequency())
                     break;
