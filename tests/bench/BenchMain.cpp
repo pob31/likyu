@@ -956,9 +956,10 @@ namespace
         }
 
         Hash hash;
-        hash.add (bank.power);
-        hash.add (bank.s1);
-        hash.add (bank.s2);
+        // The regions, not the lanes of padding beside them (dsp/SeedBank.h).
+        hash.add (bank.power.data(), numSeedRegions * sizeof (float));
+        hash.add (bank.s1.data(), numSeedRegions * sizeof (float));
+        hash.add (bank.s2.data(), numSeedRegions * sizeof (float));
         return hash.value;
     }
 

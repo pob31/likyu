@@ -37,11 +37,13 @@ add_executable(likyu_dsp_tests
     dsp/DynamicsTests.cpp
     dsp/EnvTests.cpp
     dsp/Exp2Tests.cpp
+    dsp/KernelTests.cpp
     dsp/ParameterTableTests.cpp
     dsp/LookaheadTests.cpp
     dsp/ModesTests.cpp
     dsp/MovementTests.cpp
     dsp/ResponseTests.cpp
+    dsp/SimdTests.cpp
     dsp/SvfTests.cpp
     dsp/TanTests.cpp
     dsp/TrackTests.cpp

@@ -43,7 +43,8 @@ add_library(likyu_dsp STATIC
     dsp/Tracker.h
     dsp/Transient.h
     dsp/rt/RtCheck.h
-    dsp/simd/Target.h)
+    dsp/simd/Target.h
+    dsp/simd/Vec.h)
 add_library(likyu::dsp ALIAS likyu_dsp)
 
 set_target_properties(likyu_dsp PROPERTIES POSITION_INDEPENDENT_CODE ON)

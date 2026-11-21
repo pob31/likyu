@@ -39,6 +39,15 @@
     released trackers on two equal components take one each, in band order,
     and a released tracker does not hop between regions of noise.
 
+    THE REGIONS ARE THE LANES (devplan, Phase 7): thirty filters that do not
+    know of each other, on one signal. They are kept an array a term, a lane a
+    region, padded to 32, and run eight to a register (dsp/simd/Vec.h), the
+    sample loop inside. `run` is the kernel, written once over the register
+    type; a lane does what dsp/Detector.h's band-pass tick does, operation
+    for operation, so the registers, the plain arrays of the reference build
+    and the loop a region this replaced give the same bits. A lane past the
+    regions has coefficients of 0 and is never read.
+
     Standard library only. Float, the detection path's precision.
 */
 
@@ -46,6 +55,7 @@
 #include "Exp2.h"
 #include "FastLog.h"
 #include "Tan.h"
+#include "simd/Vec.h"
 
 #include <algorithm>
 #include <array>
@@ -54,6 +64,9 @@
 namespace likyu::dsp
 {
     inline constexpr int numSeedRegions = 30;
+
+    /** The regions as lanes: whole registers of eight. */
+    inline constexpr int numSeedLanes = 32;
 
     /** A released tracker leaves its region for one this much louder (built 2026-11-20). */
     inline constexpr double seedHysteresisDb = 6.0;
@@ -70,8 +83,9 @@ namespace likyu::dsp
     /** The bank's coefficients, for a rate; shared by every bank. */
     struct SeedBankCoefficients
     {
-        std::array<DetectorCoefficients, numSeedRegions> detector {};
-        std::array<float, numSeedRegions> smoothing {};
+        // The band-pass detector of each region (dsp/Detector.h), an array a
+        // term: a1 to a3, k, k squared, and the smoothing of its power.
+        std::array<float, numSeedLanes> a1 {}, a2 {}, a3 {}, k {}, kSquared {}, smoothing {};
         int count = 0;      // the regions under min(20 kHz, 0.46 fs)
 
         void prepare (double sampleRate) noexcept
@@ -79,6 +93,9 @@ namespace likyu::dsp
             Warp warp;
             warp.prepare (sampleRate);
             count = 0;
+
+            for (auto* term : { &a1, &a2, &a3, &k, &kSquared, &smoothing })
+                term->fill (0.0f);
 
             for (int r = 0; r < numSeedRegions; ++r)
             {
@@ -88,7 +105,12 @@ namespace likyu::dsp
                     break;
 
                 const auto index = static_cast<std::size_t> (r);
-                detector[index] = makeDetectorCoefficients (DetectorType::bandPass, warp.g (hz), 1.0 / seedRegionQ, hz, sampleRate);
+                const auto detector = makeDetectorCoefficients (DetectorType::bandPass, warp.g (hz), 1.0 / seedRegionQ, hz, sampleRate);
+                a1[index] = detector.a1;
+                a2[index] = detector.a2;
+                a3[index] = detector.a3;
+                k[index] = detector.k;
+                kSquared[index] = detector.k * detector.k;
                 const auto seconds = std::max (4.0 / hz, 0.005);
                 smoothing[index] = sampleRate > 0.0 ? static_cast<float> (1.0 - std::exp (-1.0 / (seconds * sampleRate))) : 1.0f;
                 count = r + 1;
@@ -106,7 +128,7 @@ namespace likyu::dsp
     /** One key's bank. */
     struct SeedBank
     {
-        std::array<float, numSeedRegions> s1 {}, s2 {}, power {};
+        std::array<float, numSeedLanes> s1 {}, s2 {}, power {};
 
         void clear() noexcept
         {
@@ -115,37 +137,58 @@ namespace likyu::dsp
             power.fill (0.0f);
         }
 
-        /** `n` samples of the key through every region. Tiny states are
-            snapped to 0 when a control step ends, and only then, so that
-            nothing depends on how the host cut its blocks. */
+        /** `n` samples of the key through every region: the kernel, over the
+            register type `V` (the build's own unless a test says otherwise).
+            Tiny states are snapped to 0 when a control step ends, and only
+            then, so that nothing depends on how the host cut its blocks. */
+        template <typename V = simd::F32x8>
         void run (const float* key, int n, const SeedBankCoefficients& c, bool stepEnds) noexcept
         {
-            for (int r = 0; r < c.count; ++r)
+            const auto two = V::broadcast (2.0f), zero = V::broadcast (0.0f);
+
+            for (int lane = 0; lane < c.count; lane += V::lanes)
             {
-                const auto index = static_cast<std::size_t> (r);
-                const auto& k = c.detector[index];
-                const auto a = c.smoothing[index];
-                auto x1 = s1[index], x2 = s2[index], p = power[index], peak = 0.0f, output = 0.0f;
+                const auto a1 = V::load (c.a1.data() + lane), a2 = V::load (c.a2.data() + lane), a3 = V::load (c.a3.data() + lane);
+                const auto k = V::load (c.k.data() + lane), kSquared = V::load (c.kSquared.data() + lane);
+                const auto smoothing = V::load (c.smoothing.data() + lane);
+                auto x1 = V::load (s1.data() + lane), x2 = V::load (s2.data() + lane), p = V::load (power.data() + lane);
 
                 for (int i = 0; i < n; ++i)
-                    p = mulAdd (a, detectorTick (key[i], x1, x2, peak, k, output) - p, p);
-
-                // A state that has decayed to nothing is nothing; one that is not finite is reset.
-                const auto clean = [] (float& v)
                 {
-                    if (! std::isfinite (v) || std::abs (v) < 1.0e-20f)
-                        v = 0.0f;
-                };
+                    // dsp/Detector.h's tick and its band-pass power, then the one-pole.
+                    const auto x = V::broadcast (key[i]);
+                    const auto v3 = x - x2;
+                    const auto v1 = mulAdd (a1, x1, a2 * v3);
+                    const auto v2 = mulAdd (a3, v3, mulAdd (a2, x1, x2));
+                    x1 = mulAdd (two, v1, -x1);
+                    x2 = mulAdd (two, v2, -x2);
 
-                if (stepEnds)
-                {
-                    clean (x1);
-                    clean (x2);
-                    clean (p);
+                    const auto hp = mulAdd (-k, v1, x) - v2;
+                    const auto tick = kSquared * max (zero, mulAdd (v1, v1, -(v2 * hp)));
+                    p = mulAdd (smoothing, tick - p, p);
                 }
-                s1[index] = x1;
-                s2[index] = x2;
-                power[index] = p;
+
+                x1.store (s1.data() + lane);
+                x2.store (s2.data() + lane);
+                p.store (power.data() + lane);
+            }
+
+            if (! stepEnds)
+                return;
+
+            // A state that has decayed to nothing is nothing; one that is not finite is reset.
+            const auto clean = [] (float& v)
+            {
+                if (! std::isfinite (v) || std::abs (v) < 1.0e-20f)
+                    v = 0.0f;
+            };
+
+            for (int lane = 0; lane < numSeedLanes; ++lane)
+            {
+                const auto index = static_cast<std::size_t> (lane);
+                clean (s1[index]);
+                clean (s2[index]);
+                clean (power[index]);
             }
         }
 
