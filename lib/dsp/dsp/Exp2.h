@@ -100,7 +100,7 @@ namespace likyu::dsp
     }
 
     /** 2^x. See the head of this file for what it promises and how. */
-    inline double pow2 (double x) noexcept
+    LIKYU_INLINE double pow2 (double x) noexcept
     {
         using namespace pow2detail;
 

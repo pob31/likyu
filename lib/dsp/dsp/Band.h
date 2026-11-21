@@ -119,6 +119,35 @@ namespace likyu::dsp
         to be confirmed by ear). */
     inline constexpr double switchFadeSeconds = 0.010;
 
+    /** The coefficients of the samples of one stretch (at most a control
+        step), AN ARRAY A TERM and not a struct a sample (devplan, Phase 7).
+        A sample's six terms are stored one by one as they are computed and
+        read one by one by the filter: nothing is copied as a block, which is
+        what stalled under MSVC (dsp/Math.h, LIKYU_INLINE), and four samples
+        of a term lie side by side for a kernel to fill at once. Plain data,
+        never initialised: a stretch fills what it reads. */
+    struct StretchCoefficients
+    {
+        double a1[controlStep], a2[controlStep], a3[controlStep];
+        double m0[controlStep], m1[controlStep], m2[controlStep];
+
+        LIKYU_INLINE void set (int i, const SvfCoefficients<double>& c) noexcept
+        {
+            a1[i] = c.a1;
+            a2[i] = c.a2;
+            a3[i] = c.a3;
+            m0[i] = c.m0;
+            m1[i] = c.m1;
+            m2[i] = c.m2;
+        }
+
+        /** Whether sample i's mix is exactly the identity (1, 0, 0). */
+        bool isIdentity (int i) const noexcept
+        {
+            return exactlyEqual (m0[i], 1.0) && exactlyEqual (m1[i], 0.0) && exactlyEqual (m2[i], 0.0);
+        }
+    };
+
     /** What a band is asked to be, in real units. */
     struct BandSettings
     {
@@ -379,7 +408,7 @@ namespace likyu::dsp
         const SvfCoefficients<double>& constantCoefficients() const noexcept { return fixed; }
 
         /** The coefficients for sample `index` (0 to 15) of the current step. */
-        SvfCoefficients<double> coefficientsAt (int index) const noexcept
+        LIKYU_INLINE SvfCoefficients<double> coefficientsAt (int index) const noexcept
         {
             const auto t = static_cast<double> (index + 1) / controlStep;
 
@@ -404,7 +433,7 @@ namespace likyu::dsp
             which is not 0: the effective gain is the static gain plus the
             offset, the offset within the Range and the sum within +-30 dB
             (PRD, decided 2026-11-16). For a band whose type has a gain. */
-        SvfCoefficients<double> coefficientsAt (int index, double offsetDb) const noexcept
+        LIKYU_INLINE SvfCoefficients<double> coefficientsAt (int index, double offsetDb) const noexcept
         {
             const auto t = static_cast<double> (index + 1) / controlStep;
 
@@ -425,7 +454,7 @@ namespace likyu::dsp
             dB (0 allowed) and a gain scale in [0, 1] (Track's confidence, 1
             otherwise; PRD: it scales the offset, and the static gain where it
             is a boost). The offset within the Range, the sum within +-30 dB. */
-        SvfCoefficients<double> coefficientsWithG (int index, double g, double offsetDb, double gainScale) const noexcept
+        LIKYU_INLINE SvfCoefficients<double> coefficientsWithG (int index, double g, double offsetDb, double gainScale) const noexcept
         {
             const auto t = static_cast<double> (index + 1) / controlStep;
 
@@ -468,10 +497,10 @@ namespace likyu::dsp
         /** The coefficients of samples `from` to `from + n - 1` of the step,
             into `out`: one loop here, so that the per-sample work is inlined
             whatever the caller looks like. */
-        void coefficientsFor (int from, int n, SvfCoefficients<double>* out) const noexcept
+        void coefficientsFor (int from, int n, StretchCoefficients& out) const noexcept
         {
             for (int i = 0; i < n; ++i)
-                out[i] = coefficientsAt (from + i);
+                out.set (i, coefficientsAt (from + i));
         }
 
         //======================================================================
@@ -621,7 +650,7 @@ namespace likyu::dsp
 
         /** The mix crossfaded with the identity: `position` 0 is (1, 0, 0),
             1 is the band's own mix, and the curve between is a smoothstep. */
-        static SvfCoefficients<double> withFade (SvfCoefficients<double> c, double position) noexcept
+        static LIKYU_INLINE SvfCoefficients<double> withFade (SvfCoefficients<double> c, double position) noexcept
         {
             if (exactlyEqual (position, 1.0))
                 return c;

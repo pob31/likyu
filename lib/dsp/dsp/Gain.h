@@ -45,13 +45,13 @@ namespace likyu::dsp
     inline constexpr double log2Of10 = 3.32192809488736234787;
 
     /** The PRD's A = 10^(dB / 40): its square is the band's gain as a factor. */
-    inline double bandA (double dB) noexcept
+    LIKYU_INLINE double bandA (double dB) noexcept
     {
         return pow2 (dB * (log2Of10 / 40.0));
     }
 
     /** sqrt(A) = 10^(dB / 80), which rescales g for the shelves. */
-    inline double bandSqrtA (double dB) noexcept
+    LIKYU_INLINE double bandSqrtA (double dB) noexcept
     {
         return pow2 (dB * (log2Of10 / 80.0));
     }

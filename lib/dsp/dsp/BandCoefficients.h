@@ -59,7 +59,7 @@ namespace likyu::dsp
     /** One row of the table. g = tan(pi fc / fs), unscaled; kq = 1 / Q;
         a = A and sqrtA = sqrt(A), both 1 for a type without gain. */
     template <typename T>
-    inline SvfCoefficients<T> designBand (BandType type, QMode qmode, T g, T kq, T a, T sqrtA) noexcept
+    LIKYU_INLINE SvfCoefficients<T> designBand (BandType type, QMode qmode, T g, T kq, T a, T sqrtA) noexcept
     {
         // A^2 - 1 and 1 - A^2 in one rounding (mulAdd), and exactly 0 at A = 1 either way.
         const T aboveUnity = mulAdd (a, a, T (-1));

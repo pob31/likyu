@@ -38,6 +38,20 @@
  #error "lib/dsp must be compiled without floating-point contraction: /fp:precise, and no /fp:contract or /fp:fast"
 #endif
 
+/*  LIKYU_INLINE: inline, and not left to the compiler's judgement. For the few
+    small functions that a sample's coefficients are made of (2^x, a band's row of
+    the table, the fade). Found 2026-11-21 in MSVC's listing: left as calls, each
+    returned its 48 bytes of coefficients through memory, written a field at a time
+    and copied with 32-byte loads, which waits on every one of those stores; it was
+    half again the cost of a moving band under /arch:AVX2. */
+#if defined (_MSC_VER) && ! defined (__clang__)
+ #define LIKYU_INLINE __forceinline
+#elif defined (__GNUC__) || defined (__clang__)
+ #define LIKYU_INLINE inline __attribute__ ((always_inline))
+#else
+ #define LIKYU_INLINE inline
+#endif
+
 namespace likyu::dsp
 {
     inline constexpr double pi = 3.14159265358979323846;

@@ -53,7 +53,7 @@ namespace likyu::dsp
 
     /** The coefficients for a warped frequency g, a damping k and a mix. */
     template <typename T>
-    inline SvfCoefficients<T> makeSvfCoefficients (T g, T k, T m0, T m1, T m2) noexcept
+    LIKYU_INLINE SvfCoefficients<T> makeSvfCoefficients (T g, T k, T m0, T m1, T m2) noexcept
     {
         const T a1 = T (1) / mulAdd (g, g + k, T (1));
         const T a2 = g * a1;
@@ -86,27 +86,42 @@ namespace likyu::dsp
         two fused operations where the processor has them, and that path is
         what the speed of the filter is. */
 
-    /** One sample through one channel's state. */
+    /** One sample through one channel's state, the six terms given one by
+        one: for a caller that keeps them an array a term. */
     template <typename T>
-    inline T svfTick (T x, T& ic1, T& ic2, const SvfCoefficients<T>& c) noexcept
+    LIKYU_INLINE T svfTick (T x, T& ic1, T& ic2, T a1, T a2, T a3, T m0, T m1, T m2) noexcept
     {
         const T v3 = x - ic2;
-        const T v1 = mulAdd (c.a1, ic1, c.a2 * v3);
-        const T v2 = mulAdd (c.a3, v3, mulAdd (c.a2, ic1, ic2));
+        const T v1 = mulAdd (a1, ic1, a2 * v3);
+        const T v2 = mulAdd (a3, v3, mulAdd (a2, ic1, ic2));
         ic1 = mulAdd (T (2), v1, -ic1);
         ic2 = mulAdd (T (2), v2, -ic2);
-        return mulAdd (c.m2, v2, mulAdd (c.m1, v1, c.m0 * x));
+        return mulAdd (m2, v2, mulAdd (m1, v1, m0 * x));
     }
 
     /** The state only, for a band whose mix is the identity: it stays warm
         for when the band's gain moves away from 0 dB. */
     template <typename T>
-    inline void svfAdvance (T x, T& ic1, T& ic2, const SvfCoefficients<T>& c) noexcept
+    LIKYU_INLINE void svfAdvance (T x, T& ic1, T& ic2, T a1, T a2, T a3) noexcept
     {
         const T v3 = x - ic2;
-        const T v1 = mulAdd (c.a1, ic1, c.a2 * v3);
-        const T v2 = mulAdd (c.a3, v3, mulAdd (c.a2, ic1, ic2));
+        const T v1 = mulAdd (a1, ic1, a2 * v3);
+        const T v2 = mulAdd (a3, v3, mulAdd (a2, ic1, ic2));
         ic1 = mulAdd (T (2), v1, -ic1);
         ic2 = mulAdd (T (2), v2, -ic2);
+    }
+
+    /** One sample through one channel's state. */
+    template <typename T>
+    inline T svfTick (T x, T& ic1, T& ic2, const SvfCoefficients<T>& c) noexcept
+    {
+        return svfTick (x, ic1, ic2, c.a1, c.a2, c.a3, c.m0, c.m1, c.m2);
+    }
+
+    /** The state only, from a set of coefficients. */
+    template <typename T>
+    inline void svfAdvance (T x, T& ic1, T& ic2, const SvfCoefficients<T>& c) noexcept
+    {
+        svfAdvance (x, ic1, ic2, c.a1, c.a2, c.a3);
     }
 }

@@ -38,22 +38,22 @@ namespace likyu::dsp
         }
 
         /** Bit i: sample i's coefficients are the identity mix (1, 0, 0). */
-        std::uint32_t identities (const SvfCoefficients<double>* k, int n) noexcept
+        std::uint32_t identities (const StretchCoefficients& k, int n) noexcept
         {
             std::uint32_t skip = 0;
 
             for (int i = 0; i < n; ++i)
-                if (isIdentity (k[i]))
+                if (k.isIdentity (i))
                     skip |= 1u << i;
 
             return skip;
         }
 
         /** One channel through per-sample coefficients; a sample marked in
-            `skip` only advances the state, and is not written. The state and
-            each sample's coefficients are copied into locals first, so that
-            a store to `w` cannot be taken for a store to them. */
-        void tickOrAdvance (double* w, int n, double& state1, double& state2, const SvfCoefficients<double>* k,
+            `skip` only advances the state, and is not written. The state is
+            copied into locals first, so that a store to `w` cannot be taken
+            for a store to it; each sample's terms are read one by one. */
+        void tickOrAdvance (double* w, int n, double& state1, double& state2, const StretchCoefficients& k,
                             std::uint32_t skip) noexcept
         {
             auto x1 = state1, x2 = state2;
@@ -61,21 +61,16 @@ namespace likyu::dsp
             if (skip == 0)
             {
                 for (int i = 0; i < n; ++i)
-                {
-                    const auto c = k[i];
-                    w[i] = svfTick (w[i], x1, x2, c);
-                }
+                    w[i] = svfTick (w[i], x1, x2, k.a1[i], k.a2[i], k.a3[i], k.m0[i], k.m1[i], k.m2[i]);
             }
             else
             {
                 for (int i = 0; i < n; ++i)
                 {
-                    const auto c = k[i];
-
                     if ((skip >> i) & 1u)
-                        svfAdvance (w[i], x1, x2, c);
+                        svfAdvance (w[i], x1, x2, k.a1[i], k.a2[i], k.a3[i]);
                     else
-                        w[i] = svfTick (w[i], x1, x2, c);
+                        w[i] = svfTick (w[i], x1, x2, k.a1[i], k.a2[i], k.a3[i], k.m0[i], k.m1[i], k.m2[i]);
                 }
             }
 
@@ -1152,12 +1147,12 @@ namespace likyu::dsp
                 return;
             }
 
-            std::array<SvfCoefficients<double>, controlStep> moving;
-            band.coefficientsFor (position, n, moving.data());
+            StretchCoefficients moving;
+            band.coefficientsFor (position, n, moving);
 
             // A moving band whose mix is the identity (a bell or a shelf at
             // 0 dB whose g or k moves) is not written either.
-            const auto skip = identities (moving.data(), n);
+            const auto skip = identities (moving, n);
 
             for (int c = 0; c < numChannels; ++c)
             {
@@ -1167,7 +1162,7 @@ namespace likyu::dsp
                 double* w = work.data() + c * controlStep;
                 auto x1 = s1[c], x2 = s2[c];
 
-                tickOrAdvance (w, n, x1, x2, moving.data(), skip);
+                tickOrAdvance (w, n, x1, x2, moving, skip);
 
                 snap (x1);
                 snap (x2);
@@ -1208,7 +1203,7 @@ namespace likyu::dsp
         const auto withFrequencies = modulated[index];
         const auto withScale = scaled[index];
         const auto stride = laneStride (channels);
-        std::array<SvfCoefficients<double>, controlStep> coefficients;
+        StretchCoefficients coefficients;
 
         for (int lane = 0; lane < l.count; ++lane)
         {
@@ -1236,21 +1231,21 @@ namespace likyu::dsp
                     const auto t = static_cast<double> (position + i + 1) / controlStep;
                     const auto g = gMoving ? lerpExact (g0, g1, t) : g1;
                     const auto scale = 1.0 - band.confidenceWeightAt (t) * (1.0 - confidence[i]);
-                    coefficients[static_cast<std::size_t> (i)]
-                        = band.coefficientsWithG (position + i, g, o != nullptr ? o[i] : 0.0, scale);
+                    coefficients.set (i, band.coefficientsWithG (position + i, g, o != nullptr ? o[i] : 0.0, scale));
                 }
             }
             else if (! withFrequencies || f.own)
             {
                 for (int i = 0; i < n; ++i)
                 {
-                    auto& k = coefficients[static_cast<std::size_t> (i)];
                     const auto offset = o != nullptr ? o[i] : 0.0;
 
-                    if (exactlyEqual (offset, 0.0))
-                        k = constant ? band.constantCoefficients() : band.coefficientsAt (position + i);
+                    if (! exactlyEqual (offset, 0.0))
+                        coefficients.set (i, band.coefficientsAt (position + i, offset));
+                    else if (constant)
+                        coefficients.set (i, band.constantCoefficients());
                     else
-                        k = band.coefficientsAt (position + i, offset);
+                        coefficients.set (i, band.coefficientsAt (position + i));
                 }
             }
             else
@@ -1261,12 +1256,11 @@ namespace likyu::dsp
                 {
                     const auto t = static_cast<double> (position + i + 1) / controlStep;
                     const auto g = gMoving ? lerpExact (f.g0, f.g1, t) : f.g1;
-                    coefficients[static_cast<std::size_t> (i)]
-                        = band.coefficientsWithG (position + i, g, o != nullptr ? o[i] : 0.0, 1.0);
+                    coefficients.set (i, band.coefficientsWithG (position + i, g, o != nullptr ? o[i] : 0.0, 1.0));
                 }
             }
 
-            const auto skip = identities (coefficients.data(), n);
+            const auto skip = identities (coefficients, n);
 
             for (auto j = from; j < to; ++j)
             {
@@ -1278,7 +1272,7 @@ namespace likyu::dsp
                 double* w = work.data() + c * controlStep;
                 auto x1 = s1[c], x2 = s2[c];
 
-                tickOrAdvance (w, n, x1, x2, coefficients.data(), skip);
+                tickOrAdvance (w, n, x1, x2, coefficients, skip);
 
                 snap (x1);
                 snap (x2);
