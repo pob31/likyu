@@ -50,6 +50,20 @@ target_compile_features(likyu_dsp PUBLIC cxx_std_20)
 target_include_directories(likyu_dsp PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(likyu_dsp PRIVATE likyu::warnings)
 
+# No fused multiply-add, anywhere (devplan, Phase 7). A SIMD kernel and the scalar code
+# beside it give the same bits only if a multiply and an add are two roundings in both,
+# and a compiler left to contract them fuses one and not the other. Apple clang
+# contracts by default, GCC with any option that gives it the instruction; MSVC has not
+# since Visual Studio 2022, and is told all the same. PUBLIC, like everything below: most
+# of lib/dsp is headers, compiled in the plugin's, the editor's and the tests'
+# translation units, and one inline function must not be compiled two ways.
+# tests/dsp/ArithmeticTests.cpp is the canary.
+if(MSVC)
+    target_compile_options(likyu_dsp PUBLIC /fp:precise)
+else()
+    target_compile_options(likyu_dsp PUBLIC -ffp-contract=off)
+endif()
+
 # PUBLIC: the process paths are templates in headers, so the sanitizer has to reach every
 # translation unit that instantiates them, and the executable has to link its runtime.
 if(LIKYU_RTSAN)

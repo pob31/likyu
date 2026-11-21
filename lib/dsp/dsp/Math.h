@@ -27,6 +27,14 @@
 
 #include <functional>
 
+// A multiply and an add are two roundings, in every translation unit that includes
+// lib/dsp (lib/dsp/CMakeLists.txt says why). MSVC defines this under /fp:contract and
+// /fp:fast; GCC and Clang have no such macro, and tests/dsp/ArithmeticTests.cpp is
+// what holds them.
+#if defined (_M_FP_CONTRACT)
+ #error "lib/dsp must be compiled without floating-point contraction: /fp:precise, and no /fp:contract or /fp:fast"
+#endif
+
 namespace likyu::dsp
 {
     inline constexpr double pi = 3.14159265358979323846;

@@ -30,6 +30,7 @@
 add_executable(likyu_dsp_tests
     dsp/DspTestMain.cpp
     dsp/DspTestSupport.h
+    dsp/ArithmeticTests.cpp
     dsp/ChainTests.cpp
     dsp/ChannelsTests.cpp
     dsp/DetectorTests.cpp
