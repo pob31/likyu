@@ -58,6 +58,7 @@
 */
 
 #include "Math.h"
+#include "simd/Vec.h"
 
 #include <algorithm>
 #include <array>
@@ -99,27 +100,54 @@ namespace likyu::dsp
         inline constexpr double limit = 1000.0;
     }
 
-    /** 2^x. See the head of this file for what it promises and how. */
-    LIKYU_INLINE double pow2 (double x) noexcept
+    /** pow2's middle, for one value: m in the low bits of `whole`'s mantissa;
+        m mod 64 picks the constant, and floor (m / 64), biased, is the
+        exponent of the power of two. The registers' own is in dsp/simd/Vec.h,
+        the same integer operations a lane. */
+    LIKYU_INLINE void pow2Split (double whole, const double* table, double& fraction, double& power) noexcept
+    {
+        const auto bits = std::bit_cast<std::uint64_t> (whole) + (std::uint64_t { 1023 } << 6);
+        fraction = table[static_cast<std::size_t> (bits & 63u)];
+        power = std::bit_cast<double> (((bits >> 6) & 0x7ffu) << 52);
+    }
+
+    namespace simd::scalar
+    {
+        /** pow2's middle on the plain arrays: the scalar one, a lane at a time. */
+        LIKYU_INLINE void pow2Split (F64x4 whole, const double* table, F64x4& fraction, F64x4& power) noexcept
+        {
+            for (int i = 0; i < F64x4::lanes; ++i)
+                likyu::dsp::pow2Split (whole.v[i], table, fraction.v[i], power.v[i]);
+        }
+    }
+
+    /** 2^x a lane at a time, for a double or four of them (dsp/simd/Vec.h):
+        written once, so that a register's lanes are each the scalar pow2's
+        bits. See the head of this file for what it promises and how. */
+    template <typename V>
+    LIKYU_INLINE V pow2Lanes (V x) noexcept
     {
         using namespace pow2detail;
 
-        const double scaled = std::clamp (x, -limit, limit) * 64.0;
-        const double whole = scaled + toWhole;
-        const double z = (scaled - (whole - toWhole)) * lnTwoOver64;
+        const V scaled = clampLanes (x, splat<V> (-limit), splat<V> (limit)) * splat<V> (64.0);
+        const V whole = scaled + splat<V> (toWhole);
+        const V z = (scaled - (whole - splat<V> (toWhole))) * splat<V> (lnTwoOver64);
 
-        // m in the low bits of the mantissa: m mod 64 picks the constant, and
-        // floor (m / 64), biased, is the exponent of the power of two.
-        const auto bits = std::bit_cast<std::uint64_t> (whole) + (std::uint64_t { 1023 } << 6);
-        const double fraction = table[static_cast<std::size_t> (bits & 63u)];
-        const double power = std::bit_cast<double> (((bits >> 6) & 0x7ffu) << 52);
+        V fraction, power;
+        pow2Split (whole, table.data(), fraction, power);
 
         // q = e^z - 1, as z + z^2 ((1/2 + z/6) + z^2 (1/24 + z/120)).
-        const double z2 = z * z;
-        const double low = mulAdd (z, 1.0 / 6.0, 0.5);
-        const double high = mulAdd (z, 1.0 / 120.0, 1.0 / 24.0);
-        const double q = mulAdd (z2, mulAdd (z2, high, low), z);
+        const V z2 = z * z;
+        const V low = mulAdd (z, splat<V> (1.0 / 6.0), splat<V> (0.5));
+        const V high = mulAdd (z, splat<V> (1.0 / 120.0), splat<V> (1.0 / 24.0));
+        const V q = mulAdd (z2, mulAdd (z2, high, low), z);
 
         return mulAdd (fraction, q, fraction) * power;
+    }
+
+    /** 2^x. See the head of this file for what it promises and how. */
+    LIKYU_INLINE double pow2 (double x) noexcept
+    {
+        return pow2Lanes (x);
     }
 }

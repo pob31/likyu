@@ -60,11 +60,11 @@ namespace likyu::dsp
         x (135135 - 17325 x^2 + 378 x^4 - x^6) / (135135 - 62370 x^2 + 3150 x^4 - 28 x^6).
         Integer coefficients, exact in any precision. */
     template <typename T>
-    inline T tanRational (T x) noexcept
+    LIKYU_INLINE T tanRational (T x) noexcept
     {
         const T y = x * x;
-        const T p = mulAdd (y, mulAdd (y, mulAdd (y, T (-1), T (378)), T (-17325)), T (135135));
-        const T q = mulAdd (y, mulAdd (y, mulAdd (y, T (-28), T (3150)), T (-62370)), T (135135));
+        const T p = mulAdd (y, mulAdd (y, mulAdd (y, splat<T> (-1), splat<T> (378)), splat<T> (-17325)), splat<T> (135135));
+        const T q = mulAdd (y, mulAdd (y, mulAdd (y, splat<T> (-28), splat<T> (3150)), splat<T> (-62370)), splat<T> (135135));
         return x * p / q;
     }
 
@@ -72,16 +72,16 @@ namespace likyu::dsp
         [0, 0.25 pi] (Lawson's iteration, 2026-11-20). Wrong outside it: used
         only where prepare() has checked the rate. */
     template <typename T>
-    inline T tanPolynomial (T x) noexcept
+    LIKYU_INLINE T tanPolynomial (T x) noexcept
     {
         // Horner's rule, the highest power first, each step one mulAdd.
         const T y = x * x;
-        T p = T (0.020387002666730214);
-        p = mulAdd (y, p, T (0.012532760831065859));
-        p = mulAdd (y, p, T (0.057182138867633396));
-        p = mulAdd (y, p, T (0.1328495807781988));
-        p = mulAdd (y, p, T (0.3333594742443005));
-        p = mulAdd (y, p, T (0.9999997745472344));
+        T p = splat<T> (0.020387002666730214);
+        p = mulAdd (y, p, splat<T> (0.012532760831065859));
+        p = mulAdd (y, p, splat<T> (0.057182138867633396));
+        p = mulAdd (y, p, splat<T> (0.1328495807781988));
+        p = mulAdd (y, p, splat<T> (0.3333594742443005));
+        p = mulAdd (y, p, splat<T> (0.9999997745472344));
         return x * p;
     }
 
@@ -111,9 +111,20 @@ namespace likyu::dsp
         /** tan(pi fc / fs) by the form the rate calls for, fc clamped. */
         double g (double hz) const noexcept
         {
-            const auto x = piOverRate * clamp (hz);
+            return gLanes (hz);
+        }
+
+        /** The same a lane at a time, for a double or four (dsp/simd/Vec.h):
+            written once, so that a register's lanes are each g's bits. */
+        template <typename V>
+        LIKYU_INLINE V gLanes (V hz) const noexcept
+        {
+            const auto x = splat<V> (piOverRate) * clampLanes (hz, splat<V> (minFrequency), splat<V> (highest));
             return form == TanForm::polynomial ? tanPolynomial (x) : tanRational (x);
         }
+
+        /** Two warps that compute the same g: made for the same rate. */
+        bool operator== (const Warp&) const noexcept = default;
 
         double getSampleRate() const noexcept       { return rate; }
         double getHighestFrequency() const noexcept { return highest; }

@@ -32,6 +32,7 @@
 #include <dsp/Denormals.h>
 #include <dsp/Detector.h>
 #include <dsp/SeedBank.h>
+#include <dsp/Tracker.h>
 
 #include <algorithm>
 #include <array>
@@ -166,5 +167,196 @@ TEST_CASE ("kernel, the seeding bank: registers, plain arrays and a region at a 
 
         CHECK (loudest > 0.0f);
         CHECK (finite);
+    }
+}
+
+//==============================================================================
+namespace
+{
+    bool sameBits (double a, double b)  { return std::memcmp (&a, &b, sizeof (double)) == 0; }
+    bool sameBits (float a, float b)    { return std::memcmp (&a, &b, sizeof (float)) == 0; }
+
+    /** Every field of two trackers, the bits of each number. */
+    bool sameTracker (const TrackerState& a, const TrackerState& b)
+    {
+        return sameBits (a.s1, b.s1) && sameBits (a.s2, b.s2) && sameBits (a.x1, b.x1) && sameBits (a.x2, b.x2)
+               && sameBits (a.estimate, b.estimate) && sameBits (a.output, b.output)
+               && sameBits (a.inputPower, b.inputPower) && sameBits (a.notchPower, b.notchPower)
+               && sameBits (a.fastPower, b.fastPower) && sameBits (a.confidence, b.confidence)
+               && sameBits (a.weight, b.weight) && sameBits (a.smoothing, b.smoothing)
+               && sameBits (a.fastSmoothing, b.fastSmoothing) && a.jumping == b.jumping && a.holdLeft == b.holdLeft
+               && a.confirmed == b.confirmed && a.lockedFor == b.lockedFor && a.phase == b.phase
+               && a.fresh == b.fresh && a.atRest == b.atRest;
+    }
+
+    /** The group a member at a time, as it was before its front half was
+        written for the registers (dsp/Tracker.h at 0c86fad): what the kernel
+        stands for. */
+    void runTrackerGroupOneByOne (const float* key, int n, TrackerMember* members, int count)
+    {
+        count = std::min (count, maxTrackerGroup);
+        std::array<TrackerCoefficients, maxTrackerGroup> c;
+        std::array<float, maxTrackerGroup> component {};
+
+        for (int i = 0; i < n; ++i)
+        {
+            const auto x = key[i];
+            auto removed = 0.0f;
+
+            for (int j = 0; j < count; ++j)
+            {
+                auto& s = *members[j].state;
+                c[static_cast<std::size_t> (j)] = members[j].computer->coefficients (s);
+
+                if (count > 1)
+                {
+                    component[static_cast<std::size_t> (j)] = static_cast<float> (s.weight)
+                                                              * TrackerComputer::extract (x, s, c[static_cast<std::size_t> (j)]);
+                    removed += component[static_cast<std::size_t> (j)];
+                }
+            }
+
+            for (int j = 0; j < count; ++j)
+            {
+                auto& m = members[j];
+                const auto input = count > 1 ? x - (removed - component[static_cast<std::size_t> (j)]) : x;
+                const auto mayLock = [members, count, j]() noexcept
+                {
+                    for (int o = 0; o < count; ++o)
+                        if (o != j && members[o].state->phase != TrackPhase::released
+                            && TrackerComputer::tooClose (members[j].state->estimate, members[o].state->estimate))
+                            return false;
+
+                    return true;
+                };
+
+                m.computer->tick (input, *m.state, c[static_cast<std::size_t> (j)], mayLock);
+
+                if (m.confidence != nullptr)
+                    m.confidence[i] = m.state->confidence;
+            }
+
+            for (int a = 0; a < count; ++a)
+                for (int b = a + 1; b < count; ++b)
+                {
+                    auto& sa = *members[a].state;
+                    auto& sb = *members[b].state;
+
+                    if (sa.phase != TrackPhase::released && sb.phase != TrackPhase::released
+                        && TrackerComputer::tooClose (sa.estimate, sb.estimate))
+                    {
+                        if (sb.lockedFor <= sa.lockedFor)
+                            members[b].computer->release (sb);
+                        else
+                            members[a].computer->release (sa);
+                    }
+
+                    const auto aBelow = sa.estimate <= sb.estimate;
+                    const auto ea = sa.estimate, eb = sb.estimate;
+
+                    if (sa.phase == TrackPhase::released)
+                        members[a].computer->repel (sa, eb, aBelow);
+
+                    if (sb.phase == TrackPhase::released)
+                        members[b].computer->repel (sb, ea, ! aBelow);
+                }
+        }
+    }
+
+    /** A group of `count` trackers, each a little over an octave above the one before. */
+    struct Group
+    {
+        Group (int count, double rate)
+        {
+            for (int j = 0; j < count; ++j)
+            {
+                const auto s = static_cast<std::size_t> (j);
+                const auto rest = 110.0 * std::pow (2.0, 1.1 * j);
+                computers[s].prepare (rate);
+                computers[s].setTarget (j % 2 == 0 ? 20.0 : 50.0, 30.0, 200.0);
+                FrequencyRange range;
+                range.setTarget (rest / 1.6, rest * 1.6);
+                range.finish();
+                computers[s].step (range, std::log2 (rest));
+                members[s] = { &computers[s], &states[s], confidence[s].data() };
+            }
+        }
+
+        void beginStep (int count)
+        {
+            for (int j = 0; j < count; ++j)
+                computers[static_cast<std::size_t> (j)].beginStep (states[static_cast<std::size_t> (j)]);
+        }
+
+        std::array<TrackerComputer, maxTrackerGroup> computers {};
+        std::array<TrackerState, maxTrackerGroup> states {};
+        std::array<std::array<double, controlStep>, maxTrackerGroup> confidence {};
+        std::array<TrackerMember, maxTrackerGroup> members {};
+    };
+}
+
+TEST_CASE ("kernel, the tracker group: registers, plain arrays and a member at a time give the same bits, for 1 to 8 members")
+{
+    for (const auto rate : { 44100.0, 96000.0 })
+    {
+        for (int count = 1; count <= maxTrackerGroup; ++count)
+        {
+            // The key: a partial a little off each tracker's rest, in noise; a silence, and a loud return.
+            const auto length = static_cast<int> (0.6 * rate);
+            std::vector<float> key (static_cast<std::size_t> (length));
+            std::uint32_t state = 31;
+
+            for (int n = 0; n < length; ++n)
+            {
+                state = state * 1664525u + 1013904223u;
+                auto x = 0.05 * (static_cast<double> (state >> 8) / 8388608.0 - 1.0);
+
+                for (int j = 0; j < count; ++j)
+                    x += 0.2 * std::sin (2.0 * pi * 1.03 * 110.0 * std::pow (2.0, 1.1 * j) * n / rate + j);
+
+                if (n > length / 2 && n < length * 5 / 8)
+                    x = 0.0;
+
+                key[static_cast<std::size_t> (n)] = static_cast<float> (n > length * 7 / 8 ? 4.0 * x : x);
+            }
+
+            const ScopedFlushToZero flushToZero;
+            Group onRegisters (count, rate), onArrays (count, rate), oneByOne (count, rate);
+            std::uint32_t sizes = 9;
+            auto different = 0, notTheLoop = 0, locked = 0;
+
+            for (int done = 0, position = 0; done < length;)
+            {
+                if (position == 0)
+                {
+                    onRegisters.beginStep (count);
+                    onArrays.beginStep (count);
+                    oneByOne.beginStep (count);
+                }
+
+                sizes = sizes * 1664525u + 1013904223u;
+                const auto n = std::min ({ 1 + static_cast<int> (sizes >> 28), controlStep - position, length - done });
+
+                runTrackerGroup<simd::native::F64x4, simd::native::F32x8> (key.data() + done, n, onRegisters.members.data(), count);
+                runTrackerGroup<simd::scalar::F64x4, simd::scalar::F32x8> (key.data() + done, n, onArrays.members.data(), count);
+                runTrackerGroupOneByOne (key.data() + done, n, oneByOne.members.data(), count);
+
+                for (int j = 0; j < count; ++j)
+                {
+                    const auto s = static_cast<std::size_t> (j);
+                    different += sameTracker (onRegisters.states[s], onArrays.states[s]) ? 0 : 1;
+                    notTheLoop += sameTracker (onArrays.states[s], oneByOne.states[s]) ? 0 : 1;
+                    locked += onRegisters.states[s].phase == TrackPhase::locked ? 1 : 0;
+                }
+
+                position = (position + n) % controlStep;
+                done += n;
+            }
+
+            INFO ("at " << rate << " Hz, " << count << " members");
+            CHECK (different == 0);
+            CHECK (notTheLoop == 0);
+            CHECK (locked > 0);     // they did lock, so the weights and the components moved
+        }
     }
 }

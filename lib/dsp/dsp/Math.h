@@ -27,8 +27,10 @@
 
 #include <dsp/simd/Target.h>
 
+#include <algorithm>
 #include <cmath>
 #include <functional>
+#include <type_traits>
 
 // A multiply and an add are two roundings, in every translation unit that includes
 // lib/dsp (lib/dsp/CMakeLists.txt says why). MSVC defines this under /fp:contract and
@@ -94,6 +96,26 @@ namespace likyu::dsp
        #else
         return a * b + c;
        #endif
+    }
+
+    /** A constant as a T: the value itself for a float or a double, the
+        value in every lane for a register (dsp/simd/Vec.h). So that code
+        written once over T says its constants once. */
+    template <typename T>
+    LIKYU_INLINE T splat (double x) noexcept
+    {
+        if constexpr (std::is_floating_point_v<T>)
+            return static_cast<T> (x);
+        else
+            return T::broadcast (static_cast<typename T::Element> (x));
+    }
+
+    /** std::clamp, under the name the registers' own has (dsp/simd/Vec.h),
+        so that code written once over a scalar or a register type says it once. */
+    template <typename T>
+    LIKYU_INLINE T clampLanes (T v, T lo, T hi) noexcept requires std::is_floating_point_v<T>
+    {
+        return std::clamp (v, lo, hi);
     }
 
     /** 3u^2 - 2u^3: from 0 to 1 with a flat start and a flat end, exactly 0
