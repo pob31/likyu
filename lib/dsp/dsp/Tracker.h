@@ -314,9 +314,18 @@ namespace likyu::dsp
         }
 
         /** One sample of the tracker on its input (the key, less the other
-            trackers' components). It locks only when `mayLock`: no other
-            tracker of its key is locked or held within the spacing. */
-        void tick (float in, TrackerState& s, const TrackerCoefficients& c, bool mayLock) const noexcept
+            trackers' components). It locks only when `mayLock()`: no other
+            tracker of its key is locked or held within the spacing.
+
+            `mayLock` is asked at one place, when a released tracker has been
+            confident for long enough, and nowhere else: among eight trackers
+            that is a scan of the seven others, and asked every sample of
+            every tracker it was a fifth of the budget case (devplan, Phase
+            7). It is asked before this tracker's estimate moves and reads
+            nothing this call has written, so the answer is the one it had
+            when the caller made it beforehand. */
+        template <typename MayLock>
+        void tick (float in, TrackerState& s, const TrackerCoefficients& c, MayLock&& mayLock) const noexcept
         {
             const auto v3 = in - s.s2;
             const auto v1 = c.a1 * s.s1 + c.a2 * v3;
@@ -354,7 +363,7 @@ namespace likyu::dsp
                 case TrackPhase::released:
                     s.confirmed = confident ? s.confirmed + 1 : 0;
 
-                    if (s.confirmed > now.confirmSamples && mayLock)
+                    if (s.confirmed > now.confirmSamples && mayLock())
                     {
                         s.phase = TrackPhase::locked;
                         s.confirmed = 0;
@@ -413,6 +422,15 @@ namespace likyu::dsp
         static bool tooClose (double a, double b) noexcept
         {
             return std::abs (a - b) < spacing;
+        }
+
+        /** Whether two estimates are far enough apart for the spacing to
+            leave both alone: exactly when `repel` returns at once, and never
+            when `tooClose` (it is false of an estimate that is not a number,
+            which `repel` does not leave alone either). */
+        static bool apart (double a, double b) noexcept
+        {
+            return std::abs (a - b) >= spacing;
         }
 
         /** Released at once, its estimate back at rest, to be seeded again. */
@@ -477,6 +495,7 @@ namespace likyu::dsp
         count = std::min (count, maxTrackerGroup);
         std::array<TrackerCoefficients, maxTrackerGroup> c;
         std::array<float, maxTrackerGroup> component {};
+        std::array<double, maxTrackerGroup> estimate {};
 
         for (int i = 0; i < n; ++i)
         {
@@ -502,14 +521,20 @@ namespace likyu::dsp
                 const auto input = count > 1 ? x - (removed - component[static_cast<std::size_t> (j)]) : x;
 
                 // No lock beside one that is locked or held.
-                auto mayLock = true;
-
-                for (int o = 0; o < count && mayLock; ++o)
+                const auto mayLock = [members, count, j]() noexcept
                 {
-                    const auto& other = *members[o].state;
-                    mayLock = o == j || other.phase == TrackPhase::released
-                              || ! TrackerComputer::tooClose (m.state->estimate, other.estimate);
-                }
+                    const auto estimate = members[j].state->estimate;
+
+                    for (int o = 0; o < count; ++o)
+                    {
+                        const auto& other = *members[o].state;
+
+                        if (o != j && other.phase != TrackPhase::released && TrackerComputer::tooClose (estimate, other.estimate))
+                            return false;
+                    }
+
+                    return true;
+                };
 
                 m.computer->tick (input, *m.state, c[static_cast<std::size_t> (j)], mayLock);
 
@@ -517,8 +542,25 @@ namespace likyu::dsp
                     m.confidence[i] = m.state->confidence;
             }
 
-            // The spacing, between every pair; a tie goes to band order. Of
-            // two locked or held this close, the more recent lets go.
+            /*  The spacing, between every pair; a tie goes to band order. Of
+                two locked or held this close, the more recent lets go.
+
+                With every pair apart, which is nearly always, the loop below
+                does nothing: it releases only two that are too close, and
+                `repel` returns at once from two that are apart. One pass
+                over the estimates says so, and the loop is passed over. */
+            auto allApart = true;
+
+            for (int j = 0; j < count; ++j)
+                estimate[static_cast<std::size_t> (j)] = members[j].state->estimate;
+
+            for (int a = 0; a < count; ++a)
+                for (int b = a + 1; b < count; ++b)
+                    allApart = allApart && TrackerComputer::apart (estimate[static_cast<std::size_t> (a)], estimate[static_cast<std::size_t> (b)]);
+
+            if (allApart)
+                continue;
+
             for (int a = 0; a < count; ++a)
             {
                 for (int b = a + 1; b < count; ++b)
