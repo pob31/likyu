@@ -69,20 +69,27 @@ endif()
 # the whole plugin is an AVX2 binary, which is the decision (2026-11-21). arm64 needs no
 # option. On macOS the option is given to an x86_64 slice only, so that a universal
 # build stays possible; which build that slice gets is the installers' question.
+#
+# `auto` and `reference` compute in the fused arithmetic and need the instruction: AVX2
+# and FMA together on x86 (MSVC has one option for both). `scalar` gets neither.
 if(LIKYU_SIMD STREQUAL "scalar")
     target_compile_definitions(likyu_dsp PUBLIC LIKYU_SIMD_SCALAR=1)
-elseif(LIKYU_SIMD STREQUAL "auto")
+elseif(LIKYU_SIMD STREQUAL "auto" OR LIKYU_SIMD STREQUAL "reference")
+    if(LIKYU_SIMD STREQUAL "reference")
+        target_compile_definitions(likyu_dsp PUBLIC LIKYU_SIMD_SCALAR=1 LIKYU_SIMD_REFERENCE=1)
+    endif()
+
     if(APPLE)
-        target_compile_options(likyu_dsp PUBLIC "SHELL:-Xarch_x86_64 -mavx2")
+        target_compile_options(likyu_dsp PUBLIC "SHELL:-Xarch_x86_64 -mavx2" "SHELL:-Xarch_x86_64 -mfma")
     elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$")
         if(MSVC)
             target_compile_options(likyu_dsp PUBLIC /arch:AVX2)
         else()
-            target_compile_options(likyu_dsp PUBLIC -mavx2)
+            target_compile_options(likyu_dsp PUBLIC -mavx2 -mfma)
         endif()
     endif()
 else()
-    message(FATAL_ERROR "LIKYU_SIMD is \"${LIKYU_SIMD}\": auto or scalar")
+    message(FATAL_ERROR "LIKYU_SIMD is \"${LIKYU_SIMD}\": auto, reference or scalar")
 endif()
 
 # PUBLIC: the process paths are templates in headers, so the sanitizer has to reach every

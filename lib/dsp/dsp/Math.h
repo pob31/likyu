@@ -27,6 +27,7 @@
 
 #include <dsp/simd/Target.h>
 
+#include <cmath>
 #include <functional>
 
 // A multiply and an add are two roundings, in every translation unit that includes
@@ -54,6 +55,31 @@ namespace likyu::dsp
     constexpr T lerpExact (T a, T b, T t) noexcept
     {
         return (T (1) - t) * a + t * b;
+    }
+
+    /** a b + c, the fused multiply-add of the build's arithmetic (PRD,
+        Realtime rules; decided 2026-11-21 by the author): ONE rounding
+        wherever the processor has the instruction, which is every build but
+        the scalar one for an x86 older than AVX2 (dsp/simd/Target.h).
+
+        It is written where a recurrence or a polynomial has this shape, by
+        hand, and nowhere else: the compiler is told never to fuse by itself,
+        so that the scalar code and a SIMD kernel, which says the same thing
+        with an intrinsic, give the same bits. A plain a * b + c beside it
+        stays two roundings, and is still what `lerpExact` and the other
+        exact helpers here are made of.
+
+        Every compiler of the build makes one instruction of it (checked for
+        MSVC under /arch:AVX2, 2026-11-21); in a Debug build it is the C
+        library's, with the same result. */
+    template <typename T>
+    inline T mulAdd (T a, T b, T c) noexcept
+    {
+       #if LIKYU_FUSED
+        return std::fma (a, b, c);
+       #else
+        return a * b + c;
+       #endif
     }
 
     /** 3u^2 - 2u^3: from 0 to 1 with a flat start and a flat end, exactly 0

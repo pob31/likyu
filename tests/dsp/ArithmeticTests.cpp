@@ -26,6 +26,8 @@
 
 #include <dsp/Math.h>
 
+#include <string>
+
 using namespace likyu::dsp;
 
 namespace
@@ -56,5 +58,29 @@ TEST_CASE ("arithmetic: a multiply and an add are two roundings, never a fused o
         volatile float e = 0x1p-13f, one = 1.0f;
         const float a = one + e, b = one - e, c = -one;
         CHECK (exactlyEqual (multiplyThenAdd (a, b, c), 0.0f));
+    }
+}
+
+TEST_CASE ("arithmetic: mulAdd is one rounding where the build's arithmetic is fused, and two where it is not")
+{
+    /*  The same product, asked of `mulAdd` (decided 2026-11-21: fused,
+        explicitly). Fused, it is -e^2 exactly; in the scalar build for an
+        x86 without FMA it is what the plain expression gives, 0. Which of
+        the two this build is, dsp/simd/Target.h says. */
+    const std::string build = std::string (simd::targetName) + (simd::fused ? "; mulAdd is fused" : "; mulAdd is not fused");
+    MESSAGE ("this build: " << build);
+
+    SUBCASE ("double")
+    {
+        volatile double e = 0x1p-27, one = 1.0;
+        const double a = one + e, b = one - e, c = -one;
+        CHECK (exactlyEqual (mulAdd (a, b, c), simd::fused ? -0x1p-54 : 0.0));
+    }
+
+    SUBCASE ("float")
+    {
+        volatile float e = 0x1p-13f, one = 1.0f;
+        const float a = one + e, b = one - e, c = -one;
+        CHECK (exactlyEqual (mulAdd (a, b, c), simd::fused ? -0x1p-26f : 0.0f));
     }
 }

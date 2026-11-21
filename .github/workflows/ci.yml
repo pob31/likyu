@@ -126,15 +126,24 @@ jobs:
       - name: Test lib/dsp (Release)
         run: ctest --preset ci-linux-release
 
-      # The same kernels with no intrinsic (LIKYU_SIMD=scalar): what a processor older than
-      # AVX2 gets. Its suite, and its bits against the SIMD build's.
+      # The same kernels with no intrinsic, in the same fused arithmetic
+      # (LIKYU_SIMD=reference): its suite, and its bits against the SIMD build's.
       - name: lib/dsp without intrinsics (Release), and the same bits as with
+        run: |
+          set -euo pipefail
+          cmake --preset reference
+          cmake --build --preset reference-release --target likyu_dsp_tests likyu_bench
+          ctest --preset reference-release
+          scripts/same-bits.sh build/ci-linux/tests/Release build/reference/tests/Release
+
+      # What a processor older than AVX2 gets (LIKYU_SIMD=scalar): no FMA, so its own
+      # arithmetic, and its own suite to hold it.
+      - name: lib/dsp for a processor without AVX2 or FMA (Release)
         run: |
           set -euo pipefail
           cmake --preset scalar
           cmake --build --preset scalar-release --target likyu_dsp_tests likyu_bench
           ctest --preset scalar-release
-          scripts/same-bits.sh build/ci-linux/tests/Release build/scalar/tests/Release
 
       # Information, not a gate (devplan 2d): the noise floor of float and double against
       # long double, which is 80-bit here and no wider than double on MSVC.
@@ -243,10 +252,10 @@ jobs:
       - name: lib/dsp without intrinsics (Release), and the same bits as with
         run: |
           set -euo pipefail
-          cmake --preset scalar
-          cmake --build --preset scalar-release --target likyu_dsp_tests likyu_bench
-          ctest --preset scalar-release
-          scripts/same-bits.sh build/ci-macos/tests/Release build/scalar/tests/Release
+          cmake --preset reference
+          cmake --build --preset reference-release --target likyu_dsp_tests likyu_bench
+          ctest --preset reference-release
+          scripts/same-bits.sh build/ci-macos/tests/Release build/reference/tests/Release
 
       - name: Build the plugins (Release)
         run: cmake --build --preset ci-macos-release --target likyu_plugin_All likyu_plugin_lv2_mono_All
@@ -305,15 +314,24 @@ jobs:
       - name: Test lib/dsp (Release)
         run: ctest --preset ci-windows-release
 
-      # The scalar preset is Ninja's; here the same thing from the Visual Studio generator.
+      # The reference and scalar presets are Ninja's; here the same things from the Visual
+      # Studio generator.
       - name: lib/dsp without intrinsics (Release), and the same bits as with
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --preset ci-windows -B build/reference -DLIKYU_SIMD=reference -DLIKYU_BUILD_PLUGINS=OFF
+          cmake --build build/reference --config Release --target likyu_dsp_tests likyu_bench --parallel
+          ctest --test-dir build/reference -C Release --output-on-failure
+          scripts/same-bits.sh build/ci-windows/tests/Release build/reference/tests/Release
+
+      - name: lib/dsp for a processor without AVX2 or FMA (Release)
         shell: bash
         run: |
           set -euo pipefail
           cmake --preset ci-windows -B build/scalar -DLIKYU_SIMD=scalar -DLIKYU_BUILD_PLUGINS=OFF
           cmake --build build/scalar --config Release --target likyu_dsp_tests likyu_bench --parallel
           ctest --test-dir build/scalar -C Release --output-on-failure
-          scripts/same-bits.sh build/ci-windows/tests/Release build/scalar/tests/Release
 
       - name: Build the plugins (Release)
         run: cmake --build --preset ci-windows-release --target likyu_plugin_All likyu_plugin_lv2_mono_All --parallel

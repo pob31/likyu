@@ -69,10 +69,20 @@
       "description": "What the Windows CI job configures. No compiler cache: sccache with MSVC needs /Z7, and juce_recommended_config_flags gives /Zi in Debug (go.dot found this first)."
     },
     {
+      "name": "reference",
+      "inherits": "dev",
+      "displayName": "reference (lib/dsp without intrinsics, fused arithmetic, no plugins)",
+      "description": "LIKYU_SIMD=reference and no plugins: lib/dsp's kernels over plain arrays, in the same fused arithmetic as the SIMD builds, with its suite and the bench. What CI holds the SIMD builds to: the same bits (devplan Phase 7; scripts/same-bits.sh). On Windows from a plain shell, configure vs with -DLIKYU_SIMD=reference -DLIKYU_BUILD_PLUGINS=OFF -B build/reference instead.",
+      "cacheVariables": {
+        "LIKYU_SIMD": "reference",
+        "LIKYU_BUILD_PLUGINS": "OFF"
+      }
+    },
+    {
       "name": "scalar",
       "inherits": "dev",
-      "displayName": "scalar (lib/dsp without intrinsics, no plugins)",
-      "description": "LIKYU_SIMD=scalar and no plugins: lib/dsp's kernels over plain arrays, with its suite and the bench. What a processor older than AVX2 gets, and what CI holds the SIMD builds to: the same bits (devplan Phase 7). On Windows from a plain shell, configure vs with -DLIKYU_SIMD=scalar -B build/scalar instead.",
+      "displayName": "scalar (lib/dsp without intrinsics or FMA, no plugins)",
+      "description": "LIKYU_SIMD=scalar and no plugins: what an x86 processor older than AVX2 gets. No fused multiply-add there, so its own arithmetic, held by its own suite and not to the others' bits. On arm64 it is the reference. On Windows from a plain shell, configure vs with -DLIKYU_SIMD=scalar -DLIKYU_BUILD_PLUGINS=OFF -B build/scalar instead.",
       "cacheVariables": {
         "LIKYU_SIMD": "scalar",
         "LIKYU_BUILD_PLUGINS": "OFF"
@@ -152,6 +162,11 @@
       "configuration": "Debug"
     },
     {
+      "name": "reference-release",
+      "configurePreset": "reference",
+      "configuration": "Release"
+    },
+    {
       "name": "scalar-release",
       "configurePreset": "scalar",
       "configuration": "Release"
@@ -224,6 +239,11 @@
       "name": "dev-release",
       "inherits": "release-dsp",
       "configurePreset": "dev"
+    },
+    {
+      "name": "reference-release",
+      "inherits": "release-dsp",
+      "configurePreset": "reference"
     },
     {
       "name": "scalar-release",

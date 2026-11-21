@@ -709,6 +709,8 @@ three installers install plugins that pass the validators on a clean machine.
   *proposed:* require it, say so in the README, keep the scalar build as an option.
   *Decided 2026-11-21 by the author:* AVX2 is required; the scalar build stays as an option.
 - **Fused multiply-adds in the kernels** (raised 2026-11-21, PRD open decision): before 7c.
+  *Decided 2026-11-21 by the author:* fused, explicitly. The conversion of the recurrences to
+  `mulAdd` is 7b's next step and the phase's second declared change of bits, our `exp2` the third.
 - Signing identities, as for WFS-DIY.
 
 **The optimisation in stages** (*the plan the author approved on 2026-11-21*; the installers are
