@@ -25,19 +25,21 @@ heard.
 
 ## Next, in the order the profile gives
 
-The last time profile (the M4, before the bank's kernel): the tracker group 31 %, the bank 19 %
-(now 4 %), coefficients and filters 17 %, detection 15 %, `exp2` 11 % (now ours, inline).
-**Take a new one first** (`sample`, as the foundations note says), then:
+The time profile at `11d5e08` (the M4, `sample`; the arithmetic note has the table): **the tracker
+group 42 %**, the bands' coefficients and filters 26 %, detection 17 %, the bank and the mean key
+5 %, the rest 10 %. So:
 
-1. **Coefficients and levels along the 16 samples of a step** (7d): the coefficient functions of
+1. **The tracker group's front half** across its members (7d): `pow2`, tan, the divide and the
+   extraction filter of each, eight to a register (`pow2` and tan in double, four and four);
+   `tick` stays scalar at first, and its one-poles and divides are the next candidates. Needs
+   `F64x4` in `Vec.h` and the conversions between four doubles and four floats, each with its
+   lines in `SimdTests`. The ordered sum of the components stays in order.
+2. **Coefficients and levels along the 16 samples of a step**: the coefficient functions of
    `Band.h` as one elementwise kernel on four doubles, `pow2` included (its table read a lane at a
-   time), filling `StretchCoefficients` four samples at once; `powerToDb` on eight floats. Needs
-   `F64x4` in `Vec.h` (compare, blend, the bit casts of `pow2` and `fastLog2`), each with its lines
-   in `SimdTests`. The traps are in the plan's table: `moving ? lerp : end` stays a broadcast; an
-   offset of exactly 0 blends the argument of `pow2`, not its result; a stretch under 16 computes
-   whole registers from padded inputs.
-2. **The tracker group's front half** across its members: `pow2`, tan, the divide and the
-   extraction filter of each, eight to a register; `tick` stays scalar.
+   time), filling `StretchCoefficients` four samples at once; `powerToDb` on eight floats. The
+   traps are in the plan's table: `moving ? lerp : end` stays a broadcast; an offset of exactly 0
+   blends the argument of `pow2`, not its result; a stretch under 16 computes whole registers
+   from padded inputs.
 3. **The detectors**, eight bands of a key slot to a register: the heaviest bookkeeping. Worth it
    on wide layouts keyed by the input (`dynself.64`, `trackself.64`).
 4. **The filters across channels** with `work` sample-major: the wide layouts' largest part

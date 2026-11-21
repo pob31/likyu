@@ -109,6 +109,25 @@ ledger did not move.
 
 It was a fifth of the budget case on the M4, by the sampled profile; it is now a twentieth.
 
+## Where the time goes now
+
+The budget case sampled again on the M4 Pro, at `11d5e08` (`sample`, eight seconds, 6170 samples
+at the top of the stack), beside the profile of the foundations note:
+
+| Part | Before the day's second half | Now |
+| --- | --- | --- |
+| The tracker group: coefficients, extraction, `tick` | 31 % | **42 %** |
+| The bands' coefficients and their filters, per lane | 17 % | 26 % |
+| Detectors, levels and gain computers | 15 % | 17 % |
+| `Chain::track` itself: the seeding bank, the mean key | 19 % | 5 % |
+| The library's `exp2` | 11 % | none: `pow2` is inline in the two rows above |
+| Seeding decisions, `updateFrequencies`, `beginStep`, the rest | 8 % | 10 % |
+
+**The trackers are now the first cost by far**, and the order of what is left follows: the tracker
+group's front half across its members; then the coefficients and levels along the samples; then
+the detectors. What shortens the tracker's own chain, the first-order update of g, is the
+author's to decide at the stop.
+
 ## Found on the way
 
 - **NEON ran right the first time it ran**, on the farm, before the push: `SimdTests` (7296
