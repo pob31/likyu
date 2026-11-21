@@ -560,8 +560,12 @@ namespace likyu::editor
         listen.setAccent (palette::band (bandIn));
         reset.setAccent (palette::warning);
 
-        if (bandIn == band && now == shown)
+        const auto spanRange = presentation::gainModeInEffect (settings) == dsp::GainMode::transient;
+
+        if (bandIn == band && now == shown && spanRange == transientRange)
             return;
+
+        transientRange = spanRange;
 
         band = bandIn;
         shown = now;
@@ -592,7 +596,11 @@ namespace likyu::editor
                     break;
 
                 case dsp::ParamKind::continuous:
-                    control = std::make_unique<ParamDial> (host, index, name, accent);
+                    // In Transient, Range is a limit either way: a dial lit from its top both ways.
+                    if (p == dsp::BandParam::range && transientRange)
+                        control = std::make_unique<ParamSpanDial> (host, index, name, accent);
+                    else
+                        control = std::make_unique<ParamDial> (host, index, name, accent);
                     break;
             }
 

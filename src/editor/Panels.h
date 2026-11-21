@@ -250,6 +250,7 @@ namespace likyu::editor
         Host& host;
         int band = -1;
         std::vector<dsp::BandParam> shown;                      // in order, one per control
+        bool transientRange = false;                            // Range shown as a span: the band is in Transient
         std::vector<std::unique_ptr<ParamControl>> controls;
 
         ChannelCells cells;

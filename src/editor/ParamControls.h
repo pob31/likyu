@@ -23,6 +23,11 @@
 
       ParamDial    an arc of 315 degrees with a dot, turned by dragging round
                    its centre (WfsBasicDial); its name above, its value below
+      ParamSpanDial  a dial for a limit that holds either way, the Transient's
+                   Range: lit from the top outwards on both sides as far as
+                   the value's magnitude, a dot at each end, either of which
+                   drags it (WFS-DIY's WfsWidthExpansionSlider on a dial); its
+                   value shown as "±6.0 dB"
       ParamBar     a bar; a press jumps to the pointer (WfsStandardSlider);
                    its value below. As a marker (a band's Frequency) the
                    whole bar is tinted in the band's colour and a block of
@@ -130,6 +135,44 @@ namespace likyu::editor
         double fromNormalised = 0.0;
         float lastAngle = 0.0f;
         double turned = 0.0;
+    };
+
+    /*  The Transient mode's Range (decided by the author 2026-11-21): the
+        shaper limits its offset to ±|Range| (dsp/Transient.h), so -6 and +6
+        dB are the same there. The dial shows and edits the magnitude only,
+        and writes it back with the sign the parameter had, so that the band
+        is what it was if it goes back to Dynamic, where the sign is the
+        direction. The parameter itself is unchanged. */
+    class ParamSpanDial final : public ContinuousControl
+    {
+    public:
+        ParamSpanDial (Host& host, int index, juce::String label, juce::Colour accent);
+
+        void refresh() override;
+        void paint (juce::Graphics&) override;
+        void resized() override;
+        void mouseDown (const juce::MouseEvent&) override;
+        void mouseDrag (const juce::MouseEvent&) override;
+        void mouseDoubleClick (const juce::MouseEvent&) override;
+        void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
+
+        /** The magnitude shown, in the parameter's units: for a test. */
+        double magnitude() const noexcept       { return shownMagnitude; }
+
+        /** Where each dot is, in the control's coordinates: for a test. */
+        juce::Point<float> dotAt (bool left) const;
+
+    private:
+        juce::Rectangle<float> dialArea() const;
+        double limit() const;
+        void setMagnitude (double magnitude);
+
+        double shownMagnitude = -1.0;
+        double sign = -1.0;             // the parameter's, kept through a write; a cut by default
+        double fromMagnitude = 0.0;
+        float lastAngle = 0.0f;
+        double turned = 0.0;
+        bool leftDot = false;
     };
 
     class ParamBar final : public ContinuousControl

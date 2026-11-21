@@ -36,6 +36,7 @@
 #include <editor/CurveGeometry.h>
 #include <editor/LongPressButton.h>
 #include <editor/Palette.h>
+#include <editor/ParamControls.h>
 #include <editor/QGestures.h>
 
 #include <algorithm>
@@ -1425,4 +1426,95 @@ TEST_CASE ("editor: a pick in a dropdown holds, even when the editor refreshes b
     opened.refresh();
     REQUIRE (gainModeBox() != nullptr);
     CHECK (gainModeBox()->getSelectedItemIndex() == static_cast<int> (dsp::GainMode::transient));
+}
+
+TEST_CASE ("editor: in Transient, Range is a dial lit both ways from its top, shown and edited as a magnitude; the sign is kept for Dynamic")
+{
+    Opened opened;
+    auto& processor = opened.processor;
+    auto& root = opened.window->editorRoot();
+
+    set (processor, 0, P::on, 1.0);
+    set (processor, 0, P::gmode, static_cast<double> (dsp::GainMode::dynamic));
+    set (processor, 0, P::range, -6.0);
+    root.selectBand (0);
+    opened.refresh();
+
+    const auto rangeControl = [&root]() -> juce::Component*
+    {
+        for (auto* child : root.footPanel().getChildren())
+            if (auto* control = dynamic_cast<editor::ParamControl*> (child);
+                control != nullptr && control->parameterIndex() == dsp::indexOf (0, P::range))
+                return child;
+
+        return nullptr;
+    };
+
+    // Dynamic: the ordinary dial, where the sign is the direction.
+    REQUIRE (rangeControl() != nullptr);
+    CHECK (dynamic_cast<editor::ParamSpanDial*> (rangeControl()) == nullptr);
+
+    // Transient: the span dial, in the same place.
+    const auto where = rangeControl()->getBounds();
+    set (processor, 0, P::gmode, static_cast<double> (dsp::GainMode::transient));
+    opened.refresh();
+
+    auto* span = dynamic_cast<editor::ParamSpanDial*> (rangeControl());
+    REQUIRE (span != nullptr);
+    CHECK (span->getBounds() == where);
+    CHECK (span->magnitude() == doctest::Approx (6.0));
+
+    // The two dots mirror each other about the top.
+    const auto left = span->dotAt (true), right = span->dotAt (false);
+    CHECK (left.x < right.x);
+    CHECK (left.y == doctest::Approx (right.y));
+
+    // Either dot dragged outwards widens it; the sign written is the parameter's own.
+    const auto dragOut = [span] (juce::Point<float> from, float dx)
+    {
+        span->mouseDown (eventAt (*span, from, from));
+        span->mouseDrag (eventAt (*span, from + juce::Point<float> (dx, 0.0f), from));
+        span->mouseUp (eventAt (*span, from + juce::Point<float> (dx, 0.0f), from));
+    };
+
+    dragOut (span->dotAt (true), -6.0f);
+    CHECK (get (processor, 0, P::range) < -6.5);
+    const auto afterLeft = get (processor, 0, P::range);
+
+    dragOut (span->dotAt (false), 6.0f);
+    CHECK (get (processor, 0, P::range) < afterLeft - 0.5);
+
+    // Inwards narrows, and stops at 0.
+    dragOut (span->dotAt (false), -60.0f);
+    CHECK (get (processor, 0, P::range) <= 0.0);
+    CHECK (get (processor, 0, P::range) > -6.0);
+
+    // Typed with a sign, either: the magnitude is taken, the parameter's sign kept.
+    juce::MouseWheelDetails wheel;
+    wheel.deltaX = 0.0f;
+    wheel.deltaY = 0.1f;
+    wheel.isReversed = false;
+    wheel.isSmooth = false;
+    wheel.isInertial = false;
+
+    set (processor, 0, P::range, 9.0);
+    opened.refresh();
+    span->mouseWheelMove (eventAt (*span, { 10.0f, 30.0f }, { 10.0f, 30.0f }, juce::ModifierKeys()), wheel);
+    // A tenth of a wheel step is a hundredth of the magnitude's range, as on the other dials.
+    CHECK (get (processor, 0, P::range) == doctest::Approx (9.0 + 0.1 * 0.1 * 30.0).epsilon (1.0e-4));
+
+    // The text is the magnitude, signed both ways, once.
+    const auto* label = dynamic_cast<juce::Label*> (span->getChildComponent (0));
+    REQUIRE (label != nullptr);
+    CHECK (label->getText() == juce::String::fromUTF8 ("\xc2\xb1") + "9.3 dB");
+
+    // A double click: the default's magnitude, the sign kept.
+    span->mouseDoubleClick (eventAt (*span, { 10.0f, 30.0f }, { 10.0f, 30.0f }));
+    CHECK (get (processor, 0, P::range) == doctest::Approx (6.0));
+
+    // Back to Dynamic: the ordinary dial again, the value untouched.
+    set (processor, 0, P::gmode, static_cast<double> (dsp::GainMode::dynamic));
+    opened.refresh();
+    CHECK (dynamic_cast<editor::ParamSpanDial*> (rangeControl()) == nullptr);
+    CHECK (get (processor, 0, P::range) == doctest::Approx (6.0));
 }

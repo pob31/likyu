@@ -285,6 +285,174 @@ namespace likyu::editor
     }
 
     //==========================================================================
+    ParamSpanDial::ParamSpanDial (Host& hostIn, int indexIn, juce::String labelIn, juce::Colour accentIn)
+        : ContinuousControl (hostIn, indexIn, std::move (labelIn), accentIn)
+    {
+        // Typed: the magnitude, whatever sign is typed; the parameter keeps its own.
+        text.onTextChange = [this]
+        {
+            setMagnitude (std::abs (core::valueFromText (spec(), text.getText().removeCharacters (juce::String::fromUTF8 ("\xc2\xb1+")))));
+            refresh();
+        };
+    }
+
+    double ParamSpanDial::limit() const
+    {
+        return std::max (std::abs (spec().minimum), std::abs (spec().maximum));
+    }
+
+    void ParamSpanDial::setMagnitude (double magnitude)
+    {
+        host.beginGesture (index);
+        host.setValue (index, sign * std::clamp (magnitude, 0.0, limit()));
+        host.endGesture (index);
+        refresh();
+    }
+
+    void ParamSpanDial::refresh()
+    {
+        const auto v = value();
+
+        if (v > 0.0)
+            sign = 1.0;
+        else if (v < 0.0)
+            sign = -1.0;
+
+        const auto magnitude = std::abs (v);
+
+        if (dsp::exactlyEqual (magnitude, shownMagnitude))
+            return;
+
+        shownMagnitude = magnitude;
+
+        if (! text.isBeingEdited())
+            text.setText (juce::String::fromUTF8 ("\xc2\xb1") + core::valueText (spec(), magnitude).trimCharactersAtStart ("+"),
+                          juce::dontSendNotification);
+
+        repaint();
+    }
+
+    juce::Rectangle<float> ParamSpanDial::dialArea() const
+    {
+        return getLocalBounds().toFloat().withTrimmedTop (labelHeight).withTrimmedBottom (textHeight).reduced (1.0f);
+    }
+
+    void ParamSpanDial::resized()
+    {
+        text.setBounds (getLocalBounds().removeFromBottom (static_cast<int> (textHeight)));
+    }
+
+    /*  The arc is the other dials' 315 degrees; its top is no magnitude and
+        each end the largest, so the lit part grows from the top both ways. */
+    juce::Point<float> ParamSpanDial::dotAt (bool left) const
+    {
+        const auto area = dialArea();
+        const auto track = 0.8f * 0.5f * std::min (area.getWidth(), area.getHeight());
+        const auto half = 0.5f * arcRange * static_cast<float> (std::max (0.0, shownMagnitude) / limit());
+        const auto angle = left ? -half : half;
+        return { area.getCentreX() + track * std::sin (angle), area.getCentreY() - track * std::cos (angle) };
+    }
+
+    void ParamSpanDial::paint (juce::Graphics& g)
+    {
+        g.setColour (palette::textSecondary);
+        g.setFont (fontOf (labelFont));
+        g.drawText (label, getLocalBounds().toFloat().removeFromTop (labelHeight), juce::Justification::centred, false);
+
+        const auto area = dialArea();
+        const auto radius = 0.5f * std::min (area.getWidth(), area.getHeight());
+
+        if (radius < 4.0f)
+            return;
+
+        const auto centre = area.getCentre();
+        const auto track = 0.8f * radius;
+        const auto width = std::max (2.5f, 0.15f * radius);
+        const auto stroke = juce::PathStrokeType (width, juce::PathStrokeType::curved, juce::PathStrokeType::rounded);
+
+        juce::Path whole;
+        whole.addCentredArc (centre.x, centre.y, track, track, 0.0f, arcStart, arcStart + arcRange, true);
+        g.setColour (palette::controlTrack);
+        g.strokePath (whole, stroke);
+
+        const auto half = 0.5f * arcRange * static_cast<float> (std::max (0.0, shownMagnitude) / limit());
+
+        if (half > 1.0e-3f)
+        {
+            juce::Path active;
+            active.addCentredArc (centre.x, centre.y, track, track, 0.0f, -half, half, true);
+            g.setColour (accent);
+            g.strokePath (active, stroke);
+        }
+
+        // The top, where the magnitude is 0: a tick, so that the dial reads as two-sided.
+        g.setColour (palette::textSecondary);
+        g.fillRect (centre.x - 0.5f, centre.y - track - 0.5f * width - 2.0f, 1.0f, 3.0f);
+
+        const auto dot = 0.8f * width;
+        g.setColour (palette::textPrimary);
+
+        for (const auto left : { true, false })
+        {
+            const auto at = dotAt (left);
+            g.fillEllipse (at.x - dot, at.y - dot, 2.0f * dot, 2.0f * dot);
+        }
+    }
+
+    void ParamSpanDial::mouseDown (const juce::MouseEvent& e)
+    {
+        const auto fromCentre = e.position - dialArea().getCentre();
+
+        // The dot nearer the press is the one turned; left of the top, the left one.
+        leftDot = e.position.getDistanceFrom (dotAt (true)) < e.position.getDistanceFrom (dotAt (false))
+                  || (dsp::exactlyEqual (dotAt (true).x, dotAt (false).x) && fromCentre.x < 0.0f);
+
+        beginDrag();
+        fromMagnitude = std::max (0.0, shownMagnitude);
+        lastAngle = std::atan2 (fromCentre.y, fromCentre.x);
+        turned = 0.0;
+    }
+
+    void ParamSpanDial::mouseDrag (const juce::MouseEvent& e)
+    {
+        if (! dragging)
+            return;
+
+        const auto fromCentre = e.position - dialArea().getCentre();
+        const auto angle = std::atan2 (fromCentre.y, fromCentre.x);
+        auto delta = angle - lastAngle;
+
+        if (delta > juce::MathConstants<float>::pi)
+            delta -= juce::MathConstants<float>::twoPi;
+        else if (delta < -juce::MathConstants<float>::pi)
+            delta += juce::MathConstants<float>::twoPi;
+
+        lastAngle = angle;
+
+        // Either dot away from the top widens: the left one turned anticlockwise, the right one clockwise.
+        const auto outwards = leftDot ? -delta : delta;
+        turned += static_cast<double> (outwards / (0.5f * arcRange)) * (e.mods.isShiftDown() ? fineFactor : 1.0);
+
+        host.setValue (index, sign * std::clamp (fromMagnitude + turned * limit(), 0.0, limit()));
+        refresh();
+    }
+
+    void ParamSpanDial::mouseDoubleClick (const juce::MouseEvent&)
+    {
+        endDrag();
+        setMagnitude (std::abs (spec().defaultValue));
+    }
+
+    void ParamSpanDial::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
+    {
+        if (! (std::abs (wheel.deltaY) > 0.0f) || dragging)
+            return;
+
+        const auto step = static_cast<double> (wheel.deltaY) * wheelStep * (e.mods.isShiftDown() ? fineFactor : 1.0);
+        setMagnitude (std::max (0.0, shownMagnitude) + step * limit());
+    }
+
+    //==========================================================================
     namespace
     {
         constexpr float besideTextWidth = 62.0f;
