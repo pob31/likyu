@@ -707,7 +707,57 @@ three installers install plugins that pass the validators on a clean machine.
 
 - **Oldest x86 processor supported.** AVX2 as a requirement excludes machines before 2013;
   *proposed:* require it, say so in the README, keep the scalar build as an option.
+  *Decided 2026-11-21 by the author:* AVX2 is required; the scalar build stays as an option.
+- **Fused multiply-adds in the kernels** (raised 2026-11-21, PRD open decision): before 7c.
 - Signing identities, as for WFS-DIY.
+
+**The optimisation in stages** (*the plan the author approved on 2026-11-21*; the installers are
+planned after it). Its rule: **an optimisation commit changes no output bit**, held by the suites
+in Release on the SIMD and the scalar builds, by kernel tests against the scalar back-end, and by
+the bits ledger (`likyu_bench hash`, and `LIKYU_LEDGER` for the suite's own renderings), compared
+on one machine between a commit and the one before, and between the two builds. A commit that must
+change bits says so. Remedies that change the numbers inside the tolerances are brought to the
+author with figures first (7f).
+
+- **7a. Instruments.** The bench at audio priority on one core, the suite of cases in one JSON,
+  the two ledgers, `scripts/bench-compare.py`, `farm-bench.sh` and `same-bits.sh`, the suite in
+  Release in CI, the baseline on the three machines. *Done 2026-11-21.*
+- **7b. Foundations.** Contraction off (the Mac's bits move once); `LIKYU_SIMD` and AVX2 on x86;
+  the scalar build beside it, in CI. *Done 2026-11-21.* Then, once the arithmetic is decided: our
+  own `exp2` (the second declared change) and `dsp/simd/Vec.h`, one wrapper with AVX2, NEON and
+  plain-array back-ends at fixed logical widths.
+- **7c. Restructuring, scalar and exact.** The trackers' pair loops only when they have something
+  to do (*done 2026-11-21*); the sample loop outside in the bank, the detectors and the filters,
+  with `work` sample-major; one coefficient routine for the four places that make coefficients,
+  the type's `switch` out of the sample loop; a settled band skips its ramps; the lookahead in
+  runs.
+- **7d. SIMD on the kernels 7c isolated.** The seeding bank's regions; coefficients and levels
+  along the 16 samples of a step (a third axis beside the PRD's two); the tracker group's front
+  half across its members; the detectors, eight bands of a key slot to a register; the filters
+  across channels in groups of 4, 2, 1.
+- **7e. The Mac's own pass**, which may wait: widths per kernel on NEON, `-mcpu`, what Apple
+  clang's vectoriser does alone, the x86_64 slice under Rosetta.
+- **7f. Stop.** A note to the author with what each remaining remedy gains and its Track figures:
+  a first-order update of the tracker's g; the bank only while a tracker is not locked; the pair
+  checks at control rate; the rotated deflation. And the universal binary's x86_64 slice (AVX2,
+  which Rosetta refuses before macOS 15, or scalar).
+- **7g. The record:** the bench note before and after, the PRD's dated amendments, the README's
+  processor requirement, a handoff.
+
+**Record so far, 2026-11-21.** Handoff:
+[`docs/handoffs/2026-11-21-phase7-foundations.md`](handoffs/2026-11-21-phase7-foundations.md);
+bench notes: [`2026-11-21-phase7-baseline.md`](bench/2026-11-21-phase7-baseline.md) and
+[`2026-11-21-phase7-foundations.md`](bench/2026-11-21-phase7-foundations.md).
+
+- *Done:* 7a, the two build halves of 7b, the first step of 7c. The budget's case is 4.93 %,
+  3.23 % and 6.11 % of a core on the Windows machine, an M4 Pro and a Ryzen 7 8745H at the
+  baseline. Nothing is faster yet on Windows; on the NUC `-mavx2` alone gave 10 %.
+- *Found:* turning contraction off cost the M4 15 % on the budget's case and up to 60 % on 64
+  channels, and fused arithmetic would give the NUC 10 to 23 %: the open decision above. MSVC
+  19.52 miscompiles a conditional store under `/arch:AVX2` (worked around; the Release suite found
+  it). The Release suite failed on Linux CI at the baseline commit and passes since. The pair
+  loops were 13 % of the instructions and 1 to 3 % of the time.
+- *Not yet:* everything from `exp2` on.
 
 ---
 
