@@ -289,6 +289,15 @@ TEST_CASE ("registers, four doubles: every operation, pow2 and tan give the bits
            [] (double a, double b, double c) { return a < b ? c : a; });
     check ([] (Native a, Native b, Native c) { return clampLanes (a, b, b + c * c); }, [] (Scalar a, Scalar b, Scalar c) { return clampLanes (a, b, b + c * c); },
            [] (double a, double b, double c) { return std::clamp (a, b, b + c * c); });
+    check ([] (Native a, Native, Native) { return absLanes (a); }, [] (Scalar a, Scalar, Scalar) { return absLanes (a); },
+           [] (double a, double, double) { return std::abs (a); });
+    check ([] (Native a, Native b, Native c) { return select (equal (a, b), c, a); }, [] (Scalar a, Scalar b, Scalar c) { return select (equal (a, b), c, a); },
+           [] (double a, double b, double c) { return exactlyEqual (a, b) ? c : a; });
+
+    // Equal where it must be: a lane against itself, and 0 against -0; and both masks at once.
+    check ([] (Native a, Native b, Native c) { return select (both (equal (a, a), equal (b * splat<Native> (0.0), -(b * splat<Native> (0.0)))), c, b); },
+           [] (Scalar a, Scalar b, Scalar c) { return select (both (equal (a, a), equal (b * splat<Scalar> (0.0), -(b * splat<Scalar> (0.0)))), c, b); },
+           [] (double a, double b, double c) { return exactlyEqual (a, a) && exactlyEqual (b * 0.0, -(b * 0.0)) ? c : b; });
 
     // pow2 a lane at a time against pow2 itself, and the warp's tan against Warp::g, at the rates of both forms.
     check ([] (Native a, Native, Native) { return pow2Lanes (a); }, [] (Scalar a, Scalar, Scalar) { return pow2Lanes (a); },

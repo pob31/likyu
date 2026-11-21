@@ -56,6 +56,19 @@ namespace likyu::dsp
         return pow2 (dB * (log2Of10 / 80.0));
     }
 
+    /** bandA and bandSqrtA for a double or a register of them: the same operations. */
+    template <typename V>
+    LIKYU_INLINE V bandALanes (V dB) noexcept
+    {
+        return pow2Lanes (dB * splat<V> (log2Of10 / 40.0));
+    }
+
+    template <typename V>
+    LIKYU_INLINE V bandSqrtALanes (V dB) noexcept
+    {
+        return pow2Lanes (dB * splat<V> (log2Of10 / 80.0));
+    }
+
     /** 10^(dB / 20): a gain in dB as a factor (the output gain). */
     inline double dbToFactor (double dB) noexcept
     {

@@ -118,6 +118,27 @@ namespace likyu::dsp
         return std::clamp (v, lo, hi);
     }
 
+    /** std::abs, under the registers' name. */
+    template <typename T>
+    LIKYU_INLINE T absLanes (T v) noexcept requires std::is_floating_point_v<T>
+    {
+        return std::abs (v);
+    }
+
+    /** lerpExact's expression, for a scalar or a register: the same operations. */
+    template <typename T>
+    LIKYU_INLINE T lerpLanes (T a, T b, T t) noexcept
+    {
+        return (splat<T> (1.0) - t) * a + t * b;
+    }
+
+    /** smoothstep's expression, for a scalar or a register: the same operations. */
+    template <typename T>
+    LIKYU_INLINE T smoothstepLanes (T u) noexcept
+    {
+        return u * u * (splat<T> (3.0) - splat<T> (2.0) * u);
+    }
+
     /** 3u^2 - 2u^3: from 0 to 1 with a flat start and a flat end, exactly 0
         at 0 and exactly 1 at 1. A crossfade shaped by it has no corner, and a
         corner is what a linear crossfade sprays above the signal. */

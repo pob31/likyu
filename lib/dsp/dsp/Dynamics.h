@@ -209,6 +209,9 @@ namespace likyu::dsp
         double rangeStart() const noexcept  { return start.range; }
         double rangeEnd() const noexcept    { return end.range; }
 
+        /** Whether rangeAt interpolates in this step (with the threshold, knee and ratio: one flag). */
+        bool isMoving() const noexcept      { return moving; }
+
         /** One sample of the one-pole, from `offset` toward `target`. */
         void smooth (double& offset, double target) const noexcept
         {

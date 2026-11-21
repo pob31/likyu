@@ -238,6 +238,35 @@ namespace likyu::dsp::simd
             return no;
         }
 
+        /** a == b, a lane at a time: false where either is not a number, true for 0 and -0. */
+        LIKYU_INLINE M64x4 equal (F64x4 a, F64x4 b) noexcept
+        {
+            M64x4 m;
+
+            for (int i = 0; i < F64x4::lanes; ++i)
+                m.v[i] = exactlyEqual (a.v[i], b.v[i]);
+
+            return m;
+        }
+
+        /** Where both masks hold. */
+        LIKYU_INLINE M64x4 both (M64x4 a, M64x4 b) noexcept
+        {
+            for (int i = 0; i < F64x4::lanes; ++i)
+                a.v[i] = a.v[i] && b.v[i];
+
+            return a;
+        }
+
+        /** std::abs, a lane at a time: the sign bit cleared. */
+        LIKYU_INLINE F64x4 absLanes (F64x4 a) noexcept
+        {
+            for (int i = 0; i < F64x4::lanes; ++i)
+                a.v[i] = std::abs (a.v[i]);
+
+            return a;
+        }
+
         /** Eight floats from two times four doubles, each rounded to the nearest. */
         LIKYU_INLINE F32x8 narrow (F64x4 low, F64x4 high) noexcept
         {
@@ -326,6 +355,9 @@ namespace likyu::dsp::simd
         // Ordered and quiet: false where either is not a number, as < is.
         LIKYU_INLINE M64x4 less (F64x4 a, F64x4 b) noexcept                 { return { _mm256_cmp_pd (a.v, b.v, _CMP_LT_OQ) }; }
         LIKYU_INLINE F64x4 select (M64x4 m, F64x4 yes, F64x4 no) noexcept   { return { _mm256_blendv_pd (no.v, yes.v, m.m) }; }
+        LIKYU_INLINE M64x4 equal (F64x4 a, F64x4 b) noexcept                { return { _mm256_cmp_pd (a.v, b.v, _CMP_EQ_OQ) }; }
+        LIKYU_INLINE M64x4 both (M64x4 a, M64x4 b) noexcept                 { return { _mm256_and_pd (a.m, b.m) }; }
+        LIKYU_INLINE F64x4 absLanes (F64x4 a) noexcept                      { return { _mm256_andnot_pd (_mm256_set1_pd (-0.0), a.v) }; }
 
         /** std::clamp (v, lo, hi), to the letter. */
         LIKYU_INLINE F64x4 clampLanes (F64x4 v, F64x4 lo, F64x4 hi) noexcept
@@ -439,6 +471,10 @@ namespace likyu::dsp::simd
         {
             return { vbslq_f64 (m.lo, yes.lo, no.lo), vbslq_f64 (m.hi, yes.hi, no.hi) };
         }
+
+        LIKYU_INLINE M64x4 equal (F64x4 a, F64x4 b) noexcept                { return { vceqq_f64 (a.lo, b.lo), vceqq_f64 (a.hi, b.hi) }; }
+        LIKYU_INLINE M64x4 both (M64x4 a, M64x4 b) noexcept                 { return { vandq_u64 (a.lo, b.lo), vandq_u64 (a.hi, b.hi) }; }
+        LIKYU_INLINE F64x4 absLanes (F64x4 a) noexcept                      { return { vabsq_f64 (a.lo), vabsq_f64 (a.hi) }; }
 
         /** std::clamp (v, lo, hi), to the letter. */
         LIKYU_INLINE F64x4 clampLanes (F64x4 v, F64x4 lo, F64x4 hi) noexcept

@@ -295,6 +295,131 @@ namespace
     };
 }
 
+//==============================================================================
+namespace
+{
+    bool sameStretch (const StretchCoefficients& a, const StretchCoefficients& b, int n)
+    {
+        const auto bytes = static_cast<std::size_t> (n) * sizeof (double);
+        return std::memcmp (a.a1, b.a1, bytes) == 0 && std::memcmp (a.a2, b.a2, bytes) == 0 && std::memcmp (a.a3, b.a3, bytes) == 0
+               && std::memcmp (a.m0, b.m0, bytes) == 0 && std::memcmp (a.m1, b.m1, bytes) == 0 && std::memcmp (a.m2, b.m2, bytes) == 0;
+    }
+
+    /** What Band::coefficientsAlong stands for, a sample at a time, from the band's own functions. */
+    StretchCoefficients alongOneByOne (const Band& band, int from, int n, double gFrom, double gTo,
+                                       const double* offsets, const double* scales, bool scaledGain)
+    {
+        StretchCoefficients out;
+        const auto gMoving = ! exactlyEqual (gFrom, gTo);
+
+        for (int i = 0; i < n; ++i)
+        {
+            const auto offset = offsets != nullptr ? offsets[i] : 0.0;
+
+            if (scaledGain)
+            {
+                const auto t = static_cast<double> (from + i + 1) / controlStep;
+                const auto g = gMoving ? lerpExact (gFrom, gTo, t) : gTo;
+                out.set (i, band.coefficientsWithG (from + i, g, offset, scales != nullptr ? scales[i] : 1.0));
+            }
+            else
+            {
+                out.set (i, exactlyEqual (offset, 0.0) ? band.coefficientsAt (from + i) : band.coefficientsAt (from + i, offset));
+            }
+        }
+
+        return out;
+    }
+}
+
+TEST_CASE ("kernel, a band's coefficients along the samples: registers, plain arrays and a sample at a time give the same bits")
+{
+    constexpr double rate = 48000.0;
+    constexpr BandType types[] = { BandType::bell, BandType::lowShelf, BandType::highShelf, BandType::highPass,
+                                   BandType::lowPass, BandType::notch, BandType::bandPass };
+    std::uint32_t state = 17;
+
+    const auto next = [&state]
+    {
+        state = state * 1664525u + 1013904223u;
+        return static_cast<double> (state >> 8) / 16777216.0;
+    };
+
+    auto different = 0, notTheFunctions = 0, stretches = 0, moving = 0;
+
+    for (const auto type : types)
+        for (const auto qmode : { QMode::proportional, QMode::constant })
+        {
+            Band band;
+            band.prepare (rate);
+
+            // A Dynamic band whose frequency, Q, gain and Range keep moving, and whose type switches (the fade).
+            const auto settingsAt = [type, qmode] (int round, BandType now)
+            {
+                BandSettings s;
+                s.on = true;
+                s.type = now;
+                s.qmode = qmode;
+                s.frequency = 200.0 * (1.0 + round % 7);
+                s.q = 0.5 + 0.7 * (round % 5);
+                s.gainDb = round % 3 == 0 ? 0.0 : -29.0 + 9.7 * (round % 7);
+                s.gmode = GainMode::dynamic;
+                s.rangeDb = round % 2 == 0 ? -12.0 : 18.0 + round % 4;
+                return s;
+            };
+
+            for (int round = 0; round < 24; ++round)
+            {
+                const auto now = round % 8 == 5 ? (type == BandType::bell ? BandType::lowShelf : BandType::bell) : type;
+                band.setTarget (settingsAt (round, now));
+
+                for (int step = 0; step < 12; ++step)
+                {
+                    band.beginStep();
+                    moving += band.isConstant() ? 0 : 1;
+
+                    // Offsets: 0, -0, and values past the Range and the gain limit; scales: 1 and others.
+                    std::array<double, controlStep> offsets {}, scales {};
+
+                    for (std::size_t i = 0; i < offsets.size(); ++i)
+                    {
+                        const auto pick = next();
+                        offsets[i] = pick < 0.3 ? 0.0 : pick < 0.4 ? -0.0 : -45.0 + 90.0 * next();
+                        scales[i] = next() < 0.4 ? 1.0 : next();
+                    }
+
+                    for (const auto from : { 0, 3, 7, 12, 15 })
+                    {
+                        const auto n = controlStep - from;
+                        const auto gFrom = band.gStart(), gTo = band.gEnd();
+
+                        struct Call { double g0, g1; const double* o; const double* s; bool scaled; };
+                        const Call calls[] = { { gFrom, gTo, nullptr, nullptr, false }, { gFrom, gTo, offsets.data(), nullptr, false },
+                                               { gFrom, gTo, offsets.data(), scales.data(), true }, { 0.11, 0.13, offsets.data(), nullptr, true },
+                                               { 0.2, 0.2, nullptr, nullptr, true }, { 0.05, 0.3, nullptr, scales.data(), true } };
+
+                        for (const auto& call : calls)
+                        {
+                            StretchCoefficients onRegisters, onArrays;
+                            band.coefficientsAlong<simd::native::F64x4> (from, n, call.g0, call.g1, call.o, call.s, call.scaled, onRegisters);
+                            band.coefficientsAlong<simd::scalar::F64x4> (from, n, call.g0, call.g1, call.o, call.s, call.scaled, onArrays);
+                            const auto expected = alongOneByOne (band, from, n, call.g0, call.g1, call.o, call.s, call.scaled);
+
+                            different += sameStretch (onRegisters, onArrays, n) ? 0 : 1;
+                            notTheFunctions += sameStretch (onArrays, expected, n) ? 0 : 1;
+                            ++stretches;
+                        }
+                    }
+                }
+            }
+        }
+
+    MESSAGE ("coefficients along the samples: " << stretches << " stretches, " << moving << " steps with something moving");
+    CHECK (moving > 0);
+    CHECK (different == 0);
+    CHECK (notTheFunctions == 0);
+}
+
 TEST_CASE ("kernel, the tracker group: registers, plain arrays and a member at a time give the same bits, for 1 to 8 members")
 {
     for (const auto rate : { 44100.0, 96000.0 })

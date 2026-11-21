@@ -62,36 +62,38 @@ namespace likyu::dsp
     LIKYU_INLINE SvfCoefficients<T> designBand (BandType type, QMode qmode, T g, T kq, T a, T sqrtA) noexcept
     {
         // A^2 - 1 and 1 - A^2 in one rounding (mulAdd), and exactly 0 at A = 1 either way.
-        const T aboveUnity = mulAdd (a, a, T (-1));
-        const T belowUnity = mulAdd (-a, a, T (1));
+        // Written for a double or a register of them (dsp/simd/Vec.h): the same operations.
+        const T one = splat<T> (1.0), zero = splat<T> (0.0);
+        const T aboveUnity = mulAdd (a, a, -one);
+        const T belowUnity = mulAdd (-a, a, one);
 
         switch (type)
         {
             case BandType::bell:
             {
                 const T k = qmode == QMode::proportional ? kq / a : kq;
-                return makeSvfCoefficients (g, k, T (1), k * aboveUnity, T (0));
+                return makeSvfCoefficients (g, k, one, k * aboveUnity, zero);
             }
 
             case BandType::lowShelf:
-                return makeSvfCoefficients (g / sqrtA, kq, T (1), kq * (a - T (1)), aboveUnity);
+                return makeSvfCoefficients (g / sqrtA, kq, one, kq * (a - one), aboveUnity);
 
             case BandType::highShelf:
-                return makeSvfCoefficients (g * sqrtA, kq, a * a, kq * (T (1) - a) * a, belowUnity);
+                return makeSvfCoefficients (g * sqrtA, kq, a * a, kq * (one - a) * a, belowUnity);
 
             case BandType::highPass:
-                return makeSvfCoefficients (g, kq, T (1), -kq, T (-1));
+                return makeSvfCoefficients (g, kq, one, -kq, -one);
 
             case BandType::lowPass:
-                return makeSvfCoefficients (g, kq, T (0), T (0), T (1));
+                return makeSvfCoefficients (g, kq, zero, zero, one);
 
             case BandType::notch:
-                return makeSvfCoefficients (g, kq, T (1), -kq, T (0));
+                return makeSvfCoefficients (g, kq, one, -kq, zero);
 
             case BandType::bandPass:
-                return makeSvfCoefficients (g, kq, T (0), kq, T (0));
+                return makeSvfCoefficients (g, kq, zero, kq, zero);
         }
 
-        return makeSvfCoefficients (g, kq, T (1), T (0), T (0));
+        return makeSvfCoefficients (g, kq, one, zero, zero);
     }
 }

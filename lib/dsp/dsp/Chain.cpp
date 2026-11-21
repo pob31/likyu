@@ -1148,7 +1148,7 @@ namespace likyu::dsp
             }
 
             StretchCoefficients moving;
-            band.coefficientsFor (position, n, moving);
+            band.coefficientsAlong (position, n, band.gStart(), band.gEnd(), nullptr, nullptr, false, moving);
 
             // A moving band whose mix is the identity (a bell or a shelf at
             // 0 dB whose g or k moves) is not written either.
@@ -1198,7 +1198,6 @@ namespace likyu::dsp
             bits are the same. A lane off the band's own frequency runs on its
             own g, interpolated across the step from the one before. */
         const auto& l = lanes[index];
-        const auto constant = band.isConstant();
         const auto withOffsets = anyOffset[index];
         const auto withFrequencies = modulated[index];
         const auto withScale = scaled[index];
@@ -1217,47 +1216,33 @@ namespace likyu::dsp
             const auto i0 = static_cast<std::size_t> (b * stride + lane);
             const auto& f = laneFrequencies[i0];
 
+            // The stretch's coefficients, four samples to a register (Band::coefficientsAlong).
             if (withScale)
             {
                 // Confidence scales the gain: the lane's own g, or the band's.
                 const auto* confidence = laneConfidence.data() + i0 * controlStep;
                 const auto own = ! withFrequencies || f.own;
-                const auto g0 = own ? band.gStart() : f.g0;
-                const auto g1 = own ? band.gEnd() : f.g1;
-                const auto gMoving = ! exactlyEqual (g0, g1);
+                std::array<double, controlStep> scales;
+                scales.fill (1.0);
 
                 for (int i = 0; i < n; ++i)
                 {
                     const auto t = static_cast<double> (position + i + 1) / controlStep;
-                    const auto g = gMoving ? lerpExact (g0, g1, t) : g1;
-                    const auto scale = 1.0 - band.confidenceWeightAt (t) * (1.0 - confidence[i]);
-                    coefficients.set (i, band.coefficientsWithG (position + i, g, o != nullptr ? o[i] : 0.0, scale));
+                    scales[static_cast<std::size_t> (i)] = 1.0 - band.confidenceWeightAt (t) * (1.0 - confidence[i]);
                 }
+
+                band.coefficientsAlong (position, n, own ? band.gStart() : f.g0, own ? band.gEnd() : f.g1, o,
+                                        scales.data(), true, coefficients);
             }
             else if (! withFrequencies || f.own)
             {
-                for (int i = 0; i < n; ++i)
-                {
-                    const auto offset = o != nullptr ? o[i] : 0.0;
-
-                    if (! exactlyEqual (offset, 0.0))
-                        coefficients.set (i, band.coefficientsAt (position + i, offset));
-                    else if (constant)
-                        coefficients.set (i, band.constantCoefficients());
-                    else
-                        coefficients.set (i, band.coefficientsAt (position + i));
-                }
+                // An offset of exactly 0 is the band's own coefficients, which a
+                // constant band's are (Band::constantCoefficients), to the bit.
+                band.coefficientsAlong (position, n, band.gStart(), band.gEnd(), o, nullptr, false, coefficients);
             }
             else
             {
-                const auto gMoving = ! exactlyEqual (f.g0, f.g1);
-
-                for (int i = 0; i < n; ++i)
-                {
-                    const auto t = static_cast<double> (position + i + 1) / controlStep;
-                    const auto g = gMoving ? lerpExact (f.g0, f.g1, t) : f.g1;
-                    coefficients.set (i, band.coefficientsWithG (position + i, g, o != nullptr ? o[i] : 0.0, 1.0));
-                }
+                band.coefficientsAlong (position, n, f.g0, f.g1, o, nullptr, true, coefficients);
             }
 
             const auto skip = identities (coefficients, n);

@@ -103,6 +103,7 @@
 #include "Transient.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -111,6 +112,19 @@ namespace likyu::dsp
 {
     /** Samples per control step: the 16-sample sub-block of the PRD. */
     inline constexpr int controlStep = 16;
+
+    /** t of sample k of a step, (k + 1) / 16, exact, as every per-sample
+        interpolation computes it; to 32, so that a register of four read
+        from the last samples of a step stays inside. */
+    inline constexpr auto stepFractions = []
+    {
+        std::array<double, 2 * controlStep> t {};
+
+        for (int k = 0; k < 2 * controlStep; ++k)
+            t[static_cast<std::size_t> (k)] = static_cast<double> (k + 1) / controlStep;
+
+        return t;
+    }();
 
     /** Parameter smoothing (PRD: about 20 ms). */
     inline constexpr double smoothingSeconds = 0.020;
@@ -495,12 +509,112 @@ namespace likyu::dsp
         }
 
         /** The coefficients of samples `from` to `from + n - 1` of the step,
-            into `out`: one loop here, so that the per-sample work is inlined
-            whatever the caller looks like. */
+            into `out`, a sample at a time: what coefficientsAlong stands for,
+            kept for the tests that hold it to that. */
         void coefficientsFor (int from, int n, StretchCoefficients& out) const noexcept
         {
             for (int i = 0; i < n; ++i)
                 out.set (i, coefficientsAt (from + i));
+        }
+
+        /** THE COEFFICIENTS ALONG THE SAMPLES (devplan, Phase 7): samples
+            `from` to `from + n - 1` of the step into `out`, four to a register
+            `V` (dsp/simd/Vec.h). A sample's coefficients have no recurrence,
+            so the samples of a stretch are the lanes. One kernel for the four
+            places that make them, each said by its arguments:
+
+              `gain` false: what coefficientsAt (i) gives, and coefficientsAt
+              (i, offset) where `offsets` is not null and the offset is not 0;
+              `gain` true: what coefficientsWithG (i, g, offset, scale) gives,
+              offsets 0 and scales 1 where their arrays are null.
+
+            g interpolates from `gFrom` to `gTo` as the band's own does. The
+            per-sample choices of those functions (an offset of exactly 0, a
+            scale of exactly 1, a fade at exactly 1) are choices of lanes here,
+            of the argument of 2^x and not of its result. `offsets` and
+            `scales` are read in whole registers from `i = 0` of the stretch,
+            so up to the next multiple of four: they must hold numbers there,
+            which are never read back. tests/dsp/KernelTests.cpp holds the
+            kernel to the three functions, every sample. */
+        template <typename V = simd::F64x4>
+        void coefficientsAlong (int from, int n, double gFrom, double gTo, const double* offsets, const double* scales,
+                                bool scaledGain, StretchCoefficients& out) const noexcept
+        {
+            const auto type = active.type;
+            const auto qmode = active.qmode;
+            const auto withGain = hasGain (type), shelf = isShelf (type);
+            const auto gMovesHere = ! exactlyEqual (gFrom, gTo);
+            const auto rangeMoves = dynamics.isMoving();
+            const auto rangeFrom = splat<V> (dynamics.rangeStart()), rangeTo = splat<V> (dynamics.rangeEnd());
+            const auto fadeAtOne = ! wMoving && exactlyEqual (w1, 1.0);
+            const auto zero = splat<V> (0.0), one = splat<V> (1.0);
+            const auto ownA = splat<V> (a1), ownSqrtA = splat<V> (sqrtA1);
+
+            for (int i = 0; i < n; i += V::lanes)
+            {
+                const auto t = V::load (stepFractions.data() + from + i);
+                const auto g = gMovesHere ? lerpLanes (splat<V> (gFrom), splat<V> (gTo), t) : splat<V> (gTo);
+                const auto kq = kqMoving ? lerpLanes (splat<V> (kq0), splat<V> (kq1), t) : splat<V> (kq1);
+                const auto w = wMoving ? lerpLanes (splat<V> (w0), splat<V> (w1), t) : splat<V> (w1);
+                const auto offset = offsets != nullptr ? V::load (offsets + i) : zero;
+                const auto db = dbMoving ? lerpLanes (splat<V> (db0), splat<V> (db1), t) : splat<V> (db1);
+
+                auto a = ownA, sqrtA = ownSqrtA;
+
+                if (scaledGain)
+                {
+                    // coefficientsWithG: the offset within the Range, both scaled where the static gain is a boost.
+                    if (withGain && (dbMoving || offsets != nullptr || scales != nullptr))
+                    {
+                        const auto scale = scales != nullptr ? V::load (scales + i) : one;
+                        const auto scaled = select (less (zero, db), db * scale, db);
+                        const auto limit = absLanes (rangeMoves ? lerpLanes (rangeFrom, rangeTo, t) : rangeTo);
+                        const auto effective = clampLanes (scaled + clampLanes (offset, -limit, limit) * scale,
+                                                           splat<V> (-maxGainDb), splat<V> (maxGainDb));
+                        const auto own = dbMoving ? less (zero, zero) : both (equal (offset, zero), equal (scale, one));
+                        a = select (own, ownA, bandALanes (effective));
+                        sqrtA = shelf ? select (own, ownSqrtA, bandSqrtALanes (effective)) : one;
+                    }
+                }
+                else if (dbMoving || offsets != nullptr)
+                {
+                    // coefficientsAt: an offset of exactly 0 is the band's own gain, moving or not.
+                    const auto unmoved = equal (offset, zero);
+                    const auto limit = absLanes (rangeMoves ? lerpLanes (rangeFrom, rangeTo, t) : rangeTo);
+                    const auto effective = clampLanes (db + clampLanes (offset, -limit, limit), splat<V> (-maxGainDb), splat<V> (maxGainDb));
+
+                    if (dbMoving)
+                    {
+                        const auto argument = select (unmoved, db, effective);
+                        a = bandALanes (argument);
+                        sqrtA = shelf ? bandSqrtALanes (argument) : one;
+                    }
+                    else
+                    {
+                        a = select (unmoved, ownA, bandALanes (effective));
+                        sqrtA = select (unmoved, ownSqrtA, shelf ? bandSqrtALanes (effective) : one);
+                    }
+                }
+
+                auto c = designBand (type, qmode, g, kq, a, sqrtA);
+
+                // withFade, lane by lane: a lane at exactly 1 keeps the band's own mix.
+                if (! fadeAtOne)
+                {
+                    const auto atOne = equal (w, one);
+                    const auto s = smoothstepLanes (w);
+                    c.m0 = select (atOne, c.m0, mulAdd (s, c.m0, one - s));
+                    c.m1 = select (atOne, c.m1, c.m1 * s);
+                    c.m2 = select (atOne, c.m2, c.m2 * s);
+                }
+
+                c.a1.store (out.a1 + i);
+                c.a2.store (out.a2 + i);
+                c.a3.store (out.a3 + i);
+                c.m0.store (out.m0 + i);
+                c.m1.store (out.m1 + i);
+                c.m2.store (out.m2 + i);
+            }
         }
 
         //======================================================================
@@ -655,7 +769,7 @@ namespace likyu::dsp
             if (exactlyEqual (position, 1.0))
                 return c;
 
-            const auto w = smoothstep (position);
+            const auto w = smoothstepLanes (position);
             c.m0 = mulAdd (w, c.m0, 1.0 - w);
             c.m1 *= w;
             c.m2 *= w;

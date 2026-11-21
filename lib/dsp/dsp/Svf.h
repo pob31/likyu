@@ -55,7 +55,7 @@ namespace likyu::dsp
     template <typename T>
     LIKYU_INLINE SvfCoefficients<T> makeSvfCoefficients (T g, T k, T m0, T m1, T m2) noexcept
     {
-        const T a1 = T (1) / mulAdd (g, g + k, T (1));
+        const T a1 = splat<T> (1.0) / mulAdd (g, g + k, splat<T> (1.0));
         const T a2 = g * a1;
         const T a3 = g * a2;
         return { a1, a2, a3, m0, m1, m2 };
