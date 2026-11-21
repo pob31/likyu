@@ -751,15 +751,23 @@ author with figures first (7f).
 bench notes: [`2026-11-21-phase7-baseline.md`](bench/2026-11-21-phase7-baseline.md) and
 [`2026-11-21-phase7-foundations.md`](bench/2026-11-21-phase7-foundations.md).
 
-- *Done:* 7a, the two build halves of 7b, the first step of 7c. The budget's case is 4.93 %,
-  3.23 % and 6.11 % of a core on the Windows machine, an M4 Pro and a Ryzen 7 8745H at the
-  baseline. Nothing is faster yet on Windows; on the NUC `-mavx2` alone gave 10 %.
+- *Done:* 7a; 7b whole, with the fused arithmetic the author decided for, `pow2` and `Vec.h`; of
+  7c, the trackers' pair loops and the coefficients an array a term; of 7d, the seeding bank,
+  the first kernel, on AVX2 and NEON. **The budget's case: 4.00 % of a core on the Windows machine
+  (4.93 % at the baseline), 2.69 % on an M4 Pro (3.23 %), 3.86 % on a Ryzen 7 8745H (6.11 %).**
+  Third bench note: [`2026-11-21-phase7-arithmetic.md`](bench/2026-11-21-phase7-arithmetic.md).
+- *The three declared changes of bits are done:* contraction off (the Mac's only), the fused
+  arithmetic, `pow2`. From `0c86fad` on, nothing moves.
 - *Found:* turning contraction off cost the M4 15 % on the budget's case and up to 60 % on 64
-  channels, and fused arithmetic would give the NUC 10 to 23 %: the open decision above. MSVC
-  19.52 miscompiles a conditional store under `/arch:AVX2` (worked around; the Release suite found
-  it). The Release suite failed on Linux CI at the baseline commit and passes since. The pair
-  loops were 13 % of the instructions and 1 to 3 % of the time.
-- *Not yet:* everything from `exp2` on.
+  channels, and fused arithmetic gave the NUC 12 to 26 %: hence the decision. MSVC 19.52
+  miscompiles a conditional store under `/arch:AVX2` (worked around; the Release suite found it),
+  and under the same option returned a sample's coefficients through memory with two stalled
+  loads: `moving` was half again its baseline until they became arrays. The Release suite failed
+  on Linux CI at the baseline commit and passes since. The pair loops were 13 % of the
+  instructions and 1 to 3 % of the time.
+- *Not yet:* the other kernels of 7d, in the order the handoff gives (coefficients and levels
+  along the samples, the tracker group's front half, the detectors, the filters across channels);
+  of 7c, the settled band and the lookahead; 7e, 7f, 7g.
 
 ---
 
