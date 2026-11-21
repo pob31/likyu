@@ -478,17 +478,20 @@ namespace likyu::editor
                 host.setBandLeftOut (band, leftOut);
         };
 
-        // Listen: the band's detector on the output, from a long press until the release.
+        /*  Listen: the band's detector on the output from a long press, latched
+            (decided by the author 2026-11-21); a short press stops it, and so do
+            another band and the editor closing. */
         listen.onHeld = [this]
         {
             if (band >= 0)
             {
                 listening = true;
+                listen.setLit (true);
                 host.setListen (band);
             }
         };
 
-        listen.onLetGo = [this] { stopListening(); };
+        listen.onPressWhileLit = [this] { stopListening(); };
 
         reset.onLongPress = [this]
         {
@@ -512,6 +515,8 @@ namespace likyu::editor
             listening = false;
             host.setListen (-1);
         }
+
+        listen.setLit (false);
     }
 
     std::vector<int> FootPanel::parameters() const
@@ -548,6 +553,10 @@ namespace likyu::editor
 
         // Nothing to hear on a band that is off or has no detector in use.
         listen.setEnabled (settings.on && presentation::usesDetector (settings));
+
+        // Nothing to hear any more: a latched Listen stops.
+        if (! listen.isEnabled())
+            stopListening();
         listen.setAccent (palette::band (bandIn));
         reset.setAccent (palette::warning);
 

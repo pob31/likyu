@@ -23,12 +23,14 @@
     output, happens by accident. A bar fills from the left while the press
     is held and turns green when it has been held long enough.
 
-    Two uses:
+    Uses:
       - an ACTION, done on release once the press was long enough and the
         pointer is still on the button (Reset, Flatten): onLongPress;
       - a HOLD, on from the moment the press is long enough until the
-        release (Listen, the guard decided by the author 2026-11-20):
-        onHeld and onLetGo.
+        release: onHeld and onLetGo;
+      - a LATCH (Listen, decided by the author 2026-11-21): on from the
+        moment the press is long enough, the button then lit; while lit, a
+        press of any length acts at once: onHeld, setLit, onPressWhileLit.
 
     The time is the timer's in use; press(), heldFor() and release() are the
     same steps for a test, which runs no message loop.
@@ -57,6 +59,9 @@ namespace likyu::editor
         std::function<void()> onHeld;
         std::function<void()> onLetGo;
 
+        /** While lit: a press acts at once, without waiting, and starts no hold. */
+        std::function<void()> onPressWhileLit;
+
         /** Shown as on, whatever the pointer does: a Listen that is heard. */
         void setLit (bool shouldBeLit);
 
@@ -73,6 +78,7 @@ namespace likyu::editor
         void release (bool onTheButton);
 
         bool isHeldLongEnough() const noexcept      { return ready; }
+        bool isLit() const noexcept                 { return lit; }
 
         void paint (juce::Graphics&) override;
         void mouseDown (const juce::MouseEvent&) override;

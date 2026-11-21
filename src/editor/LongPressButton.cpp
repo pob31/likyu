@@ -62,6 +62,13 @@ namespace likyu::editor
         if (! isEnabled() || pressed)
             return;
 
+        // Lit and latched: a short press is enough to let go.
+        if (lit && onPressWhileLit != nullptr)
+        {
+            onPressWhileLit();
+            return;
+        }
+
         pressed = true;
         ready = false;
         held = 0;

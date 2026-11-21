@@ -883,7 +883,7 @@ TEST_CASE ("editor: Listen, Reset and Flatten want a long press")
     root.selectBand (3);
     opened.refresh();
 
-    SUBCASE ("Listen: nothing on a tap; heard from the long press until the release")
+    SUBCASE ("Listen: nothing on a tap; latched by a long press; a short press lets it go")
     {
         CHECK (listen.isEnabled());
 
@@ -893,19 +893,45 @@ TEST_CASE ("editor: Listen, Reset and Flatten want a long press")
         listen.release (true);
         CHECK (processor.listen() == -1);
 
+        // Long enough: heard, and still heard after the release, the button lit.
         listen.press();
         listen.heldFor (hold);
         CHECK (processor.listen() == 3);
-        listen.heldFor (hold + 2000);
+        listen.release (true);
         CHECK (processor.listen() == 3);
+        CHECK (listen.isLit());
+
+        // Released off the button: latched all the same.
+        opened.refresh();
+        CHECK (processor.listen() == 3);
+
+        // A short press, any length, lets go at once.
+        listen.press();
+        CHECK (processor.listen() == -1);
+        CHECK_FALSE (listen.isLit());
         listen.release (true);
         CHECK (processor.listen() == -1);
 
-        // Released off the button: it stops all the same.
+        // And a long press latches it again.
         listen.press();
         listen.heldFor (hold);
         listen.release (false);
+        CHECK (processor.listen() == 3);
+        listen.press();
         CHECK (processor.listen() == -1);
+    }
+
+    SUBCASE ("Listen stops when the band has nothing to hear any more")
+    {
+        listen.press();
+        listen.heldFor (hold);
+        listen.release (true);
+        CHECK (processor.listen() == 3);
+
+        set (processor, 3, P::gmode, static_cast<double> (dsp::GainMode::staticGain));
+        opened.refresh();
+        CHECK (processor.listen() == -1);
+        CHECK_FALSE (listen.isLit());
     }
 
     SUBCASE ("Listen stops when another band is selected, and when the editor closes")
@@ -1348,4 +1374,55 @@ TEST_CASE ("editor: the analyser, off by default: its toggle turns the tap on, t
     }
 
     processor.releaseResources();
+}
+
+TEST_CASE ("editor: a pick in a dropdown holds, even when the editor refreshes before the box tells of it")
+{
+    /*  JUCE puts a pick in the box at once and calls onChange later, through
+        the message queue. A refresh in that gap used to put the parameter's
+        old value back in the box, and onChange then wrote the old value: with
+        audio running it took several tries to change a mode (the author,
+        2026-11-21). The test plays that order by hand. */
+    Opened opened;
+    auto& processor = opened.processor;
+    auto& root = opened.window->editorRoot();
+
+    set (processor, 0, P::on, 1.0);
+    root.selectBand (0);
+    opened.refresh();
+
+    // The gain mode's control; the foot makes it anew when the band's modes change.
+    const auto gainModeBox = [&root]() -> juce::ComboBox*
+    {
+        for (auto* child : root.footPanel().getChildren())
+            if (auto* choice = dynamic_cast<editor::ParamChoice*> (child);
+                choice != nullptr && choice->parameterIndex() == dsp::indexOf (0, P::gmode))
+                return &choice->comboBox();
+
+        return nullptr;
+    };
+
+    REQUIRE (gainModeBox() != nullptr);
+    auto& box = *gainModeBox();
+
+    // The pick, as the menu's callback makes it: in the box, the notification still to come.
+    box.setSelectedItemIndex (static_cast<int> (dsp::GainMode::dynamic), juce::sendNotificationAsync);
+    CHECK (get (processor, 0, P::gmode) == 0.0);
+
+    // The editor's timer runs first, twice, audio running between.
+    run (processor, 1000.0, 0.3, 4);
+    opened.refresh();
+    opened.refresh();
+    CHECK (box.getSelectedItemIndex() == static_cast<int> (dsp::GainMode::dynamic));
+
+    // Then the notification, as the message queue delivers it: the pick is the parameter's.
+    REQUIRE (box.onChange != nullptr);
+    box.onChange();
+    CHECK (get (processor, 0, P::gmode) == static_cast<double> (dsp::GainMode::dynamic));
+
+    // A change from elsewhere, a host's automation, still reaches the box.
+    set (processor, 0, P::gmode, static_cast<double> (dsp::GainMode::transient));
+    opened.refresh();
+    REQUIRE (gainModeBox() != nullptr);
+    CHECK (gainModeBox()->getSelectedItemIndex() == static_cast<int> (dsp::GainMode::transient));
 }

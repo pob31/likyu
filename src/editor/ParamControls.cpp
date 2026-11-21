@@ -451,6 +451,13 @@ namespace likyu::editor
         addAndMakeVisible (box);
     }
 
+    /*  The box follows the parameter only when the PARAMETER has moved, never
+        merely because the box differs from it. A pick in the menu is put in
+        the box at once, but JUCE tells onChange of it later, through the
+        message queue; a refresh in between that put the parameter's old value
+        back in the box made onChange write that old value, and the pick was
+        lost. With audio running the queue is busier and the gap longer: it
+        took several tries to change a mode (the author, 2026-11-21). */
     void ParamChoice::refresh()
     {
         // A menu the user has open is theirs until they have chosen (Go.dot's MenuHold).
@@ -458,6 +465,11 @@ namespace likyu::editor
             return;
 
         const auto now = static_cast<int> (std::lround (value()));
+
+        if (now == lastValue)
+            return;
+
+        lastValue = now;
 
         if (box.getSelectedItemIndex() != now)
             box.setSelectedItemIndex (now, juce::dontSendNotification);

@@ -177,9 +177,13 @@ namespace likyu::editor
         void paint (juce::Graphics&) override;
         void resized() override;
 
+        /** The box, for a test. */
+        juce::ComboBox& comboBox() noexcept     { return box; }
+
     private:
         juce::ComboBox box;
         const bool showLabel;
+        int lastValue = -1;     // the parameter's choice at the last refresh
     };
 
     class ParamToggle final : public ParamControl
