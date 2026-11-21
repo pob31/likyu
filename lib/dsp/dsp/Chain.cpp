@@ -37,6 +37,12 @@ namespace likyu::dsp
             return std::max (1, channels);
         }
 
+        /** Bits 0 to n - 1: Chain::allSamples, for the helpers here. */
+        constexpr std::uint32_t allSamplesOf (int n) noexcept
+        {
+            return n >= 32 ? 0xffffffffu : (1u << n) - 1u;
+        }
+
         /** Bit i: sample i's coefficients are the identity mix (1, 0, 0). */
         std::uint32_t identities (const StretchCoefficients& k, int n) noexcept
         {
@@ -50,32 +56,158 @@ namespace likyu::dsp
         }
 
         /** One channel through per-sample coefficients; a sample marked in
-            `skip` only advances the state, and is not written. The state is
-            copied into locals first, so that a store to `w` cannot be taken
-            for a store to it; each sample's terms are read one by one. */
-        void tickOrAdvance (double* w, int n, double& state1, double& state2, const StretchCoefficients& k,
+            `skip` only advances the state, and is not written. `w` is the
+            channel's first sample and `stride` the distance to the next
+            (work is sample-major). The state is copied into locals first, so
+            that a store to `w` cannot be taken for a store to it; each
+            sample's terms are read one by one. With `Constant`, every
+            sample's are the first's. */
+        template <bool Constant = false>
+        void tickOrAdvance (double* w, int stride, int n, double& state1, double& state2, const StretchCoefficients& k,
                             std::uint32_t skip) noexcept
         {
             auto x1 = state1, x2 = state2;
+            const auto at = [] (int i) noexcept { return Constant ? 0 : i; };
 
             if (skip == 0)
             {
                 for (int i = 0; i < n; ++i)
-                    w[i] = svfTick (w[i], x1, x2, k.a1[i], k.a2[i], k.a3[i], k.m0[i], k.m1[i], k.m2[i]);
+                {
+                    const auto j = at (i);
+                    w[i * stride] = svfTick (w[i * stride], x1, x2, k.a1[j], k.a2[j], k.a3[j], k.m0[j], k.m1[j], k.m2[j]);
+                }
             }
             else
             {
                 for (int i = 0; i < n; ++i)
                 {
+                    const auto j = at (i);
+
                     if ((skip >> i) & 1u)
-                        svfAdvance (w[i], x1, x2, k.a1[i], k.a2[i], k.a3[i]);
+                        svfAdvance (w[i * stride], x1, x2, k.a1[j], k.a2[j], k.a3[j]);
                     else
-                        w[i] = svfTick (w[i], x1, x2, k.a1[i], k.a2[i], k.a3[i], k.m0[i], k.m1[i], k.m2[i]);
+                        w[i * stride] = svfTick (w[i * stride], x1, x2, k.a1[j], k.a2[j], k.a3[j], k.m0[j], k.m1[j], k.m2[j]);
                 }
             }
 
             state1 = x1;
             state2 = x2;
+        }
+
+        /** THE FILTERS ACROSS CHANNELS (devplan, Phase 7): one band on `G`
+            groups of `V::lanes` consecutive channels, each channel a lane, so
+            that the channels' recurrences run side by side. A lane does what
+            tickOrAdvance does for its channel, operation for operation: the
+            same sample's coefficients broadcast to every lane, a skipped
+            sample advanced and not written, the state snapped to 0 where a
+            control step ends. `w` is the first channel's first sample in the
+            sample-major work, `state1` and `state2` its states, the channels'
+            side by side as they are stored. With `Constant`, every sample's
+            coefficients are the first's and are broadcast once. */
+        template <typename V, int G, bool Constant>
+        LIKYU_INLINE void tickAcross (double* w, int stride, int n, double* state1, double* state2,
+                                      const StretchCoefficients& k, std::uint32_t skip, bool stepEnds) noexcept
+        {
+            constexpr int width = V::lanes;
+            V x1[G], x2[G];
+
+            for (int g = 0; g < G; ++g)
+            {
+                x1[g] = V::load (state1 + g * width);
+                x2[g] = V::load (state2 + g * width);
+            }
+
+            const auto term = [&k] (const double* values, int i) noexcept { return splat<V> (values[Constant ? 0 : i]); };
+
+            for (int i = 0; i < n; ++i)
+            {
+                const auto a1 = term (k.a1, i), a2 = term (k.a2, i), a3 = term (k.a3, i);
+                double* at = w + i * stride;
+
+                if ((skip >> i) & 1u)
+                {
+                    for (int g = 0; g < G; ++g)
+                        svfAdvance (V::load (at + g * width), x1[g], x2[g], a1, a2, a3);
+                }
+                else
+                {
+                    const auto m0 = term (k.m0, i), m1 = term (k.m1, i), m2 = term (k.m2, i);
+
+                    for (int g = 0; g < G; ++g)
+                        svfTick (V::load (at + g * width), x1[g], x2[g], a1, a2, a3, m0, m1, m2).store (at + g * width);
+                }
+            }
+
+            const auto zero = splat<V> (0.0), threshold = splat<V> (stateSnapThreshold);
+
+            for (int g = 0; g < G; ++g)
+            {
+                if (stepEnds)
+                {
+                    x1[g] = select (less (absLanes (x1[g]), threshold), zero, x1[g]);
+                    x2[g] = select (less (absLanes (x2[g]), threshold), zero, x2[g]);
+                }
+
+                x1[g].store (state1 + g * width);
+                x2[g].store (state2 + g * width);
+            }
+        }
+
+        /** The channels of `list` (ascending, `count` of them) through one
+            band: runs of consecutive channels eight, four or two at a time
+            across the channels, the others one at a time; `touched` marked. */
+        template <bool Constant>
+        void runChannels (const std::uint8_t* list, int count, double* work, int stride, int n, double* state1, double* state2,
+                          const StretchCoefficients& k, std::uint32_t skip, bool stepEnds, std::uint32_t* touched) noexcept
+        {
+            using V = simd::F64x4;
+            constexpr int width = V::lanes;
+            const auto marked = allSamplesOf (n) & ~skip;
+            const auto run = [list, count] (int j, int length) noexcept
+            {
+                return j + length <= count && list[j + length - 1] == list[j] + length - 1;
+            };
+
+            for (int j = 0; j < count;)
+            {
+                const int c = list[j];
+
+                if (run (j, 2 * width))
+                {
+                    tickAcross<V, 2, Constant> (work + c, stride, n, state1 + c, state2 + c, k, skip, stepEnds);
+                    j += 2 * width;
+                }
+                else if (run (j, width))
+                {
+                    tickAcross<V, 1, Constant> (work + c, stride, n, state1 + c, state2 + c, k, skip, stepEnds);
+                    j += width;
+                }
+                else if (run (j, simd::F64x2::lanes))
+                {
+                    tickAcross<simd::F64x2, 1, Constant> (work + c, stride, n, state1 + c, state2 + c, k, skip, stepEnds);
+                    j += simd::F64x2::lanes;
+                }
+                else
+                {
+                    auto x1 = state1[c], x2 = state2[c];
+                    tickOrAdvance<Constant> (work + c, stride, n, x1, x2, k, skip);
+
+                    if (stepEnds)
+                    {
+                        x1 = std::abs (x1) < stateSnapThreshold ? 0.0 : x1;
+                        x2 = std::abs (x2) < stateSnapThreshold ? 0.0 : x2;
+                    }
+
+                    state1[c] = x1;
+                    state2[c] = x2;
+                    j += 1;
+                    touched[c] |= marked;
+                    continue;
+                }
+
+                for (int m = c; m < list[j - 1] + 1; ++m)
+                    touched[m] |= marked;
+            }
         }
     }
 
@@ -620,7 +752,7 @@ namespace likyu::dsp
         const auto mixing = mixMoving || ! (exactlyEqual (mix1, 0.0) || fullyBypassed);
 
         if (mixing)
-            std::copy (work.begin(), work.begin() + numChannels * controlStep, dry.begin());
+            std::copy (work.begin(), work.begin() + n * channels, dry.begin());
 
         if (anyTrack)
             track (n);
@@ -640,12 +772,12 @@ namespace likyu::dsp
         {
             for (int c = 0; c < numChannels; ++c)
             {
-                double* w = work.data() + c * controlStep;
+                double* w = work.data() + c;
 
                 for (int i = 0; i < n; ++i)
                 {
                     const auto t = static_cast<double> (position + i + 1) / controlStep;
-                    w[i] *= gainMoving ? lerpExact (gainFactor0, gainFactor1, t) : gainFactor1;
+                    w[i * channels] *= gainMoving ? lerpExact (gainFactor0, gainFactor1, t) : gainFactor1;
                 }
 
                 touched[static_cast<std::size_t> (c)] = all;
@@ -677,14 +809,14 @@ namespace likyu::dsp
 
             for (int c = 0; c < numChannels; ++c)
             {
-                double* w = work.data() + c * controlStep;
+                double* w = work.data() + c;
                 const float* y = sidechain ? mean.data() : listened.data() + c * controlStep;
 
                 for (int i = 0; i < n; ++i)
                 {
                     const auto t = static_cast<double> (position + i + 1) / controlStep;
                     const auto weight = smoothstep (listenMoving ? lerpExact (listen0, listen1, t) : listen1);
-                    w[i] = lerpExact (w[i], static_cast<double> (y[i]), weight);
+                    w[i * channels] = lerpExact (w[i * channels], static_cast<double> (y[i]), weight);
                 }
 
                 touched[static_cast<std::size_t> (c)] = all;
@@ -699,13 +831,13 @@ namespace likyu::dsp
         {
             for (int c = 0; c < numChannels; ++c)
             {
-                double* w = work.data() + c * controlStep;
-                const double* d = dry.data() + c * controlStep;
+                double* w = work.data() + c;
+                const double* d = dry.data() + c;
 
                 for (int i = 0; i < n; ++i)
                 {
                     const auto t = static_cast<double> (position + i + 1) / controlStep;
-                    w[i] = lerpExact (w[i], d[i], smoothstep (mixMoving ? lerpExact (mix0, mix1, t) : mix1));
+                    w[i * channels] = lerpExact (w[i * channels], d[i * channels], smoothstep (mixMoving ? lerpExact (mix0, mix1, t) : mix1));
                 }
 
                 touched[static_cast<std::size_t> (c)] = all;
@@ -1181,6 +1313,14 @@ namespace likyu::dsp
                 state = 0.0;
         };
 
+        // The channels the band applies to, in order, for the runs across channels.
+        std::array<std::uint8_t, maxChannels> applied {};
+        auto appliedCount = 0;
+
+        for (int c = 0; c < numChannels; ++c)
+            if (applies (c))
+                applied[static_cast<std::size_t> (appliedCount++)] = static_cast<std::uint8_t> (c);
+
         if (! anyOffset[index] && ! modulated[index] && ! scaled[index])
         {
             // Phase 2: one set of coefficients for the step, or one per sample.
@@ -1189,33 +1329,44 @@ namespace likyu::dsp
                 const auto& k = band.constantCoefficients();
                 const auto identity = isIdentity (k);
 
-                for (int c = 0; c < numChannels; ++c)
+                // One channel: the constant set in registers, as Phase 2 ran it.
+                if (appliedCount < simd::F64x2::lanes)
                 {
-                    if (! applies (c))
-                        continue;
-
-                    double* w = work.data() + c * controlStep;
-                    auto x1 = s1[c], x2 = s2[c];
-
-                    if (identity)
+                    for (int j = 0; j < appliedCount; ++j)
                     {
-                        for (int i = 0; i < n; ++i)
-                            svfAdvance (w[i], x1, x2, k);
-                    }
-                    else
-                    {
-                        for (int i = 0; i < n; ++i)
-                            w[i] = svfTick (w[i], x1, x2, k);
+                        const int c = applied[static_cast<std::size_t> (j)];
+                        double* w = work.data() + c;
+                        auto x1 = s1[c], x2 = s2[c];
 
-                        touched[static_cast<std::size_t> (c)] |= all;
+                        if (identity)
+                        {
+                            for (int i = 0; i < n; ++i)
+                                svfAdvance (w[i * channels], x1, x2, k);
+                        }
+                        else
+                        {
+                            for (int i = 0; i < n; ++i)
+                                w[i * channels] = svfTick (w[i * channels], x1, x2, k);
+
+                            touched[static_cast<std::size_t> (c)] |= all;
+                        }
+
+                        snap (x1);
+                        snap (x2);
+                        s1[c] = x1;
+                        s2[c] = x2;
                     }
 
-                    snap (x1);
-                    snap (x2);
-                    s1[c] = x1;
-                    s2[c] = x2;
+                    return;
                 }
 
+                // Across channels: the constant set in each sample's place, an
+                // identity skipped at every sample.
+                StretchCoefficients constant;
+                constant.set (0, k);     // the first sample's, which runChannels<true> reads for every sample
+
+                runChannels<true> (applied.data(), appliedCount, work.data(), channels, n, s1, s2, constant,
+                                   identity ? all : 0u, stepEnds, touched.data());
                 return;
             }
 
@@ -1226,23 +1377,7 @@ namespace likyu::dsp
             // 0 dB whose g or k moves) is not written either.
             const auto skip = identities (moving, n);
 
-            for (int c = 0; c < numChannels; ++c)
-            {
-                if (! applies (c))
-                    continue;
-
-                double* w = work.data() + c * controlStep;
-                auto x1 = s1[c], x2 = s2[c];
-
-                tickOrAdvance (w, n, x1, x2, moving, skip);
-
-                snap (x1);
-                snap (x2);
-                s1[c] = x1;
-                s2[c] = x2;
-                touched[static_cast<std::size_t> (c)] |= all & ~skip;
-            }
-
+            runChannels<false> (applied.data(), appliedCount, work.data(), channels, n, s1, s2, moving, skip, stepEnds, touched.data());
             return;
         }
 
@@ -1255,13 +1390,7 @@ namespace likyu::dsp
         const auto& band = bands[index];
         double* s1 = ic1.data() + b * channels;
         double* s2 = ic2.data() + b * channels;
-        const auto all = allSamples (n);
         const auto stepEnds = position + n == controlStep;
-        const auto snap = [stepEnds] (double& state) noexcept
-        {
-            if (stepEnds && std::abs (state) < stateSnapThreshold)
-                state = 0.0;
-        };
 
         /*  Lane by lane: offsets, frequencies, or both. A sample of a lane at
             the band's own frequency whose offset is exactly 0 has the Phase 2
@@ -1319,24 +1448,15 @@ namespace likyu::dsp
 
             const auto skip = identities (coefficients, n);
 
+            // The lane's channels that are here, in order: across channels where they run on.
+            std::array<std::uint8_t, maxChannels> here {};
+            auto hereCount = 0;
+
             for (auto j = from; j < to; ++j)
-            {
-                const auto c = static_cast<int> (l.channelsByLane[j]);
+                if (static_cast<int> (l.channelsByLane[j]) < numChannels)
+                    here[static_cast<std::size_t> (hereCount++)] = l.channelsByLane[j];
 
-                if (c >= numChannels)
-                    continue;
-
-                double* w = work.data() + c * controlStep;
-                auto x1 = s1[c], x2 = s2[c];
-
-                tickOrAdvance (w, n, x1, x2, coefficients, skip);
-
-                snap (x1);
-                snap (x2);
-                s1[c] = x1;
-                s2[c] = x2;
-                touched[static_cast<std::size_t> (c)] |= all & ~skip;
-            }
+            runChannels<false> (here.data(), hereCount, work.data(), channels, n, s1, s2, coefficients, skip, stepEnds, touched.data());
         }
     }
 }

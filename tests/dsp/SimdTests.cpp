@@ -33,6 +33,7 @@
 #include <doctest/doctest.h>
 
 #include <dsp/Exp2.h>
+#include <dsp/Svf.h>
 #include <dsp/Tan.h>
 #include <dsp/simd/Vec.h>
 
@@ -353,6 +354,68 @@ TEST_CASE ("registers, four doubles: every operation, pow2 and tan give the bits
 
     const std::string target = simd::targetName;
     MESSAGE ("registers: " << target << ", " << cases << " vectors of four doubles");
+    CHECK (different == 0);
+    CHECK (notTheScalarCode == 0);
+}
+
+TEST_CASE ("registers, two doubles: every operation gives the bits of the plain arrays and of the scalar code")
+{
+    using Native = simd::native::F64x2;
+    using Scalar = simd::scalar::F64x2;
+
+    const auto values = awkwardDoubles();
+    auto different = 0, notTheScalarCode = 0, cases = 0;
+
+    const auto check = [&] (auto&& onRegisters, auto&& onArrays, auto&& scalarCode)
+    {
+        for (std::size_t at = 0; at < values.size(); ++at)
+            for (const std::size_t stride : { std::size_t { 1 }, std::size_t { 13 } })
+            {
+                const std::array<double, 2> a { values[at], values[(at + stride) % values.size()] };
+                const std::array<double, 2> b { values[(at * 3 + 5) % values.size()], values[(at * 3 + 5 + stride + 2) % values.size()] };
+                const std::array<double, 2> c { values[(at * 7 + 1) % values.size()], values[(at * 7 + 1 + stride + 4) % values.size()] };
+                std::array<double, 2> native {}, arrays {}, expected {};
+                onRegisters (Native::load (a.data()), Native::load (b.data()), Native::load (c.data())).store (native.data());
+                onArrays (Scalar::load (a.data()), Scalar::load (b.data()), Scalar::load (c.data())).store (arrays.data());
+
+                for (std::size_t lane = 0; lane < 2; ++lane)
+                    expected[lane] = scalarCode (a[lane], b[lane], c[lane]);
+
+                different += sameDoubles (native, arrays) ? 0 : 1;
+                notTheScalarCode += sameDoubles (arrays, expected) ? 0 : 1;
+                ++cases;
+            }
+    };
+
+    check ([] (Native a, Native b, Native) { return a + b; }, [] (Scalar a, Scalar b, Scalar) { return a + b; },
+           [] (double a, double b, double) { return a + b; });
+    check ([] (Native a, Native b, Native) { return a - b; }, [] (Scalar a, Scalar b, Scalar) { return a - b; },
+           [] (double a, double b, double) { return a - b; });
+    check ([] (Native a, Native b, Native) { return a * b; }, [] (Scalar a, Scalar b, Scalar) { return a * b; },
+           [] (double a, double b, double) { return a * b; });
+    check ([] (Native a, Native, Native) { return -a; }, [] (Scalar a, Scalar, Scalar) { return -a; },
+           [] (double a, double, double) { return -a; });
+    check ([] (Native a, Native b, Native c) { return mulAdd (a, b, c); }, [] (Scalar a, Scalar b, Scalar c) { return mulAdd (a, b, c); },
+           [] (double a, double b, double c) { return mulAdd (a, b, c); });
+    check ([] (Native a, Native b, Native c) { return select (less (a, b), c, a); }, [] (Scalar a, Scalar b, Scalar c) { return select (less (a, b), c, a); },
+           [] (double a, double b, double c) { return a < b ? c : a; });
+    check ([] (Native a, Native, Native) { return absLanes (a); }, [] (Scalar a, Scalar, Scalar) { return absLanes (a); },
+           [] (double a, double, double) { return std::abs (a); });
+
+    // The filter's tick itself, which is what the type is for: its output and both states, each in its own statement.
+    const auto tickOf = [] (auto x, auto s1, auto s2)
+    {
+        using T = decltype (x);
+        const auto y = svfTick (x, s1, s2, splat<T> (0.6), splat<T> (0.3), splat<T> (0.15), splat<T> (1.0), splat<T> (-0.7), splat<T> (0.2));
+        return y + s1 * splat<T> (3.0) + s2 * splat<T> (5.0);
+    };
+
+    check ([&tickOf] (Native x, Native s1, Native s2) { return tickOf (x, s1, s2); },
+           [&tickOf] (Scalar x, Scalar s1, Scalar s2) { return tickOf (x, s1, s2); },
+           [&tickOf] (double x, double s1, double s2) { return tickOf (x, s1, s2); });
+
+    const std::string target = simd::targetName;
+    MESSAGE ("registers: " << target << ", " << cases << " vectors of two doubles");
     CHECK (different == 0);
     CHECK (notTheScalarCode == 0);
 }

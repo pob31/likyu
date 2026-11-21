@@ -320,10 +320,10 @@ namespace likyu::dsp
                 for (int c = 0; c < used; ++c)
                 {
                     const Sample* in = audio[c] + done;
-                    double* w = work.data() + c * controlStep;
+                    double* w = work.data() + c;
 
                     for (int i = 0; i < n; ++i)
-                        w[i] = static_cast<double> (in[i]);
+                        w[i * channels] = static_cast<double> (in[i]);
                 }
 
                 if (runStep (used, n))
@@ -338,12 +338,12 @@ namespace likyu::dsp
                             continue;
 
                         Sample* out = audio[c] + done;
-                        const double* w = work.data() + c * controlStep;
+                        const double* w = work.data() + c;
 
                         if (marked == all)
                         {
                             for (int i = 0; i < n; ++i)
-                                out[i] = static_cast<Sample> (w[i]);
+                                out[i] = static_cast<Sample> (w[i * channels]);
                         }
                         else
                         {
@@ -358,7 +358,7 @@ namespace likyu::dsp
                             for (auto left = marked & all; left != 0; left &= left - 1)
                             {
                                 const auto i = std::countr_zero (left);
-                                out[i] = static_cast<Sample> (w[i]);
+                                out[i] = static_cast<Sample> (w[i * channels]);
                             }
                         }
                     }
@@ -482,7 +482,7 @@ namespace likyu::dsp
         std::array<bool, numBands> stateInUse {};
 
         std::vector<double> ic1, ic2;   // band * channels + channel
-        std::vector<double> work, dry;  // channel * controlStep + sample
+        std::vector<double> work, dry;  // sample * channels + channel: the channels at a sample side by side
         std::vector<std::uint32_t> touched;   // per channel: the samples of the stretch written
 
         // Detection, float, structure-of-arrays: slot * numBands + band.

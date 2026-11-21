@@ -91,11 +91,12 @@ namespace likyu::dsp
     template <typename T>
     LIKYU_INLINE T svfTick (T x, T& ic1, T& ic2, T a1, T a2, T a3, T m0, T m1, T m2) noexcept
     {
+        const T two = splat<T> (2.0);
         const T v3 = x - ic2;
         const T v1 = mulAdd (a1, ic1, a2 * v3);
         const T v2 = mulAdd (a3, v3, mulAdd (a2, ic1, ic2));
-        ic1 = mulAdd (T (2), v1, -ic1);
-        ic2 = mulAdd (T (2), v2, -ic2);
+        ic1 = mulAdd (two, v1, -ic1);
+        ic2 = mulAdd (two, v2, -ic2);
         return mulAdd (m2, v2, mulAdd (m1, v1, m0 * x));
     }
 
@@ -104,11 +105,12 @@ namespace likyu::dsp
     template <typename T>
     LIKYU_INLINE void svfAdvance (T x, T& ic1, T& ic2, T a1, T a2, T a3) noexcept
     {
+        const T two = splat<T> (2.0);
         const T v3 = x - ic2;
         const T v1 = mulAdd (a1, ic1, a2 * v3);
         const T v2 = mulAdd (a3, v3, mulAdd (a2, ic1, ic2));
-        ic1 = mulAdd (T (2), v1, -ic1);
-        ic2 = mulAdd (T (2), v2, -ic2);
+        ic1 = mulAdd (two, v1, -ic1);
+        ic2 = mulAdd (two, v2, -ic2);
     }
 
     /** One sample through one channel's state. */

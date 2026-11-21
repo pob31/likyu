@@ -27,6 +27,7 @@
 
         F32x8   eight floats: one AVX2 register, two NEON registers
         F64x4   four doubles: one AVX2 register, two NEON registers
+        F64x2   two doubles: half an AVX2 register, one NEON register
         M32x8   which of eight floats a choice takes, made from eight flags
         M64x4   which of four doubles a comparison held for
 
@@ -316,6 +317,53 @@ namespace likyu::dsp::simd
             return select (less (v, lo), lo, select (less (hi, v), hi, v));
         }
 
+
+        // Two doubles ---------------------------------------------------------
+        struct M64x2
+        {
+            bool v[2];
+        };
+
+        struct F64x2
+        {
+            using Element = double;
+            static constexpr int lanes = 2;
+
+            double v[lanes];
+
+            static LIKYU_INLINE F64x2 load (const double* from) noexcept    { return { { from[0], from[1] } }; }
+            static LIKYU_INLINE F64x2 broadcast (double x) noexcept         { return { { x, x } }; }
+            LIKYU_INLINE void store (double* to) const noexcept             { to[0] = v[0]; to[1] = v[1]; }
+        };
+
+        template <typename Operation>
+        LIKYU_INLINE F64x2 eachLane (F64x2 a, F64x2 b, Operation&& operation) noexcept
+        {
+            for (int i = 0; i < F64x2::lanes; ++i)
+                a.v[i] = operation (a.v[i], b.v[i]);
+
+            return a;
+        }
+
+        LIKYU_INLINE F64x2 operator+ (F64x2 a, F64x2 b) noexcept   { return eachLane (a, b, [] (double x, double y) { return x + y; }); }
+        LIKYU_INLINE F64x2 operator- (F64x2 a, F64x2 b) noexcept   { return eachLane (a, b, [] (double x, double y) { return x - y; }); }
+        LIKYU_INLINE F64x2 operator* (F64x2 a, F64x2 b) noexcept   { return eachLane (a, b, [] (double x, double y) { return x * y; }); }
+        LIKYU_INLINE F64x2 operator- (F64x2 a) noexcept            { return { { -a.v[0], -a.v[1] } }; }
+
+        LIKYU_INLINE F64x2 mulAdd (F64x2 a, F64x2 b, F64x2 c) noexcept
+        {
+            return { { likyu::dsp::mulAdd (a.v[0], b.v[0], c.v[0]), likyu::dsp::mulAdd (a.v[1], b.v[1], c.v[1]) } };
+        }
+
+        LIKYU_INLINE M64x2 less (F64x2 a, F64x2 b) noexcept        { return { { a.v[0] < b.v[0], a.v[1] < b.v[1] } }; }
+
+        LIKYU_INLINE F64x2 select (M64x2 m, F64x2 yes, F64x2 no) noexcept
+        {
+            return { { m.v[0] ? yes.v[0] : no.v[0], m.v[1] ? yes.v[1] : no.v[1] } };
+        }
+
+        LIKYU_INLINE F64x2 absLanes (F64x2 a) noexcept             { return { { std::abs (a.v[0]), std::abs (a.v[1]) } }; }
+
         // pow2Split, a lane at a time, is in dsp/Exp2.h, beside the scalar one it repeats.
     }
 
@@ -423,6 +471,33 @@ namespace likyu::dsp::simd
             const auto exponent = _mm256_and_si256 (_mm256_srli_epi64 (bits, 6), _mm256_set1_epi64x (0x7ff));
             power = { _mm256_castsi256_pd (_mm256_slli_epi64 (exponent, 52)) };
         }
+
+        // Two doubles: the lower half of an AVX register, the instructions of AVX and FMA.
+        struct M64x2
+        {
+            __m128d m;
+        };
+
+        struct F64x2
+        {
+            using Element = double;
+            static constexpr int lanes = 2;
+
+            __m128d v;
+
+            static LIKYU_INLINE F64x2 load (const double* from) noexcept    { return { _mm_loadu_pd (from) }; }
+            static LIKYU_INLINE F64x2 broadcast (double x) noexcept         { return { _mm_set1_pd (x) }; }
+            LIKYU_INLINE void store (double* to) const noexcept             { _mm_storeu_pd (to, v); }
+        };
+
+        LIKYU_INLINE F64x2 operator+ (F64x2 a, F64x2 b) noexcept            { return { _mm_add_pd (a.v, b.v) }; }
+        LIKYU_INLINE F64x2 operator- (F64x2 a, F64x2 b) noexcept            { return { _mm_sub_pd (a.v, b.v) }; }
+        LIKYU_INLINE F64x2 operator* (F64x2 a, F64x2 b) noexcept            { return { _mm_mul_pd (a.v, b.v) }; }
+        LIKYU_INLINE F64x2 operator- (F64x2 a) noexcept                     { return { _mm_xor_pd (a.v, _mm_set1_pd (-0.0)) }; }
+        LIKYU_INLINE F64x2 mulAdd (F64x2 a, F64x2 b, F64x2 c) noexcept      { return { _mm_fmadd_pd (a.v, b.v, c.v) }; }
+        LIKYU_INLINE M64x2 less (F64x2 a, F64x2 b) noexcept                 { return { _mm_cmp_pd (a.v, b.v, _CMP_LT_OQ) }; }
+        LIKYU_INLINE F64x2 select (M64x2 m, F64x2 yes, F64x2 no) noexcept   { return { _mm_blendv_pd (no.v, yes.v, m.m) }; }
+        LIKYU_INLINE F64x2 absLanes (F64x2 a) noexcept                      { return { _mm_andnot_pd (_mm_set1_pd (-0.0), a.v) }; }
     }
 
    #elif defined (LIKYU_SIMD_NEON)
@@ -569,6 +644,33 @@ namespace likyu::dsp::simd
             detail::pow2Split (whole.lo, table, fraction.lo, power.lo);
             detail::pow2Split (whole.hi, table, fraction.hi, power.hi);
         }
+
+        // Two doubles: one NEON register.
+        struct M64x2
+        {
+            uint64x2_t m;
+        };
+
+        struct F64x2
+        {
+            using Element = double;
+            static constexpr int lanes = 2;
+
+            float64x2_t v;
+
+            static LIKYU_INLINE F64x2 load (const double* from) noexcept    { return { vld1q_f64 (from) }; }
+            static LIKYU_INLINE F64x2 broadcast (double x) noexcept         { return { vdupq_n_f64 (x) }; }
+            LIKYU_INLINE void store (double* to) const noexcept             { vst1q_f64 (to, v); }
+        };
+
+        LIKYU_INLINE F64x2 operator+ (F64x2 a, F64x2 b) noexcept            { return { vaddq_f64 (a.v, b.v) }; }
+        LIKYU_INLINE F64x2 operator- (F64x2 a, F64x2 b) noexcept            { return { vsubq_f64 (a.v, b.v) }; }
+        LIKYU_INLINE F64x2 operator* (F64x2 a, F64x2 b) noexcept            { return { vmulq_f64 (a.v, b.v) }; }
+        LIKYU_INLINE F64x2 operator- (F64x2 a) noexcept                     { return { vnegq_f64 (a.v) }; }
+        LIKYU_INLINE F64x2 mulAdd (F64x2 a, F64x2 b, F64x2 c) noexcept      { return { vfmaq_f64 (c.v, a.v, b.v) }; }
+        LIKYU_INLINE M64x2 less (F64x2 a, F64x2 b) noexcept                 { return { vcltq_f64 (a.v, b.v) }; }
+        LIKYU_INLINE F64x2 select (M64x2 m, F64x2 yes, F64x2 no) noexcept   { return { vbslq_f64 (m.m, yes.v, no.v) }; }
+        LIKYU_INLINE F64x2 absLanes (F64x2 a) noexcept                      { return { vabsq_f64 (a.v) }; }
     }
 
    #else
@@ -579,6 +681,7 @@ namespace likyu::dsp::simd
 
     using F32x8 = native::F32x8;
     using F64x4 = native::F64x4;
+    using F64x2 = native::F64x2;
     using M32x8 = native::M32x8;
     using M64x4 = native::M64x4;
 }
