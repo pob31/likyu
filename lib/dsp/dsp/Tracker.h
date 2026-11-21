@@ -489,6 +489,9 @@ namespace likyu::dsp
 
     inline constexpr int maxTrackerGroup = 8;
 
+    /** From this many members a group's front half runs in registers (runTrackerGroup). */
+    inline constexpr int minLaneMembers = 3;
+
     /** `n` samples of the trackers that share one key (PRD: Track bands with
         the same key source exclude each other), in band order. Each adapts
         on the key less the components the others are locked or held on,
@@ -504,7 +507,12 @@ namespace likyu::dsp
         and the member-by-member loop this replaced give the same bits. The
         sum of the components stays in band order, a float at a time; `tick`,
         the state machine, stays a member at a time. A lane past the members
-        repeats the last one, has a weight of 0, and is never read back. */
+        repeats the last one, has a weight of 0, and is never read back.
+
+        From three members (`minLaneMembers`); under that the registers do
+        eight lanes' work for one or two, and measured 6 to 13 % slower than
+        the loop a member at a time, which the group then keeps. Up to four,
+        2^x and tan take one register of four doubles, not two. */
     template <typename V64 = simd::F64x4, typename V32 = simd::F32x8>
     inline void runTrackerGroup (const float* key, int n, TrackerMember* members, int count) noexcept
     {
@@ -527,6 +535,8 @@ namespace likyu::dsp
         for (int j = 1; j < count; ++j)
             oneWarp = oneWarp && members[j].computer->getWarp() == warp;
 
+        const auto inLanes = oneWarp && count >= minLaneMembers;
+
         for (int j = 0; j < count; ++j)
         {
             x1[static_cast<std::size_t> (j)] = members[j].state->x1;
@@ -540,41 +550,46 @@ namespace likyu::dsp
         {
             const auto x = key[i];
 
-            // Every member's coefficients at its estimate (TrackerComputer::coefficients).
-            V32 c1, c2, c3;
+            auto removed = 0.0f;
 
-            if (oneWarp)
+            if (! inLanes)
             {
-                const auto low = V64::make (estimateOf (0), estimateOf (1), estimateOf (2), estimateOf (3));
-                const auto high = V64::make (estimateOf (4), estimateOf (5), estimateOf (6), estimateOf (7));
-                const auto g = narrow (warp.gLanes (pow2Lanes (low)), warp.gLanes (pow2Lanes (high)));
-                c1 = one / mulAdd (g, g + k, one);
-                c2 = g * c1;
-                c3 = g * c2;
-                c1.store (a1.data());
-                c2.store (a2.data());
-                c3.store (a3.data());
+                // A member at a time: its coefficients, and its component of the key.
+                for (int j = 0; j < count; ++j)
+                {
+                    const auto j0 = static_cast<std::size_t> (j);
+                    auto& s = *members[j].state;
+                    const auto c = members[j].computer->coefficients (s);
+                    a1[j0] = c.a1;
+                    a2[j0] = c.a2;
+                    a3[j0] = c.a3;
+
+                    if (count > 1)
+                    {
+                        component[j0] = static_cast<float> (s.weight) * TrackerComputer::extract (x, s, c);
+                        removed += component[j0];
+                    }
+                }
             }
             else
             {
-                for (int j = 0; j < count; ++j)
-                {
-                    const auto c = members[j].computer->coefficients (*members[j].state);
-                    a1[static_cast<std::size_t> (j)] = c.a1;
-                    a2[static_cast<std::size_t> (j)] = c.a2;
-                    a3[static_cast<std::size_t> (j)] = c.a3;
-                }
+                // Every member's coefficients at its estimate (TrackerComputer::coefficients).
+                const auto low = V64::make (estimateOf (0), estimateOf (1), estimateOf (2), estimateOf (3));
+                const auto gLow = warp.gLanes (pow2Lanes (low));
+                auto gHigh = gLow;
 
-                c1 = V32::load (a1.data());
-                c2 = V32::load (a2.data());
-                c3 = V32::load (a3.data());
-            }
+                if (count > V64::lanes)
+                    gHigh = warp.gLanes (pow2Lanes (V64::make (estimateOf (4), estimateOf (5), estimateOf (6), estimateOf (7))));
 
-            // The extraction filters (TrackerComputer::extract), weighted, and their sum in band order.
-            auto removed = 0.0f;
+                const auto g = narrow (gLow, gHigh);
+                const auto c1 = one / mulAdd (g, g + k, one);
+                const auto c2 = g * c1;
+                const auto c3 = g * c2;
+                c1.store (a1.data());
+                c2.store (a2.data());
+                c3.store (a3.data());
 
-            if (count > 1)
-            {
+                // The extraction filters (TrackerComputer::extract), weighted, and their sum in band order.
                 const auto in = splat<V32> (x);
                 const auto v3 = in - extractionX2;
                 const auto v1 = mulAdd (c1, extractionX1, c2 * v3);
@@ -670,6 +685,9 @@ namespace likyu::dsp
                 }
             }
         }
+
+        if (! inLanes)
+            return;
 
         extractionX1.store (x1.data());
         extractionX2.store (x2.data());
