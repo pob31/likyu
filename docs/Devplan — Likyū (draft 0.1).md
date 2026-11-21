@@ -781,10 +781,11 @@ bench notes: [`2026-11-21-phase7-baseline.md`](bench/2026-11-21-phase7-baseline.
   alone; the bank only while a tracker is unlocked: no figure moves, no gain in the budget's case.
   *Proposed:* neither. The x86_64 slice under Rosetta (macOS 15.8): the AVX2 build runs, at 8.4 %
   of a core; the scalar build at 4.4 %. *Proposed:* the scalar build for the macOS installer's
-  x86_64 slice. Both wait for the author.
+  x86_64 slice. *Decided 2026-11-22 by the author:* the remedies are left as is, none applied;
+  the x86_64 slice is the scalar build, Intel Macs being almost all at the end of their life.
 - *7g, 2026-11-22:* the README says what processor the build needs and what `LIKYU_SIMD` chooses;
   the bench notes and this record are the before and after.
-- *Not yet:* 7e, which may wait; the author's answers to 7f; the installers.
+- *Not yet:* 7e, which may wait; the installers, with the scalar build as the macOS x86_64 slice.
 
 ---
 

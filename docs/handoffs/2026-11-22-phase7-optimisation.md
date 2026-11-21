@@ -21,19 +21,19 @@ phases: the listening passes, Band-pass, the freeze of the IDs.
 - **Not installed in the hosts.** The Windows build installed for the author's sessions is from
   before the phase.
 
-## Needs the author
+## Decided by the author, 2026-11-22
 
-From the stop note, [`2026-11-22-phase7-stop.md`](../bench/2026-11-22-phase7-stop.md), each also in
-the PRD's open decisions:
+On the stop note, [`2026-11-22-phase7-stop.md`](../bench/2026-11-22-phase7-stop.md), both in the PRD:
 
-1. **The remedies that change the numbers.** *Proposed:* neither now. The first-order update of a
+1. **The remedies that change the numbers: left as is**, none applied. What was measured: The first-order update of a
    tracker's g holds every threshold and gains 0 to 5 % of the budget case (13 to 14 % for one
    Track band alone); the bank only while a tracker is unlocked gains nothing measurable. Both are
    on the local branch `exp/first-order-g`, not pushed.
-2. **The macOS installer's x86_64 slice.** *Proposed:* the scalar build. AVX2 there would not load
+2. **The macOS installer's x86_64 slice: the scalar build**, for Intel Macs, which are almost all
+   at the end of their life. Why it was proposed: AVX2 there would not load
    under the Rosetta of macOS 11 to 14 nor on a pre-Haswell Intel Mac, and under the Rosetta of
    macOS 15 it is half the speed of the scalar build (8.4 % against 4.4 % of a core, measured).
-3. **The Mac's own pass (7e)**, when the author wants it: the detectors in registers cost the M4
+Still the author's: **the Mac's own pass (7e)**, when wanted: the detectors in registers cost the M4
    2 to 4 % in stereo, the first thing to look at there.
 
 ## What was built after the foundations note
@@ -76,7 +76,6 @@ Those of the foundations note stand. Added since:
 
 ## Next
 
-1. The author's answers to the stop note.
-2. The installers (the devplan's Phase 7, second half): Windows, macOS (universal, the x86_64 slice
-   as decided), Linux; signing and notarisation.
-3. The listening passes on a build from `main`, the plugin installed again in the hosts.
+1. The installers (the devplan's Phase 7, second half): Windows, macOS (universal, the x86_64 slice
+   the scalar build), Linux; signing and notarisation.
+2. The listening passes on a build from `main`, the plugin installed again in the hosts.
