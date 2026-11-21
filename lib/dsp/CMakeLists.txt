@@ -41,7 +41,8 @@ add_library(likyu_dsp STATIC
     dsp/Tan.h
     dsp/Tracker.h
     dsp/Transient.h
-    dsp/rt/RtCheck.h)
+    dsp/rt/RtCheck.h
+    dsp/simd/Target.h)
 add_library(likyu::dsp ALIAS likyu_dsp)
 
 set_target_properties(likyu_dsp PROPERTIES POSITION_INDEPENDENT_CODE ON)
@@ -62,6 +63,26 @@ if(MSVC)
     target_compile_options(likyu_dsp PUBLIC /fp:precise)
 else()
     target_compile_options(likyu_dsp PUBLIC -ffp-contract=off)
+endif()
+
+# The kernels' instructions (dsp/simd/Target.h). PUBLIC for the same reason: with AVX2
+# the whole plugin is an AVX2 binary, which is the decision (2026-11-21). arm64 needs no
+# option. On macOS the option is given to an x86_64 slice only, so that a universal
+# build stays possible; which build that slice gets is the installers' question.
+if(LIKYU_SIMD STREQUAL "scalar")
+    target_compile_definitions(likyu_dsp PUBLIC LIKYU_SIMD_SCALAR=1)
+elseif(LIKYU_SIMD STREQUAL "auto")
+    if(APPLE)
+        target_compile_options(likyu_dsp PUBLIC "SHELL:-Xarch_x86_64 -mavx2")
+    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$")
+        if(MSVC)
+            target_compile_options(likyu_dsp PUBLIC /arch:AVX2)
+        else()
+            target_compile_options(likyu_dsp PUBLIC -mavx2)
+        endif()
+    endif()
+else()
+    message(FATAL_ERROR "LIKYU_SIMD is \"${LIKYU_SIMD}\": auto or scalar")
 endif()
 
 # PUBLIC: the process paths are templates in headers, so the sanitizer has to reach every

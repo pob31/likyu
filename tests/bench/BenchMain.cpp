@@ -623,6 +623,7 @@ namespace
        #else
         out << "unknown compiler";
        #endif
+        out << ", " << simd::targetName;
        #if defined (NDEBUG)
         out << ", Release";
        #else

@@ -10,9 +10,9 @@
 #   pins     no compiler: CLAUDE.md against the PRD, submodule pins against
 #            THIRD_PARTY_NOTICES.md, GPL headers, lib/dsp's includes. The cheapest job;
 #            the others wait for it.
-#   linux    build, test under C and fr_FR, lib/dsp's suite again in Release, Release
-#            plugins, pluginval on the VST3, the two LV2 bundles through lilv and lv2lint,
-#            artefact.
+#   linux    build, test under C and fr_FR, lib/dsp's suite again in Release, then without
+#            intrinsics and held to the same bits, Release plugins, pluginval on the VST3,
+#            the two LV2 bundles through lilv and lv2lint, artefact.
 #   macos    the same, VST3 and AU; pluginval on the VST3, auval on the AU.
 #   windows  the same, VST3, on the VS 2026 image.
 #   rtsan    lib/dsp and its suite alone under Clang's realtime sanitizer.
@@ -126,6 +126,16 @@ jobs:
       - name: Test lib/dsp (Release)
         run: ctest --preset ci-linux-release
 
+      # The same kernels with no intrinsic (LIKYU_SIMD=scalar): what a processor older than
+      # AVX2 gets. Its suite, and its bits against the SIMD build's.
+      - name: lib/dsp without intrinsics (Release), and the same bits as with
+        run: |
+          set -euo pipefail
+          cmake --preset scalar
+          cmake --build --preset scalar-release --target likyu_dsp_tests likyu_bench
+          ctest --preset scalar-release
+          scripts/same-bits.sh build/ci-linux/tests/Release build/scalar/tests/Release
+
       # Information, not a gate (devplan 2d): the noise floor of float and double against
       # long double, which is 80-bit here and no wider than double on MSVC.
       - name: Precision of the audio path (information)
@@ -228,6 +238,16 @@ jobs:
       - name: Test lib/dsp (Release)
         run: ctest --preset ci-macos-release
 
+      # The only place NEON is held to the scalar kernels on every push: no other
+      # machine of CI is an arm64.
+      - name: lib/dsp without intrinsics (Release), and the same bits as with
+        run: |
+          set -euo pipefail
+          cmake --preset scalar
+          cmake --build --preset scalar-release --target likyu_dsp_tests likyu_bench
+          ctest --preset scalar-release
+          scripts/same-bits.sh build/ci-macos/tests/Release build/scalar/tests/Release
+
       - name: Build the plugins (Release)
         run: cmake --build --preset ci-macos-release --target likyu_plugin_All likyu_plugin_lv2_mono_All
 
@@ -284,6 +304,16 @@ jobs:
 
       - name: Test lib/dsp (Release)
         run: ctest --preset ci-windows-release
+
+      # The scalar preset is Ninja's; here the same thing from the Visual Studio generator.
+      - name: lib/dsp without intrinsics (Release), and the same bits as with
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --preset ci-windows -B build/scalar -DLIKYU_SIMD=scalar -DLIKYU_BUILD_PLUGINS=OFF
+          cmake --build build/scalar --config Release --target likyu_dsp_tests likyu_bench --parallel
+          ctest --test-dir build/scalar -C Release --output-on-failure
+          scripts/same-bits.sh build/ci-windows/tests/Release build/scalar/tests/Release
 
       - name: Build the plugins (Release)
         run: cmake --build --preset ci-windows-release --target likyu_plugin_All likyu_plugin_lv2_mono_All --parallel

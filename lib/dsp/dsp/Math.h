@@ -25,6 +25,8 @@
     stays on for every comparison that is not.
 */
 
+#include <dsp/simd/Target.h>
+
 #include <functional>
 
 // A multiply and an add are two roundings, in every translation unit that includes

@@ -69,6 +69,16 @@
       "description": "What the Windows CI job configures. No compiler cache: sccache with MSVC needs /Z7, and juce_recommended_config_flags gives /Zi in Debug (go.dot found this first)."
     },
     {
+      "name": "scalar",
+      "inherits": "dev",
+      "displayName": "scalar (lib/dsp without intrinsics, no plugins)",
+      "description": "LIKYU_SIMD=scalar and no plugins: lib/dsp's kernels over plain arrays, with its suite and the bench. What a processor older than AVX2 gets, and what CI holds the SIMD builds to: the same bits (devplan Phase 7). On Windows from a plain shell, configure vs with -DLIKYU_SIMD=scalar -B build/scalar instead.",
+      "cacheVariables": {
+        "LIKYU_SIMD": "scalar",
+        "LIKYU_BUILD_PLUGINS": "OFF"
+      }
+    },
+    {
       "name": "rtsan",
       "inherits": "base",
       "displayName": "rtsan (Clang realtime sanitizer, lib/dsp only)",
@@ -140,6 +150,11 @@
       "name": "rtsan-debug",
       "configurePreset": "rtsan",
       "configuration": "Debug"
+    },
+    {
+      "name": "scalar-release",
+      "configurePreset": "scalar",
+      "configuration": "Release"
     }
   ],
   "testPresets": [
@@ -209,6 +224,11 @@
       "name": "dev-release",
       "inherits": "release-dsp",
       "configurePreset": "dev"
+    },
+    {
+      "name": "scalar-release",
+      "inherits": "release-dsp",
+      "configurePreset": "scalar"
     },
     {
       "name": "vs-release",

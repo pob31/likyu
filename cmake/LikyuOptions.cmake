@@ -31,6 +31,13 @@ option(LIKYU_WARNINGS_AS_ERRORS "Treat warnings in this project's own code as er
 # that has -fsanitize=realtime (20 or later); the `rtsan` preset and CI job turn it on.
 option(LIKYU_RTSAN "Build lib/dsp and its tests with Clang's realtime sanitizer" OFF)
 
+# What lib/dsp's kernels are written in (lib/dsp/dsp/simd/Target.h; devplan, Phase 7).
+# `auto` is AVX2 on x86-64, required of the processor since 2026-11-21 (decided by the
+# author), and NEON on arm64. `scalar` is the same kernels with no intrinsic, for a
+# processor older than AVX2; CI builds it to hold the other two to the same bits.
+set(LIKYU_SIMD "auto" CACHE STRING "lib/dsp's kernels: auto (AVX2 on x86-64, NEON on arm64) or scalar")
+set_property(CACHE LIKYU_SIMD PROPERTY STRINGS auto scalar)
+
 # The French locale the suite runs a second time under (devplan, cross-cutting: everything
 # that writes numbers runs under fr_FR as well as C). The Windows UCRT spells it "fr-FR"
 # and glibc and macOS "fr_FR.UTF-8"; this is the one place that difference is allowed to
