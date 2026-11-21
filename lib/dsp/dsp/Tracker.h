@@ -461,6 +461,9 @@ namespace likyu::dsp
         /** The tan its coefficients are made with. */
         const Warp& getWarp() const noexcept    { return warp; }
 
+        /** A setting waits for the next step to take it. */
+        bool isPending() const noexcept         { return pending; }
+
     private:
         static constexpr double spacing = trackSpacingCents / 1200.0;
         static constexpr int maxLockedFor = 1 << 30;

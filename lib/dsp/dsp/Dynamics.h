@@ -212,6 +212,13 @@ namespace likyu::dsp
         /** Whether rangeAt interpolates in this step (with the threshold, knee and ratio: one flag). */
         bool isMoving() const noexcept      { return moving; }
 
+        /** step() would change nothing: no ramp moves, start is end, no rate waits. */
+        bool isSettled() const noexcept
+        {
+            return ! (moving || threshold.isMoving() || knee.isMoving() || slope.isMoving() || range.isMoving())
+                   && exactlyEqual (pendingAttackMs, attackMs) && exactlyEqual (pendingReleaseMs, releaseMs);
+        }
+
         /** One sample of the one-pole, from `offset` toward `target`. */
         void smooth (double& offset, double target) const noexcept
         {

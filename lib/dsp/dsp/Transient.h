@@ -190,6 +190,13 @@ namespace likyu::dsp
             updateRates();
         }
 
+        /** step() would change nothing: no ramp moves, start is end, no time waits. */
+        bool isSettled() const noexcept
+        {
+            return ! (moving || attack.isMoving() || sustain.isMoving() || floor.isMoving())
+                   && exactlyEqual (pendingTime, time) && pendingTimes == times;
+        }
+
         /** `n` samples of one lane, from sample `position` of a step of
             `stepSamples`: the lane's powers in, its offsets out, the
             envelopes carried in `e`. Range is the band's at the step's start

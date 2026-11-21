@@ -129,6 +129,13 @@ namespace likyu::dsp
             updateRates();
         }
 
+        /** step() would change nothing: no ramp moves, start is end, no rate waits. */
+        bool isSettled() const noexcept
+        {
+            return ! (moving || sensitivity.isMoving() || span.isMoving())
+                   && exactlyEqual (pendingAttackMs, attackMs) && exactlyEqual (pendingReleaseMs, releaseMs);
+        }
+
         /** `n` samples of one lane's powers, from sample `position` of a step
             of `stepSamples`: the follower, carried in `e`. */
         void run (const float* power, int n, int position, int stepSamples, EnvState& e) const noexcept

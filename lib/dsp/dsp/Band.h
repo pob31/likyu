@@ -214,6 +214,8 @@ namespace likyu::dsp
         int sidechainChannels = 0;      // 0: the bus is absent or disabled
         bool linked = true;
         std::uint64_t leftOut = 0;      // channels this band does not apply to, among those prepared
+
+        bool operator== (const BandContext&) const noexcept = default;
     };
 
     class Band
@@ -314,6 +316,7 @@ namespace likyu::dsp
             detectorStale = true;
 
             snapPending = true;
+            quiet = false;
         }
 
         /** Takes effect at the next grid point. */
@@ -335,9 +338,22 @@ namespace likyu::dsp
             context = c;
         }
 
-        /** At a grid point: one control step. */
+        /** At a grid point: one control step.
+
+            A QUIET BAND (devplan, Phase 7) is one whose last step moved
+            nothing and in which nothing moves or waits: no setting, snap or
+            new context, no ramp of its own or of its computers moving, no rate
+            or time waiting, the step's start values its end values. Every
+            statement of a step would then leave every value as it is, to the
+            bit, so the step is not made. With nothing changing in a band, its
+            step was a third of the static EQ's time. */
         void beginStep() noexcept
         {
+            if (quiet && ! hasPending && ! snapPending && context == quietContext && settledInside())
+                return;
+
+            quiet = false;
+
             if (hasPending)
                 latch();
 
@@ -404,6 +420,12 @@ namespace likyu::dsp
             cw0 = cw1;
             cw1 = confidenceWeight.step();
             updateDetector();
+
+            // Quiet from here: this step moved nothing, and nothing moves now (see beginStep).
+            quiet = ! shapeChanged && target == active && ! gMoving && ! kqMoving && exactlyEqual (db0, db1) && ! wMoving
+                    && exactlyEqual (cw0, cw1) && ! logFrequency.isMoving() && ! logQ.isMoving() && ! gain.isMoving()
+                    && ! fade.isMoving() && settledInside();
+            quietContext = context;
         }
 
         /** The transient shaper's four constants, instance-wide (dsp/Transient.h).
@@ -411,6 +433,14 @@ namespace likyu::dsp
         void setTransientTimes (const TransientTimes& times) noexcept
         {
             transient.setTimes (times);
+        }
+
+        /** The band's computers and its other ramps would not change in a step. */
+        bool settledInside() const noexcept
+        {
+            return ! detectorLogFrequency.isMoving() && ! detectorLogQ.isMoving() && ! confidenceWeight.isMoving()
+                   && dynamics.isSettled() && transient.isSettled() && range.isSettled() && env.isSettled()
+                   && ! track.isPending();
         }
 
         /** Off and faded out: nothing to compute, the state may be cleared. */
@@ -959,6 +989,10 @@ namespace likyu::dsp
         bool gMoving = false, kqMoving = false, dbMoving = false, wMoving = false;
         bool constant = true;
         bool idle = true;
+
+        // A quiet band skips its step (beginStep), for as long as its context is the one it had.
+        bool quiet = false;
+        BandContext quietContext;
 
         // The constant coefficients, and what they were made from: a change
         // of any of these, the shape included, makes them again.

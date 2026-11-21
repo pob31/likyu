@@ -101,6 +101,9 @@ namespace likyu::dsp
             moving = ! (exactlyEqual (low0, low1) && exactlyEqual (high0, high1));
         }
 
+        /** step() would change nothing: no ramp moves, the step's start is its end. */
+        bool isSettled() const noexcept     { return ! (moving || low.isMoving() || high.isMoving()); }
+
         /** Low and High in log2 Hz at `t` in (0, 1] of the step, in order. */
         std::pair<double, double> at (double t) const noexcept
         {
