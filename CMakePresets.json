@@ -190,6 +190,45 @@
       "output": {
         "outputOnFailure": true
       }
+    },
+    {
+      "name": "release-dsp",
+      "hidden": true,
+      "description": "lib/dsp's suite and the bench's smoke runs in Release (devplan Phase 7): the optimised build is the one that ships, and Debug never shows what an optimiser or a SIMD kernel does. Build likyu_dsp_tests and likyu_bench in Release first. The suites that need JUCE stay in Debug.",
+      "configuration": "Release",
+      "filter": {
+        "include": {
+          "name": "^(dsp$|bench\\.)"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "dev-release",
+      "inherits": "release-dsp",
+      "configurePreset": "dev"
+    },
+    {
+      "name": "vs-release",
+      "inherits": "release-dsp",
+      "configurePreset": "vs"
+    },
+    {
+      "name": "ci-linux-release",
+      "inherits": "release-dsp",
+      "configurePreset": "ci-linux"
+    },
+    {
+      "name": "ci-macos-release",
+      "inherits": "release-dsp",
+      "configurePreset": "ci-macos"
+    },
+    {
+      "name": "ci-windows-release",
+      "inherits": "release-dsp",
+      "configurePreset": "ci-windows"
     }
   ]
 }

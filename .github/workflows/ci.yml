@@ -10,8 +10,9 @@
 #   pins     no compiler: CLAUDE.md against the PRD, submodule pins against
 #            THIRD_PARTY_NOTICES.md, GPL headers, lib/dsp's includes. The cheapest job;
 #            the others wait for it.
-#   linux    build, test under C and fr_FR, Release plugins, pluginval on the VST3, the
-#            two LV2 bundles through lilv and lv2lint, artefact.
+#   linux    build, test under C and fr_FR, lib/dsp's suite again in Release, Release
+#            plugins, pluginval on the VST3, the two LV2 bundles through lilv and lv2lint,
+#            artefact.
 #   macos    the same, VST3 and AU; pluginval on the VST3, auval on the AU.
 #   windows  the same, VST3, on the VS 2026 image.
 #   rtsan    lib/dsp and its suite alone under Clang's realtime sanitizer.
@@ -118,6 +119,13 @@ jobs:
       - name: Test (Debug, C and fr_FR)
         run: ctest --preset ci-linux
 
+      # What ships is optimised: lib/dsp's suite again in Release (devplan, Phase 7).
+      - name: Build lib/dsp's suite and the bench (Release)
+        run: cmake --build --preset ci-linux-release --target likyu_dsp_tests likyu_bench
+
+      - name: Test lib/dsp (Release)
+        run: ctest --preset ci-linux-release
+
       # Information, not a gate (devplan 2d): the noise floor of float and double against
       # long double, which is 80-bit here and no wider than double on MSVC.
       - name: Precision of the audio path (information)
@@ -214,6 +222,12 @@ jobs:
       - name: Test (Debug, C and fr_FR)
         run: ctest --preset ci-macos
 
+      - name: Build lib/dsp's suite and the bench (Release)
+        run: cmake --build --preset ci-macos-release --target likyu_dsp_tests likyu_bench
+
+      - name: Test lib/dsp (Release)
+        run: ctest --preset ci-macos-release
+
       - name: Build the plugins (Release)
         run: cmake --build --preset ci-macos-release --target likyu_plugin_All likyu_plugin_lv2_mono_All
 
@@ -264,6 +278,12 @@ jobs:
 
       - name: Test (Debug, C and fr-FR)
         run: ctest --preset ci-windows
+
+      - name: Build lib/dsp's suite and the bench (Release)
+        run: cmake --build --preset ci-windows-release --target likyu_dsp_tests likyu_bench --parallel
+
+      - name: Test lib/dsp (Release)
+        run: ctest --preset ci-windows-release
 
       - name: Build the plugins (Release)
         run: cmake --build --preset ci-windows-release --target likyu_plugin_All likyu_plugin_lv2_mono_All --parallel
