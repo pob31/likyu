@@ -69,11 +69,13 @@ endif()
 
 # The kernels' instructions (dsp/simd/Target.h). PUBLIC for the same reason: with AVX2
 # the whole plugin is an AVX2 binary, which is the decision (2026-11-21). arm64 needs no
-# option. On macOS the option is given to an x86_64 slice only, so that a universal
-# build stays possible; which build that slice gets is the installers' question.
+# option. On macOS the options are given to an x86_64 slice only (-Xarch_x86_64), so that
+# one universal build carries both slices.
 #
 # `auto` and `reference` compute in the fused arithmetic and need the instruction: AVX2
-# and FMA together on x86 (MSVC has one option for both). `scalar` gets neither.
+# and FMA together on x86 (MSVC has one option for both). `scalar` gets neither, and so
+# does `auto`'s macOS x86_64 slice unless LIKYU_SIMD_MACOS_X86_64 says avx2 (decided
+# 2026-11-22): there the slice is the scalar build and the arm64 slice beside it NEON.
 if(LIKYU_SIMD STREQUAL "scalar")
     target_compile_definitions(likyu_dsp PUBLIC LIKYU_SIMD_SCALAR=1)
 elseif(LIKYU_SIMD STREQUAL "auto" OR LIKYU_SIMD STREQUAL "reference")
@@ -81,7 +83,11 @@ elseif(LIKYU_SIMD STREQUAL "auto" OR LIKYU_SIMD STREQUAL "reference")
         target_compile_definitions(likyu_dsp PUBLIC LIKYU_SIMD_SCALAR=1 LIKYU_SIMD_REFERENCE=1)
     endif()
 
-    if(APPLE)
+    if(APPLE AND LIKYU_SIMD STREQUAL "auto" AND LIKYU_SIMD_MACOS_X86_64 STREQUAL "scalar")
+        target_compile_options(likyu_dsp PUBLIC "SHELL:-Xarch_x86_64 -DLIKYU_SIMD_SCALAR=1")
+    elseif(APPLE AND NOT LIKYU_SIMD_MACOS_X86_64 MATCHES "^(scalar|avx2)$")
+        message(FATAL_ERROR "LIKYU_SIMD_MACOS_X86_64 is \"${LIKYU_SIMD_MACOS_X86_64}\": scalar or avx2")
+    elseif(APPLE)
         target_compile_options(likyu_dsp PUBLIC "SHELL:-Xarch_x86_64 -mavx2" "SHELL:-Xarch_x86_64 -mfma")
     elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$")
         if(MSVC)

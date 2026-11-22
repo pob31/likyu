@@ -19,11 +19,9 @@ behaves (Fixed, Env, Track). VST3, AU and LV2 from one codebase.
 
 The name is a play on *l'EQ*.
 
-**Status:** Phase 0 of the plan. The repository builds a plugin that passes audio and does no EQ
-yet: VST3 and LV2 on Windows, macOS and Linux, AU on macOS. It already shows a host what the
-finished plugin will (the 284 parameters, a sidechain input, a lookahead that reports latency), so
-that host behaviour can be measured before the DSP is written. Do not save sessions with it:
-parameter IDs are not frozen.
+**Status:** Phase 7 of the plan, before any release. The eight bands, their gain and frequency
+modes and the editor are built, and optimised; the listening passes are still owed. Do not save
+sessions with it: parameter IDs are not frozen.
 
 - [PRD](docs/PRD%20—%20Likyū,%20Dynamic%20EQ%20and%20Transient%20Designer%20Plugin%20(VST3%20AU%20LV2).md):
   what the plugin does, how the DSP works, and how each feature is accepted.
@@ -45,9 +43,24 @@ lookahead, no mid-side, no oversampling in the first version.
   from Excavator and Zen. Some Pentium, Celeron and Atom models of later years have neither. The
   plugin built for such a processor is `-DLIKYU_SIMD=scalar` (below); it computes the same things
   with no fused multiply-add, so its output differs from the others' in its last bits.
-- **On macOS, Apple silicon or Intel**, macOS 11 or later.
+- **On macOS, Apple silicon or Intel**, macOS 11 or later. The installer's plugins are universal:
+  NEON on Apple silicon, and on Intel (or in an x86_64 host under Rosetta) the scalar build, which
+  any Intel Mac can run (decided 2026-11-22).
 - One instance of eight bands in Dynamic and Track, stereo, at 96 kHz, takes about 3 % of one core
   of a recent laptop processor; the figures per case and per machine are in `docs/bench/`.
+
+## Installing
+
+| Platform | Installer | Where the plugins go |
+| --- | --- | --- |
+| Windows (x64) | `Likyu-<version>-Windows-x64-Setup.exe` | `C:\Program Files\Common Files\VST3\Likyu.vst3`, `…\Common Files\LV2\Likyu.lv2` and `Likyu-mono.lv2` |
+| macOS 11+ | `Likyu-<version>-macOS.pkg`, signed and notarised | `/Library/Audio/Plug-Ins/VST3`, `Components` (AU) and `LV2` |
+| Linux (x86-64) | `Likyu-<version>-Linux-x86_64.tar.gz` | `./install.sh --user` (`~/.vst3`, `~/.lv2`) or `--system` (`/usr/local/lib/vst3`, `…/lv2`) |
+
+The Windows installer is not signed, so SmartScreen asks before it runs ("More info", then "Run
+anyway"). The Windows installer and `install.sh` refuse a processor that reports no AVX2. The
+licence, this file and the third-party notices are installed beside the plugins (on Windows in
+`C:\Program Files\Pix et Bel\Likyu`, on macOS in `/Library/Application Support/Pix et Bel/Likyu`).
 
 ## Building
 
@@ -76,7 +89,16 @@ well under a second.
 `LIKYU_SIMD` chooses what its kernels are written in: `auto` (the default: AVX2 with FMA on x86-64,
 NEON on arm64), `reference` (the same kernels on plain arrays, in the same arithmetic, which CI
 holds the others to bit for bit with `scripts/same-bits.sh`) or `scalar` (for an x86-64 without
-AVX2). The `reference` and `scalar` presets configure them without the plugins.
+AVX2). The `reference` and `scalar` presets configure them without the plugins. On macOS, `auto`
+gives an x86_64 slice the scalar kernels (`LIKYU_SIMD_MACOS_X86_64=scalar`; `avx2` to measure the
+other choice).
+
+The installers: `scripts\build-installer.ps1` on Windows (with Inno Setup 6) and
+`scripts/build-installer.sh` on macOS and Linux configure the `release-*` preset, build, run the
+Release suite (on macOS under Rosetta too, for the x86_64 slice) and package into
+`installer/Output/`. Unsigned unless the signing variables of `installer/build-pkg.sh` are set; the
+signed and notarised installers come from `.github/workflows/release.yml`, run by hand or on a tag
+`v<version>`, which also installs each on a fresh runner and validates the installed plugins.
 
 Before pushing: `python3 scripts/check-claude-md.py`, `check-pins.py`, `check-headers.py` and
 `check-dsp-includes.py`, as CI's first job runs them.

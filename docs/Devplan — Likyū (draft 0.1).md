@@ -712,6 +712,9 @@ three installers install plugins that pass the validators on a clean machine.
   *Decided 2026-11-21 by the author:* fused, explicitly. The conversion of the recurrences to
   `mulAdd` is 7b's next step and the phase's second declared change of bits, our `exp2` the third.
 - Signing identities, as for WFS-DIY.
+  *Provided 2026-11-22 by the author:* the Developer ID certificates and the App Store Connect
+  key in the repository's `Likyu` environment, under WFS-DIY's secret names. Windows ships
+  unsigned, as WFS-DIY does.
 
 **The optimisation in stages** (*the plan the author approved on 2026-11-21*; the installers are
 planned after it). Its rule: **an optimisation commit changes no output bit**, held by the suites
@@ -790,7 +793,13 @@ bench notes: [`2026-11-21-phase7-baseline.md`](bench/2026-11-21-phase7-baseline.
   slower than the NEON intrinsics on 64 channels (the intrinsics stay); the detectors two key
   channels at a time, kept for every platform (`trackself.64` −16 % on the NUC), the M4's stereo
   within its own spread of 12 %; the efficiency cores measured, for information.
-- *Not yet:* the installers, with the scalar build as the macOS x86_64 slice.
+- *The installers, 2026-11-22* (handoff
+  [`2026-11-22-phase7-installers.md`](handoffs/2026-11-22-phase7-installers.md)): `installer/`
+  (Inno Setup, pkg, tarball) and `scripts/build-installer.{ps1,sh}` on new `release-*` presets;
+  `.github/workflows/release.yml` builds, signs and notarises them, installs each on a fresh
+  runner and validates the installed plugins. The macOS build is one universal build whose
+  x86_64 slice is the scalar build (`LIKYU_SIMD_MACOS_X86_64`); built on the M4, its suite
+  passes under Rosetta and no x86_64 binary has an AVX instruction.
 
 ---
 
@@ -863,7 +872,7 @@ for.
 | 4 | Listening pass; the transient time constants (temporary parameters in place, 2026-11-20) | Yes |
 | 5 | The spike's result (accepted provisionally 2026-11-20); the listening pass; freeze of the parameter IDs; band-pass as a band type | Yes, at the end |
 | 6 | Listen guard mechanism; a look at the first curve | Decided 2026-11-20: a long press; the look given through the phase |
-| 7 | Oldest processor supported; signing identities | Yes |
+| 7 | Oldest processor supported; signing identities | Decided 2026-11-21; provided 2026-11-22 |
 | 8 | Whether the beta waits for Phase 9 | Yes, at the end |
 
 Nothing blocks the start of Phase 0.

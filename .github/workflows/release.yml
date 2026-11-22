@@ -1,0 +1,328 @@
+# This file is part of Likyu — https://github.com/pob31/likyu
+#
+# Copyright (C) 2026 Pierre-Olivier Boulant
+#
+# Likyu is free software: you can redistribute it and/or modify it under the
+# terms of the GNU General Public License as published by the Free Software
+# Foundation, either version 3 of the License, or (at your option) any later
+# version. Likyu is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+# or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
+# (LICENSE, at the repository root) for more details.
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Origin: WFS-DIY .github/workflows/plugins-release.yml (its macOS signing steps as they
+# are), on Likyu's scripts, with each installer installed and validated on its runner.
+#
+# The installers (devplan, Phase 7).
+#
+#   version  project(likyu VERSION) from CMakeLists.txt; on a tag, the tag must be v<it>.
+#   macos    the universal pkg, signed, notarised and stapled with the secrets of the
+#            `Likyu` environment.
+#   windows  the Inno Setup installer, unsigned (as WFS-DIY's).
+#   linux    the tarball.
+#   release  on a tag only: a DRAFT GitHub Release with the three and their .sha256, for
+#            the author to read and publish.
+#
+# Each platform's job then treats its fresh runner as the clean machine of the devplan's
+# "done when": it installs what it built, validates the installed plugins (pluginval at
+# strictness 10, auval, lilv), and on Windows and Linux uninstalls and checks that nothing
+# is left.
+#
+# Run by hand (Actions → Release → Run workflow) for the installers as artefacts, with no
+# release; push a tag v<version> for the draft.
+
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  PLUGINVAL_URL: https://github.com/Tracktion/pluginval/releases/download/v1.0.4
+  LV2_STEREO_URI: https://pixetbel.org/lv2/likyu/stereo
+  LV2_MONO_URI: https://pixetbel.org/lv2/likyu/mono
+
+jobs:
+  version:
+    name: version (tag == project VERSION)
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: read
+        run: |
+          VERSION="$(sed -nE 's/^project\(likyu VERSION ([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' CMakeLists.txt)"
+          [ -n "$VERSION" ] || { echo "::error::no project(likyu VERSION …) in CMakeLists.txt"; exit 1; }
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "v$VERSION" ]; then
+            echo "::error::tag $GITHUB_REF_NAME, but CMakeLists.txt says $VERSION"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Likyu $VERSION"
+
+  macos:
+    name: macOS pkg (universal, signed, notarised)
+    needs: version
+    runs-on: macos-latest
+    environment: Likyu
+    timeout-minutes: 180
+    env:
+      NOTARY_API_KEY_ID: ${{ secrets.NOTARY_API_KEY_ID }}
+      NOTARY_API_ISSUER: ${{ secrets.NOTARY_API_ISSUER }}
+      LIKYU_X86_64_SUITE: required
+      PKG: installer/Output/Likyu-${{ needs.version.outputs.version }}-macOS.pkg
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Install ninja and lilv
+        run: brew install ninja lilv
+
+      # The x86_64 slice's suite and auval run under it.
+      - name: Rosetta
+        run: softwareupdate --install-rosetta --agree-to-license || true
+
+      - name: Import Developer ID signing certificate
+        uses: apple-actions/import-codesign-certs@v6
+        with:
+          p12-file-base64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          p12-password: ${{ secrets.MACOS_CERT_PASSWORD }}
+
+      - name: Materialise the App Store Connect API key
+        run: |
+          mkdir -p "$RUNNER_TEMP/notary"
+          KEY="$RUNNER_TEMP/notary/AuthKey.p8"
+          echo "${{ secrets.NOTARY_API_KEY_BASE64 }}" | base64 --decode > "$KEY"
+          echo "NOTARY_API_KEY=$KEY" >> "$GITHUB_ENV"
+
+      - name: Resolve signing identities
+        run: |
+          APP_ID="$(security find-identity -v -p codesigning | sed -nE 's/.*"(Developer ID Application: [^"]*)".*/\1/p' | head -n1)"
+          # `-p codesigning` filters installer certificates out: look them up unfiltered.
+          INST_ID="$(security find-identity -v | sed -nE 's/.*"(Developer ID Installer: [^"]*)".*/\1/p' | head -n1)"
+          [ -n "$APP_ID" ]  || { echo "::error::no 'Developer ID Application' identity in the p12"; exit 1; }
+          [ -n "$INST_ID" ] || { echo "::error::no 'Developer ID Installer' identity in the p12: a pkg cannot be notarised without one (export the p12 with both)"; exit 1; }
+          echo "CODESIGN_IDENTITY_APP=$APP_ID" >> "$GITHUB_ENV"
+          echo "CODESIGN_IDENTITY_INSTALL=$INST_ID" >> "$GITHUB_ENV"
+
+      - name: Build, test both slices, package, sign, notarise, staple
+        run: scripts/build-installer.sh
+
+      - name: The pkg's signature and Gatekeeper
+        run: |
+          set -euo pipefail
+          pkgutil --check-signature "$PKG"
+          spctl --assess --type install -vvv "$PKG"
+          xcrun stapler validate "$PKG"
+
+      - name: Install the pkg
+        run: |
+          sudo installer -pkg "$PKG" -target /
+          pkgutil --pkgs | grep io.github.pob31.likyu
+
+      - name: The installed plugins
+        run: |
+          set -euo pipefail
+          P=/Library/Audio/Plug-Ins
+          for b in "$P/VST3/Likyu.vst3" "$P/Components/Likyu.component"; do
+            codesign --verify --strict --verbose=2 "$b"
+            xcrun stapler validate "$b"
+            lipo -archs "$b/Contents/MacOS/Likyu"
+          done
+          find "$P/LV2/Likyu.lv2" "$P/LV2/Likyu-mono.lv2" -type f ! -name '*.ttl' -exec codesign --verify --strict --verbose=2 {} \;
+          ls "/Library/Application Support/Pix et Bel/Likyu"
+
+      - name: pluginval, strictness 10 (installed VST3)
+        run: |
+          curl -sSL -o pluginval.zip "$PLUGINVAL_URL/pluginval_macOS.zip"
+          unzip -q pluginval.zip -d pluginval
+          ./pluginval/pluginval.app/Contents/MacOS/pluginval --strictness-level 10 --validate-in-process \
+            --timeout-ms 300000 --validate /Library/Audio/Plug-Ins/VST3/Likyu.vst3
+
+      - name: auval (installed AU, arm64)
+        run: |
+          killall -9 AudioComponentRegistrar 2>/dev/null || true
+          auval -v aufx Lkyu PxBl
+
+      # Information: the x86_64 slice in an x86_64 process, as an Intel Mac or an x86_64
+      # host under Rosetta would load it.
+      - name: auval (installed AU, x86_64 under Rosetta, information)
+        continue-on-error: true
+        run: arch -x86_64 auval -v aufx Lkyu PxBl
+
+      - name: LV2, both installed bundles listed and read by lilv
+        run: |
+          set -euo pipefail
+          export LV2_PATH=/Library/Audio/Plug-Ins/LV2
+          lv2ls | tee lv2ls.txt
+          grep -qx "$LV2_STEREO_URI" lv2ls.txt
+          grep -qx "$LV2_MONO_URI" lv2ls.txt
+          lv2info "$LV2_MONO_URI" | head -20
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: likyu-macos
+          path: installer/Output/Likyu-*-macOS.pkg*
+          if-no-files-found: error
+
+  windows:
+    name: Windows installer (unsigned)
+    needs: version
+    # windows-2025 is the VS 2026 image, the same deliberate pin as ci.yml.
+    runs-on: windows-2025
+    timeout-minutes: 120
+    env:
+      SETUP: installer\Output\Likyu-${{ needs.version.outputs.version }}-Windows-x64-Setup.exe
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Build, test, package
+        shell: pwsh
+        run: scripts\build-installer.ps1
+
+      - name: Install, silently
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath $env:SETUP -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/LOG=install.log' -Wait -PassThru
+          Get-Content install.log -Tail 20
+          if ($p.ExitCode -ne 0) { throw "setup exited $($p.ExitCode)" }
+          foreach ($f in "$env:CommonProgramFiles\VST3\Likyu.vst3\Contents\x86_64-win\Likyu.vst3",
+                         "$env:CommonProgramFiles\LV2\Likyu.lv2\manifest.ttl",
+                         "$env:CommonProgramFiles\LV2\Likyu-mono.lv2\manifest.ttl",
+                         "$env:ProgramFiles\Pix et Bel\Likyu\LICENSE.txt") {
+            if (-not (Test-Path $f)) { throw "not installed: $f" }
+            Write-Host "installed: $f"
+          }
+
+      - name: pluginval, strictness 10 (installed VST3)
+        shell: bash
+        run: |
+          curl -sSL -o pluginval.zip "$PLUGINVAL_URL/pluginval_Windows.zip"
+          unzip -q pluginval.zip -d pluginval
+          ./pluginval/pluginval.exe --strictness-level 10 --validate-in-process \
+            --timeout-ms 300000 --validate "C:/Program Files/Common Files/VST3/Likyu.vst3"
+
+      # The uninstaller hands over to a copy of itself and returns at once: wait for the
+      # files to go rather than for the process.
+      - name: Uninstall, silently, and nothing left
+        shell: pwsh
+        run: |
+          & "$env:ProgramFiles\Pix et Bel\Likyu\unins000.exe" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
+          $left = @("$env:CommonProgramFiles\VST3\Likyu.vst3", "$env:CommonProgramFiles\LV2\Likyu.lv2",
+                    "$env:CommonProgramFiles\LV2\Likyu-mono.lv2", "$env:ProgramFiles\Pix et Bel\Likyu")
+          for ($i = 0; $i -lt 120 -and ($left | Where-Object { Test-Path $_ }); $i++) { Start-Sleep -Milliseconds 500 }
+          $still = $left | Where-Object { Test-Path $_ }
+          if ($still) { throw "left after uninstall: $($still -join ', ')" }
+          Write-Host 'uninstalled, nothing left'
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: likyu-windows
+          path: installer/Output/Likyu-*-Windows-x64-Setup.exe*
+          if-no-files-found: error
+
+  linux:
+    name: Linux tarball
+    needs: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      STEM: Likyu-${{ needs.version.outputs.version }}-Linux-x86_64
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Install build dependencies
+        # ci.yml's list, without ccache and the French locale (the release suite is lib/dsp's).
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config ninja-build xvfb unzip \
+            libasound2-dev libjack-jackd2-dev libfreetype-dev libfontconfig1-dev \
+            libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev \
+            libxi-dev libxrandr-dev libxrender-dev libgl-dev \
+            lilv-utils lv2-dev
+
+      - name: Build, test, package
+        run: scripts/build-installer.sh
+
+      - name: Install, for this user, from the tarball alone
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/unpack"
+          tar -xzf "installer/Output/$STEM.tar.gz" -C "$RUNNER_TEMP/unpack"
+          "$RUNNER_TEMP/unpack/$STEM/install.sh" --user
+          ls -d ~/.vst3/Likyu.vst3 ~/.lv2/Likyu.lv2 ~/.lv2/Likyu-mono.lv2
+
+      - name: pluginval, strictness 10 (installed VST3)
+        run: |
+          curl -sSL -o pluginval.zip "$PLUGINVAL_URL/pluginval_Linux.zip"
+          unzip -q pluginval.zip -d pluginval
+          chmod +x pluginval/pluginval
+          xvfb-run -a ./pluginval/pluginval --strictness-level 10 --validate-in-process \
+            --timeout-ms 300000 --validate ~/.vst3/Likyu.vst3
+
+      - name: LV2, both installed bundles listed and read by lilv
+        run: |
+          set -euo pipefail
+          export LV2_PATH="$HOME/.lv2"
+          lv2ls | tee lv2ls.txt
+          grep -qx "$LV2_STEREO_URI" lv2ls.txt
+          grep -qx "$LV2_MONO_URI" lv2ls.txt
+          lv2info "$LV2_MONO_URI" | head -20
+
+      - name: Uninstall, and nothing left
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/unpack/$STEM/uninstall.sh" --user
+          for d in ~/.vst3/Likyu.vst3 ~/.lv2/Likyu.lv2 ~/.lv2/Likyu-mono.lv2; do
+            [ ! -e "$d" ] || { echo "::error::left after uninstall: $d"; exit 1; }
+          done
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: likyu-linux
+          path: installer/Output/Likyu-*-Linux-x86_64.tar.gz*
+          if-no-files-found: error
+
+  release:
+    name: draft release
+    if: github.ref_type == 'tag'
+    needs: [version, macos, windows, linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums agree with the files
+        run: cd dist && sha256sum -c ./*.sha256
+
+      - uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Likyu ${{ needs.version.outputs.version }}
+          draft: true
+          fail_on_unmatched_files: true
+          files: dist/*

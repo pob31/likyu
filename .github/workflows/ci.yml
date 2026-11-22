@@ -17,7 +17,7 @@
 #   windows  the same, VST3, on the VS 2026 image.
 #   rtsan    lib/dsp and its suite alone under Clang's realtime sanitizer.
 #
-# Artefacts are unsigned. Signing and notarisation belong to the release workflow (Phase 7).
+# Artefacts are unsigned. The installers, signing and notarisation are release.yml's.
 
 name: CI
 

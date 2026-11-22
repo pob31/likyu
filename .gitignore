@@ -44,7 +44,7 @@ __pycache__/
 Thumbs.db
 
 # Installer outputs and signed artefacts.
-Installer/Output/
+installer/Output/
 
 # NOT ignored, on purpose:
 #   docs/**      the PRD, the plan, the spec and the bench reports are tracked

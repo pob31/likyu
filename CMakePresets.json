@@ -69,6 +69,42 @@
       "description": "What the Windows CI job configures. No compiler cache: sccache with MSVC needs /Z7, and juce_recommended_config_flags gives /Zi in Debug (go.dot found this first)."
     },
     {
+      "name": "release-windows",
+      "inherits": "vs",
+      "displayName": "release-windows (the installer's build)",
+      "description": "What scripts/build-installer.ps1 configures: the Release plugins and lib/dsp's suite, AVX2, for the Inno Setup installer (devplan Phase 7).",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "release-macos",
+      "inherits": "dev",
+      "displayName": "release-macos (universal, the installer's build)",
+      "description": "What scripts/build-installer.sh configures on macOS: one universal build, its arm64 slice NEON and its x86_64 slice the scalar build (LIKYU_SIMD_MACOS_X86_64, decided 2026-11-22), for the pkg.",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      },
+      "cacheVariables": {
+        "CMAKE_OSX_ARCHITECTURES": "arm64;x86_64"
+      }
+    },
+    {
+      "name": "release-linux",
+      "inherits": "dev",
+      "displayName": "release-linux (the installer's build)",
+      "description": "What scripts/build-installer.sh configures on Linux: the Release plugins and lib/dsp's suite, AVX2, for the tarball.",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
       "name": "reference",
       "inherits": "dev",
       "displayName": "reference (lib/dsp without intrinsics, fused arithmetic, no plugins)",
@@ -160,6 +196,21 @@
       "name": "rtsan-debug",
       "configurePreset": "rtsan",
       "configuration": "Debug"
+    },
+    {
+      "name": "release-windows-release",
+      "configurePreset": "release-windows",
+      "configuration": "Release"
+    },
+    {
+      "name": "release-macos-release",
+      "configurePreset": "release-macos",
+      "configuration": "Release"
+    },
+    {
+      "name": "release-linux-release",
+      "configurePreset": "release-linux",
+      "configuration": "Release"
     },
     {
       "name": "reference-release",
@@ -269,6 +320,21 @@
       "name": "ci-windows-release",
       "inherits": "release-dsp",
       "configurePreset": "ci-windows"
+    },
+    {
+      "name": "release-windows-release",
+      "inherits": "release-dsp",
+      "configurePreset": "release-windows"
+    },
+    {
+      "name": "release-macos-release",
+      "inherits": "release-dsp",
+      "configurePreset": "release-macos"
+    },
+    {
+      "name": "release-linux-release",
+      "inherits": "release-dsp",
+      "configurePreset": "release-linux"
     }
   ]
 }

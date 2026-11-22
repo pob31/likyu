@@ -42,6 +42,16 @@ option(LIKYU_RTSAN "Build lib/dsp and its tests with Clang's realtime sanitizer"
 set(LIKYU_SIMD "auto" CACHE STRING "lib/dsp's kernels: auto (AVX2 on x86-64, NEON on arm64), reference or scalar")
 set_property(CACHE LIKYU_SIMD PROPERTY STRINGS auto reference scalar)
 
+# What `auto` gives a macOS x86_64 slice, which runs on Intel Macs and under Rosetta on
+# Apple silicon (decided by the author 2026-11-22: the scalar build, Intel Macs being almost
+# all at the end of their life; docs/bench/2026-11-22-phase7-stop.md).
+#   scalar  the scalar kernels, not fused: loads on every Intel Mac and every Rosetta. The
+#           arm64 slice of the same universal build stays NEON.
+#   avx2    AVX2 with FMA, as on Windows and Linux: a Haswell or later, or the Rosetta of
+#           macOS 15 or later. Kept to measure it again, not to ship.
+set(LIKYU_SIMD_MACOS_X86_64 "scalar" CACHE STRING "What LIKYU_SIMD=auto gives a macOS x86_64 slice: scalar or avx2")
+set_property(CACHE LIKYU_SIMD_MACOS_X86_64 PROPERTY STRINGS scalar avx2)
+
 # The French locale the suite runs a second time under (devplan, cross-cutting: everything
 # that writes numbers runs under fr_FR as well as C). The Windows UCRT spells it "fr-FR"
 # and glibc and macOS "fr_FR.UTF-8"; this is the one place that difference is allowed to
