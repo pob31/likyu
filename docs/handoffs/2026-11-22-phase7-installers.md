@@ -37,8 +37,15 @@ still holds for the optimisation and what bites there; this note covers the inst
     instruction in x86_64; the four components are non-relocatable.
   - NUC: the tarball installs into a throwaway `HOME`, lilv lists both URIs, and uninstall
     leaves nothing.
-- **Not yet checked:** the signed, notarised run, and the clean-machine checks themselves, which
-  only `release.yml` runs. Nothing was installed system-wide on the author's machines.
+- **The first run of `release.yml`**, by hand on `99b8bc3` (run 45024599428), green on all three:
+  - macOS: signed as the author's Developer ID Application. Both notarisations Accepted (the
+    plugins, then the pkg); the VST3, the AU and the pkg stapled. Gatekeeper accepts the pkg as
+    `Notarized Developer ID`. On the runner, once installed: pluginval 10 on the VST3, `auval`
+    on the AU in arm64 and in x86_64 under Rosetta, lilv on both LV2s.
+  - Windows: silent install, pluginval 10 on the installed VST3, uninstall with nothing left.
+  - Linux: install from the tarball alone, pluginval 10, lilv, uninstall with nothing left.
+  This is the devplan's "three installers install plugins that pass the validators on a clean
+  machine". Nothing was installed system-wide on the author's machines.
 
 ## Things that will bite
 
@@ -57,7 +64,7 @@ still holds for the optimisation and what bites there; this note covers the inst
 
 ## Next
 
-1. Dispatch `release.yml` on `main` and read the signed pkg's checks. A version tag, and
-   publishing the draft, are the author's.
+1. A release: the version in `CMakeLists.txt`, the tag `v<version>`, and publishing the draft
+   `release.yml` makes are the author's. The parameter IDs are not frozen yet (Phase 5).
 2. The listening passes on a build from `main`, with the plugin installed again in the hosts.
    The Windows installer from `scripts\build-installer.ps1` does that here.

@@ -799,7 +799,9 @@ bench notes: [`2026-11-21-phase7-baseline.md`](bench/2026-11-21-phase7-baseline.
   `.github/workflows/release.yml` builds, signs and notarises them, installs each on a fresh
   runner and validates the installed plugins. The macOS build is one universal build whose
   x86_64 slice is the scalar build (`LIKYU_SIMD_MACOS_X86_64`); built on the M4, its suite
-  passes under Rosetta and no x86_64 binary has an AVX instruction.
+  passes under Rosetta and no x86_64 binary has an AVX instruction. Its first run (`99b8bc3`):
+  notarised and stapled, and on each fresh runner the installed plugins pass pluginval at 10,
+  `auval` (arm64 and x86_64) and lilv. **Phase 7 is done.**
 
 ---
 
