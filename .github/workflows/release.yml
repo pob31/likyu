@@ -324,5 +324,19 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: Likyu ${{ needs.version.outputs.version }}
           draft: true
+          # Before 1.0 the parameter IDs may still move: a pre-release until then.
+          prerelease: ${{ startsWith(needs.version.outputs.version, '0.') }}
           fail_on_unmatched_files: true
           files: dist/*
+          body: |
+            Likyū ${{ needs.version.outputs.version }}: dynamic EQ and transient designer. VST3 and LV2 on Windows, macOS and Linux, AU on macOS. GPLv3.
+
+            | Platform | File |
+            | --- | --- |
+            | Windows x64 | `Likyu-${{ needs.version.outputs.version }}-Windows-x64-Setup.exe` (not signed: SmartScreen asks first) |
+            | macOS 11+, Apple silicon and Intel | `Likyu-${{ needs.version.outputs.version }}-macOS.pkg` (signed and notarised) |
+            | Linux x86-64 | `Likyu-${{ needs.version.outputs.version }}-Linux-x86_64.tar.gz` (`./install.sh --user`) |
+
+            On Windows and Linux the plugin needs an x86-64 processor with AVX2 and FMA (Intel from 2013, AMD from 2015). Checksums are in the `.sha256` files.
+
+            **A pre-release.** The parameter IDs are not frozen yet, so a session saved with this version may not load in a later one. The listening passes are still to come.
