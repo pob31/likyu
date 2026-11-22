@@ -32,6 +32,7 @@
 
 #include <cmath>
 #include <cstring>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -695,6 +696,89 @@ TEST_CASE ("processor: prepareToPlay again at the same rate keeps the sound goin
     }
 }
 
+/*  GO.DOT'S RECALL (Go.dot's namespace draft §139 BHC and §17.13): one instance
+    is lent to cue after cue. At an arm its child calls, with the lane parked,
+    reset(), then setStateInformation() with the cue's state, then sets every
+    parameter again; the cue's first block follows. That block must be the
+    cue's own from its first sample - not a glide from the last cue's settings,
+    nor a fade of its channels or of its lookahead - so a recalled instance and
+    a fresh one loaded with the same state play the same, bit for bit, and say
+    the same latency. */
+TEST_CASE ("processor: a used instance given reset, a cue's state and its values again plays as a fresh one with that state (Go.dot's recall)")
+{
+    const auto cueA = [] (LikyuProcessor& p)
+    {
+        setEveryType (p);
+        setDynamic (p, 1, dsp::BandType::bell, 900.0, -40.0, -9.0);
+        p.setValue (dsp::indexOf (dsp::GlobalParam::outGain), 2.0);
+    };
+
+    const auto cueB = [] (LikyuProcessor& p)
+    {
+        for (int b = 0; b < dsp::numBands; ++b)
+            setBand (p, b, b % 3 != 2, static_cast<dsp::BandType> ((b + 3) % dsp::numBandTypes), 90.0 * std::pow (1.9, b),
+                     1.5, b % 2 == 0 ? -4.0 : 5.0);
+
+        setDynamic (p, 2, dsp::BandType::lowShelf, 250.0, -50.0, 6.0);
+        setDynamic (p, 4, dsp::BandType::bell, 2000.0, -45.0, -12.0);
+        p.setValue (dsp::indexOf (4, dsp::BandParam::fmode), static_cast<double> (dsp::FrequencyMode::track));
+        p.setValue (dsp::indexOf (4, dsp::BandParam::flo), 1000.0);
+        p.setValue (dsp::indexOf (4, dsp::BandParam::fhi), 4000.0);
+        p.setValue (dsp::indexOf (dsp::GlobalParam::outGain), -3.0);
+        setLookahead (p, 2);
+        p.setBandChannelsLeftOut (0, 2u);       // band 1 spares the right channel
+    };
+
+    juce::MemoryBlock stateOfB;
+    {
+        LikyuProcessor source;
+        cueB (source);
+        source.getStateInformation (stateOfB);
+    }
+
+    juce::MidiBuffer midi;
+    constexpr int blockSize = 256;
+
+    LikyuProcessor recalled;
+    cueA (recalled);
+    recalled.setRateAndBufferSizeDetails (48000.0, blockSize);
+    recalled.prepareToPlay (48000.0, blockSize);
+
+    for (int block = 0; block < 40; ++block)     // cue A sounds, its detectors and trackers busy
+    {
+        auto buffer = noiseBuffer (2, blockSize, 80 + block);
+        recalled.processBlock (buffer, midi);
+    }
+
+    // The arm, in the child's order.
+    recalled.reset();
+    recalled.setStateInformation (stateOfB.getData(), static_cast<int> (stateOfB.getSize()));
+
+    for (int i = 0; i < recalled.getParameters().size(); ++i)
+        if (auto* parameter = recalled.getParameters()[i])
+            parameter->setValue (parameter->getValue());
+
+    LikyuProcessor fresh;
+    fresh.setStateInformation (stateOfB.getData(), static_cast<int> (stateOfB.getSize()));
+    fresh.setRateAndBufferSizeDetails (48000.0, blockSize);
+    fresh.prepareToPlay (48000.0, blockSize);
+
+    CHECK (recalled.getLatencySamples() == fresh.getLatencySamples());
+    CHECK (fresh.getLatencySamples() == 48);
+
+    for (int block = 0; block < 12; ++block)
+    {
+        auto a = noiseBuffer (2, blockSize, 200 + block);
+        auto b = a;
+        recalled.processBlock (a, midi);
+        fresh.processBlock (b, midi);
+
+        INFO ("block " << block);
+        CHECK (sameChannel (a, 0, b, 0));
+        CHECK (sameChannel (a, 1, b, 1));
+    }
+}
+
 //==============================================================================
 TEST_CASE ("processor: detectors read the input undelayed: with a lookahead, a dynamic band's cut is in place when the delayed burst arrives")
 {
@@ -793,6 +877,75 @@ TEST_CASE ("processor: a Sidechain band is keyed by the bus; disabled, it falls 
         CHECK (sameChannel (fellBack, 0, self, 0));
         CHECK (sameChannel (fellBack, 1, self, 1));
     }
+}
+
+/*  GO.DOT'S KEY (its namespace draft §141, BHR and BHS): an insert loads with
+    its sidechain bus disabled, and a cue that picks a key has the plugin's
+    process lay it out again on its message thread - releaseResources(), the
+    main buses as they were and one sidechain, stereo or mono, then
+    prepareToPlay() at the same rate and block. Likyu's prepare returns at
+    once for the same rate and width, so what is pinned is that the bus is
+    read where it is used: the band hears each key as it is laid out, its
+    fallback clears, and comes back when the key is taken away. */
+TEST_CASE ("processor: a sidechain laid out, changed and taken away between blocks, as Go.dot's child does, is heard as it is laid out")
+{
+    constexpr int length = 2560, blockSize = 256;
+
+    LikyuProcessor processor;
+    REQUIRE (processor.setBusesLayout (layout (stereo, none)));
+    setDynamic (processor, 0, dsp::BandType::bell, 2000.0, -40.0, -12.0, dsp::KeySource::sidechain);
+    processor.setRateAndBufferSizeDetails (48000.0, blockSize);
+    processor.prepareToPlay (48000.0, blockSize);
+
+    // A quiet main and, where there is a sidechain, a loud tone on it.
+    const auto play = [&processor]
+    {
+        juce::AudioBuffer<float> buffer (processor.getTotalNumInputChannels(), length);
+        buffer.clear();
+
+        for (int c = 0; c < 2; ++c)
+            for (int n = 0; n < length; ++n)
+                buffer.setSample (c, n, 1.0e-4f * static_cast<float> ((n * 7919 + c * 31) % 200 - 100) / 100.0f);
+
+        for (int c = 2; c < buffer.getNumChannels(); ++c)
+            addTone (buffer, c, 2000.0, 0.5, 0, length);
+
+        const auto input = buffer;
+        processInBlocks (processor, buffer, blockSize);
+
+        core::Meters meters;
+        REQUIRE (processor.meters().read (meters));
+        return std::tuple { ! sameChannel (buffer, 0, input, 0), meters.bands[0].keyFellBack, meters.bands[0].offsetDb };
+    };
+
+    const auto layKey = [&processor] (const juce::AudioChannelSet& sidechain)
+    {
+        processor.releaseResources();
+        REQUIRE (processor.setBusesLayout (layout (stereo, sidechain)));
+        processor.prepareToPlay (48000.0, blockSize);
+    };
+
+    {
+        const auto [cut, fellBack, offset] = play();
+        CHECK (fellBack);                           // no key: on Self, which is quiet
+        CHECK (offset > -1.0f);
+        juce::ignoreUnused (cut);
+    }
+
+    for (const auto& sidechain : { stereo, mono })
+    {
+        INFO ("sidechain " << sidechain.getDescription().toStdString());
+        layKey (sidechain);
+        const auto [cut, fellBack, offset] = play();
+        CHECK_FALSE (fellBack);
+        CHECK (cut);                                // the key's tone cuts the quiet main
+        CHECK (offset < -6.0f);
+    }
+
+    layKey (none);
+    const auto [cut, fellBack, offset] = play();
+    CHECK (fellBack);
+    juce::ignoreUnused (cut, offset);
 }
 
 TEST_CASE ("processor: a band's channels on 5.1: a low cut the LFE is spared; the lists apply to their layout, survive state, and the editor's calls make them")

@@ -523,7 +523,7 @@ namespace likyu::editor
                         juce::Justification::centred, false);
 
             // The key badge: what the band is keyed by, and a warning when that is not what was asked.
-            if (const auto badge = presentation::badgeOf (s, m, false); badge.key != presentation::Key::none && node.on)
+            if (const auto badge = presentation::badgeOf (s, m); badge.key != presentation::Key::none && node.on)
             {
                 g.setColour ((badge.warns ? palette::warning : palette::textSecondary).withMultipliedAlpha (alpha));
                 g.setFont (fontOf (std::max (8.0, 9.0 * sizes.scale), badge.warns));

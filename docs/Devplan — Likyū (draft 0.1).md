@@ -812,7 +812,9 @@ bench notes: [`2026-11-21-phase7-baseline.md`](bench/2026-11-21-phase7-baseline.
 - State recall on cue launch, without a click and without a latency change.
 - Control-surface mapping of the 284 parameters; the band strip on a surface.
 - The Listen guard working in Go.dot. The editor saying plainly, on a Sidechain band in Go.dot,
-  that Go.dot feeds that bus silence until Go.dot can route to it.
+  that Go.dot feeds that bus silence until Go.dot can route to it. *Retired 2026-11-22:* Go.dot
+  routes a key since its namespace draft §141 and keeps the bus disabled until one is picked, so
+  the fallback badge says what is true there as in any host (PRD, Phase 9 row, amended).
 - Public beta: tagged build, installers, a README section on what is and is not finished.
 
 **Done when:** a Go.dot show with several instances recalls correctly through a cue list; the
@@ -820,6 +822,32 @@ beta is published.
 
 **Needs from the author:** whether the **beta waits for Phase 9** (PRD open decision; proposed:
 it does not).
+
+**Record, 2026-11-22: a first round in Go.dot, both repositories edited.** Bench note:
+[`docs/bench/2026-11-22-godot.md`](bench/2026-11-22-godot.md); handoff:
+[`docs/handoffs/2026-11-22-godot-round.md`](handoffs/2026-11-22-godot-round.md); Go.dot's side is
+its namespace draft §142.
+
+- *Measured:* Likyu through Go.dot's child, with eight bands in Dynamic and Track:
+  - stereo: 168 µs a block at 512 samples and 45 µs at 128;
+  - 8 channels: 216 and 58 µs;
+  - no block late under the shipped limit;
+  - a state loaded in 0.46 ms;
+  - a sidechain keyed through the child, cut by exactly the band's range.
+- *Pinned here:* recall in Go.dot's order (reset, state, values again) plays as a fresh instance,
+  bit for bit; a sidechain laid out between blocks, as Go.dot's `layKey` does, is heard at once.
+  Neither needed a change of code.
+- *Retired:* `hostFeedsSilence` and the "silence by design" badge, never shown (PRD amended).
+- *Changed in Go.dot:*
+  - its worker no longer allocates a buffer view every block at 32 channels or more;
+  - its real-plugin cases can be pointed at a build tree and a state;
+  - the keyed real-plugin case §141 owed is written.
+- *Found, the author's to decide in Go.dot (§142, BHZ):* no VST3 is laid out wider than 8
+  channels there. Past eight, JUCE's VST3 host cannot express the ladder's sets, so a wider cue
+  passes Likyu dry.
+- *Not done:* the cue-list recall in a show, the control surfaces, the Listen guard in Go.dot's
+  editing helper, the beta. The helper runs a second instance, not the one that sounds, so Listen
+  and the live line there show that second instance.
 
 ---
 
@@ -830,6 +858,9 @@ it does not).
 Work in Go.dot, not here, taken up once the rest of Go.dot is thoroughly tested (decided
 2026-11-16). On this side: the warning added in Phase 8 is removed, the Go.dot row of the host
 bench is filled, and the reference use case is run on an array with an actor's microphone.
+*2026-11-22:* Go.dot's side is built (its namespace draft §141, closed that day); the warning,
+never shown, is removed; a key from Go.dot's child is heard by a Sidechain band, measured. Left:
+the host-bench row and the reference use case.
 
 ---
 

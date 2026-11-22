@@ -113,8 +113,11 @@ Sibling repositories on the author's machine, all GPLv3, all on JUCE 9.0.5:
 - **WFS-DIY** (`../WFS_DIY_v1-juce905`): `tools/validation/pipeline-bench` for the shape of the
   bench runner (median, p99, p999, max per block); `Plugin/Installer` and `Plugin/Scripts` for
   the installers and signing (Phase 7).
-- **Go.dot** (`../go.dot`): the first host. It feeds silence to a plugin's sidechain bus today
-  (`src/wfg/engine/plugin/LaneMapping.h`); routing to it is Go.dot work, devplan Phase 9.
+- **Go.dot** (`../go.dot`): the first host. Since 2026-11-22 (its namespace draft §141) it routes
+  a key to a plugin's sidechain bus, disabled until a cue picks one
+  (`src/wfg/engine/plugin/PluginLoad.cpp`, `probeKey` and `layKey`). Its real-plugin cases in
+  `tests/ProxyTests.cpp` (M31, M35, M86) run Likyu through its child; see
+  `docs/bench/2026-11-22-godot.md` for how.
 
 The DSP itself is written here. No code is taken from another EQ.
 

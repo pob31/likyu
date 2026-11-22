@@ -366,37 +366,29 @@ TEST_CASE ("presentation: the key badge")
 
     // A band that reads no key has no badge, whatever its key says.
     s.key = dsp::KeySource::sidechain;
-    CHECK (badgeOf (s, fellBack, true).key == Key::none);
-    CHECK (badgeOf (s, fellBack, true).text.empty());
+    CHECK (badgeOf (s, fellBack).key == Key::none);
+    CHECK (badgeOf (s, fellBack).text.empty());
 
     s.gmode = dsp::GainMode::dynamic;
 
     s.key = dsp::KeySource::self;
-    auto b = badgeOf (s, fellBack, true);
+    auto b = badgeOf (s, fellBack);
     CHECK (b.key == Key::self);
     CHECK_FALSE (b.warns);
     CHECK (mentions (b.tooltip, "input"));
 
     s.key = dsp::KeySource::sidechain;
-    b = badgeOf (s, fine, false);
+    b = badgeOf (s, fine);
     CHECK (b.key == Key::sidechain);
     CHECK_FALSE (b.warns);
 
-    // The bus absent or disabled: said plainly (PRD, rules).
-    b = badgeOf (s, fellBack, false);
+    // The bus absent or disabled: said plainly (PRD, rules). In Go.dot, a cue
+    // with no key picked (its bus disabled until then, its draft §141).
+    b = badgeOf (s, fellBack);
     CHECK (b.key == Key::fellBack);
     CHECK (b.warns);
     CHECK (mentions (b.tooltip, "no sidechain"));
     CHECK (mentions (b.tooltip, "input"));
-
-    // A host that feeds the bus silence: no fallback, and no key either.
-    b = badgeOf (s, fine, true);
-    CHECK (b.key == Key::silentByHost);
-    CHECK (b.warns);
-    CHECK (mentions (b.tooltip, "silence"));
-
-    // The fallback is the truer of the two when both hold.
-    CHECK (badgeOf (s, fellBack, true).key == Key::fellBack);
 }
 
 TEST_CASE ("presentation: Listen")

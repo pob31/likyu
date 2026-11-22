@@ -295,7 +295,7 @@ VST3 on Windows, macOS and Linux, AU on macOS, LV2 on all three, all through JUC
 
 | Host | Formats | To establish |
 | --- | --- | --- |
-| Go.dot (Tracktion Engine) | VST3, AU, LV2 | Loading, Self-keyed operation, state recall on cue launch. Sidechain routing is not benched here: Go.dot does not offer it yet (see Phase 8) |
+| Go.dot (Tracktion Engine) | VST3, AU, LV2 | Loading, Self-keyed operation, state recall on cue launch. Sidechain routing is not benched here: Go.dot does not offer it yet (see Phase 8). *Amended 2026-11-22, from Go.dot's source (its namespace draft §141, closed that day):* Go.dot now routes a key to a plugin's sidechain bus, from an input, an aux or the cue itself, mono or stereo; until a cue picks one the bus is disabled, so a Sidechain band falls back to Self and says so. The sidechain joins this row's bench |
 | REAPER (Windows, macOS, Linux) | VST3, AU, LV2 | Channels 3 and 4 as sidechain; bus disabled |
 | Bitwig Studio | VST3 | Sidechain selector; latency change on lookahead |
 | Ableton Live | VST3, AU | Sidechain routing; 284 parameters in the automation chooser |
@@ -409,7 +409,7 @@ Each phase ends with CI green, a bench note and a handoff note, as in the OSCQue
 | 6. Editor | Curve, nodes, brackets, strip, ghost detector node, analyser |  |
 | 7. Performance and packaging | SIMD detector lanes and the rest of the optimisation, measured on the bench in the budget's case (no fixed figure since 2026-11-20), installers, signing and notarisation from WFS-DIY's scripts |  |
 | 8. Go.dot integration | Recall, control-surface mapping, the Listen guard; public beta (*proposed:* the beta does not wait for the sidechain in Go.dot) |  |
-| 9. Sidechain in Go.dot | Routing a second source from a cue to the plugin's sidechain bus: work in Go.dot, not in this plugin, taken up once the rest of Go.dot is thoroughly tested (decided 2026-11-16). Until then Go.dot feeds the sidechain bus silence (checked in its source 2026-11-16), so a Sidechain band there is keyed by silence and does not fall back to Self; the editor says so, and the reference use case is exercised in the other bench hosts | Go.dot |
+| 9. Sidechain in Go.dot | Routing a second source from a cue to the plugin's sidechain bus: work in Go.dot, not in this plugin, taken up once the rest of Go.dot is thoroughly tested (decided 2026-11-16). Until then Go.dot feeds the sidechain bus silence (checked in its source 2026-11-16), so a Sidechain band there is keyed by silence and does not fall back to Self; the editor says so, and the reference use case is exercised in the other bench hosts. *Amended 2026-11-22, from Go.dot's source:* Go.dot's side is built (its namespace draft §141, SC.1 to SC.9, closed 2026-11-22). Its child keeps the sidechain bus disabled until a cue picks a key, then lays out one sidechain, stereo or mono, and feeds it; a key named but missing is silence, and Go.dot marks the cue. A Sidechain band therefore falls back to Self while no key is picked, as in any host, and is keyed as routed once one is. The editor's "silence by design" warning is retired, never having been shown; what is left of this phase is the reference use case on an array, and the Go.dot row of the host bench | Go.dot |
 | Later | CLAP shim; native linking of `lib/dsp` in Go.dot; frequency momentum for crossings; a wide LV2 variant if one is asked for |  |
 
 Phases 2 to 5 are testable headless before any editor exists: a host's generic parameter view is enough to listen.
@@ -442,7 +442,7 @@ Nothing blocks Phase 0 any more. The three identity items are decided; they are 
 - [x] **Remedies that change the numbers:** *decided 2026-11-22 by the author:* left as is; neither is applied. Was (Phase 7, 7f; `docs/bench/2026-11-22-phase7-stop.md`): the first-order update of a tracker's g between grid points holds every threshold and gains 0 to 5 % of the budget's case, 13 to 14 % for one Track band alone; the seeding bank only while a tracker is unlocked gains nothing measurable. *Proposed:* neither, for now; the first is kept on a local branch.
 - [ ] **Band-pass as a band type** in a series EQ: kept for envelope-filter use; drop it if it proves a trap in practice.
 - [x] **Sidechain in Go.dot:** Go.dot work, implemented later, once the rest of the app is thoroughly tested (decided 2026-11-16). It is its own phase, after the integration.
-- [ ] **Public beta and the Go.dot sidechain:** whether the beta goes out at the end of Phase 8, without the sidechain in Go.dot, as proposed, or waits for Phase 9.
+- [ ] **Public beta and the Go.dot sidechain:** whether the beta goes out at the end of Phase 8, without the sidechain in Go.dot, as proposed, or waits for Phase 9. *Noted 2026-11-22:* Go.dot's side of Phase 9 is built (§141 of its namespace draft), so the beta no longer has to choose between the two; still the author's to settle.
 
 **Decided so far**
 

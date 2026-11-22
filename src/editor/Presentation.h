@@ -262,8 +262,7 @@ namespace likyu::editor::presentation
         none,           // the band reads no key: no badge
         self,
         sidechain,
-        fellBack,       // Sidechain chosen, the bus absent or disabled: keyed by the input
-        silentByHost    // Sidechain chosen in a host that feeds that bus silence
+        fellBack        // Sidechain chosen, the bus absent or disabled: keyed by the input
     };
 
     struct Badge
@@ -274,9 +273,10 @@ namespace likyu::editor::presentation
         std::string tooltip;    // in full
     };
 
-    /** `hostFeedsSilence`: the host is known to give the sidechain bus silence
-        whatever is routed (Go.dot, until it can route to it: devplan Phase 9). */
-    inline Badge badgeOf (const dsp::BandSettings& s, const core::BandMeters& m, bool hostFeedsSilence)
+    /** No host is singled out (2026-11-22): Go.dot, once said to feed the
+        sidechain silence, routes a key to it since its namespace draft §141,
+        and keeps the bus disabled until one is picked - the fallback below. */
+    inline Badge badgeOf (const dsp::BandSettings& s, const core::BandMeters& m)
     {
         Badge b;
 
@@ -297,15 +297,6 @@ namespace likyu::editor::presentation
             b.warns = true;
             b.text = "SC?";
             b.tooltip = "Sidechain chosen, but the host gives this plugin no sidechain: keyed by the input instead.";
-            return b;
-        }
-
-        if (hostFeedsSilence)
-        {
-            b.key = Key::silentByHost;
-            b.warns = true;
-            b.text = "SC?";
-            b.tooltip = "Sidechain chosen, but this host feeds the sidechain silence: the band has no key.";
             return b;
         }
 
