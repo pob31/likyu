@@ -33,8 +33,11 @@ On the stop note, [`2026-11-22-phase7-stop.md`](../bench/2026-11-22-phase7-stop.
    at the end of their life. Why it was proposed: AVX2 there would not load
    under the Rosetta of macOS 11 to 14 nor on a pre-Haswell Intel Mac, and under the Rosetta of
    macOS 15 it is half the speed of the scalar build (8.4 % against 4.4 % of a core, measured).
-Still the author's: **the Mac's own pass (7e)**, when wanted: the detectors in registers cost the M4
-   2 to 4 % in stereo, the first thing to look at there.
+**The Mac's own pass (7e) is done**, 2026-11-22: [`2026-11-22-phase7-mac.md`](../bench/2026-11-22-phase7-mac.md).
+The detectors now take two key channels at a time (`921f0b9`); `-mcpu` and Apple clang's own
+vectoriser were measured and not kept. The M4's stereo regression from the detectors stays inside
+its run-to-run spread of 12 %; what is left on the Mac, as everywhere, is the coefficients along
+the samples (40 % of `dynamic` there) and the trackers.
 
 ## What was built after the foundations note
 
@@ -71,6 +74,8 @@ Those of the foundations note stand. Added since:
 - **Small groups and stereo are measured cases**: the tracker group keeps its loop under three
   members, the constant band its registers under two channels, because the registers lost there.
   Measure both before changing a threshold.
+- **The M4 reads up to 12 % apart from run to run**, and high on the first run after a build:
+  interleave runs before calling a difference on it a finding.
 - **Rosetta translates AVX2 and FMA on macOS 15.8**, slowly: an x86_64 build can be tested on the
   Mac with `-DCMAKE_OSX_ARCHITECTURES=x86_64` and `arch -x86_64`.
 

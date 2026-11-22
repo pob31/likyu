@@ -785,7 +785,12 @@ bench notes: [`2026-11-21-phase7-baseline.md`](bench/2026-11-21-phase7-baseline.
   the x86_64 slice is the scalar build, Intel Macs being almost all at the end of their life.
 - *7g, 2026-11-22:* the README says what processor the build needs and what `LIKYU_SIMD` chooses;
   the bench notes and this record are the before and after.
-- *Not yet:* 7e, which may wait; the installers, with the scalar build as the macOS x86_64 slice.
+- *7e, the Mac's own pass, 2026-11-22* ([`2026-11-22-phase7-mac.md`](bench/2026-11-22-phase7-mac.md)):
+  `-mcpu` gains nothing (not kept); Apple clang's vectoriser on the scalar kernels is 30 to 60 %
+  slower than the NEON intrinsics on 64 channels (the intrinsics stay); the detectors two key
+  channels at a time, kept for every platform (`trackself.64` −16 % on the NUC), the M4's stereo
+  within its own spread of 12 %; the efficiency cores measured, for information.
+- *Not yet:* the installers, with the scalar build as the macOS x86_64 slice.
 
 ---
 
