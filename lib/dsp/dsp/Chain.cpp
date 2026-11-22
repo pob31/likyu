@@ -1109,11 +1109,68 @@ namespace likyu::dsp
         if (! any)
             return;
 
+        // The key channels that some band reads, two at a time where there are two (a stereo key):
+        // two recurrences in one loop (runDetectorLanes).
+        std::array<DetectorLanes, 2> c {};
+        std::array<int, 2> slotOf {};
+        std::array<bool, 2> heard {};
+        auto pending = 0;
+
+        const auto finish = [&] (int count) noexcept
+        {
+            std::array<DetectorSlot, 2> slots {};
+
+            for (int q = 0; q < count; ++q)
+            {
+                const auto slot = slotOf[static_cast<std::size_t> (q)];
+                const auto i0 = slotIndex (slot, 0);
+                slots[static_cast<std::size_t> (q)] = { keys.data() + slot * controlStep, detectorS1.data() + i0, detectorS2.data() + i0,
+                                                        detectorPeak.data() + i0, &c[static_cast<std::size_t> (q)],
+                                                        slotPower.data() + static_cast<std::size_t> (slot * controlStep) * numBands,
+                                                        heard[static_cast<std::size_t> (q)] ? slotOutput.data() + q * controlStep * numBands : nullptr };
+            }
+
+            if (count == 2)
+                runDetectorLanes<simd::F32x8, 2> (slots.data(), n);
+            else
+                runDetectorLanes<simd::F32x8, 1> (slots.data(), n);
+
+            for (int q = 0; q < count; ++q)
+            {
+                const auto slot = slotOf[static_cast<std::size_t> (q)];
+
+                if (heard[static_cast<std::size_t> (q)])
+                {
+                    float* to = listened.data() + slot * controlStep;
+                    const float* from = slotOutput.data() + q * controlStep * numBands;
+
+                    for (int i = 0; i < n; ++i)
+                        to[i] = from[static_cast<std::size_t> (i * numBands + listenBand)];
+                }
+
+                // At the end of a control step, a state that has decayed to nothing is nothing.
+                if (stepEnds)
+                {
+                    for (int b = 0; b < numBands; ++b)
+                    {
+                        if (c[static_cast<std::size_t> (q)].active[b] == 0)
+                            continue;
+
+                        const auto i = slotIndex (slot, b);
+                        cleanDetectorState (detectorS1[i]);
+                        cleanDetectorState (detectorS2[i]);
+                        cleanDetectorState (detectorPeak[i]);
+                    }
+                }
+            }
+        };
+
         for (int slot = 0; slot < channels + maxSidechainChannels; ++slot)
         {
             // The bands that read this key channel: those that count it, and the one listened to.
-            DetectorLanes c;
-            auto active = false, heard = false;
+            auto& lanesOfSlot = c[static_cast<std::size_t> (pending)];
+            lanesOfSlot = DetectorLanes {};
+            auto active = false, isListened = false;
 
             for (int b = 0; b < numBands; ++b)
             {
@@ -1129,43 +1186,27 @@ namespace likyu::dsp
                 if (! counted && ! r.listening)
                     continue;
 
-                c.set (b, r.perLane != nullptr && laneOfSlot != Lanes::noLane ? r.perLane[laneOfSlot]
-                                                                              : bands[index].detectorCoefficients());
+                lanesOfSlot.set (b, r.perLane != nullptr && laneOfSlot != Lanes::noLane ? r.perLane[laneOfSlot]
+                                                                                        : bands[index].detectorCoefficients());
                 active = true;
-                heard = heard || r.listening;
+                isListened = isListened || r.listening;
             }
 
             if (! active)
                 continue;
 
-            const auto i0 = slotIndex (slot, 0);
-            runDetectorLanes (keys.data() + slot * controlStep, n, detectorS1.data() + i0, detectorS2.data() + i0,
-                              detectorPeak.data() + i0, c, slotPower.data() + static_cast<std::size_t> (slot * controlStep) * numBands,
-                              heard ? slotOutput.data() : nullptr);
+            slotOf[static_cast<std::size_t> (pending)] = slot;
+            heard[static_cast<std::size_t> (pending)] = isListened;
 
-            if (heard)
+            if (++pending == 2)
             {
-                float* to = listened.data() + slot * controlStep;
-
-                for (int i = 0; i < n; ++i)
-                    to[i] = slotOutput[static_cast<std::size_t> (i * numBands + listenBand)];
-            }
-
-            // At the end of a control step, a state that has decayed to nothing is nothing.
-            if (stepEnds)
-            {
-                for (int b = 0; b < numBands; ++b)
-                {
-                    if (c.active[b] == 0)
-                        continue;
-
-                    const auto i = slotIndex (slot, b);
-                    cleanDetectorState (detectorS1[i]);
-                    cleanDetectorState (detectorS2[i]);
-                    cleanDetectorState (detectorPeak[i]);
-                }
+                finish (2);
+                pending = 0;
             }
         }
+
+        if (pending == 1)
+            finish (1);
     }
 
     void Chain::detect (int b, int numChannels, int n) noexcept LIKYU_AUDIO_THREAD

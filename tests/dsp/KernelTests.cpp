@@ -400,6 +400,83 @@ TEST_CASE ("kernel, the detectors of a key channel: registers, plain arrays and 
     CHECK (notTheTick == 0);
 }
 
+TEST_CASE ("kernel, the detectors of two key channels at once: each channel's bits are its own, as if it ran alone")
+{
+    constexpr int bands = DetectorLanes::lanes;
+    std::uint32_t state = 41;
+
+    const auto next = [&state]
+    {
+        state = state * 1664525u + 1013904223u;
+        return static_cast<double> (state >> 8) / 16777216.0;
+    };
+
+    constexpr double rate = 48000.0;
+    Warp warp;
+    warp.prepare (rate);
+    const auto left = awkwardKey (5000, rate), right = awkwardKey (5000, 44100.0);
+    auto different = 0, stretches = 0;
+
+    for (int setting = 0; setting < 20; ++setting)
+    {
+        // Two key channels, each its own coefficients (a lane's own Follow detector differs by channel).
+        std::array<DetectorLanes, 2> c {};
+
+        for (auto& lanes : c)
+            for (int b = 0; b < bands; ++b)
+            {
+                const auto pick = next();
+                const auto type = pick < 0.5 ? DetectorType::bandPass : pick < 0.75 ? DetectorType::highPass : DetectorType::lowPass;
+                const auto hz = 30.0 * std::pow (2.0, 9.0 * next());
+
+                if (next() < 0.8)
+                    lanes.set (b, makeDetectorCoefficients (type, warp.g (hz), 1.0 / (0.3 + 8.0 * next()), hz, rate));
+            }
+
+        const ScopedFlushToZero flushToZero;
+        std::array<std::array<float, bands>, 2> s1Pair {}, s2Pair {}, peakPair {}, s1One {}, s2One {}, peakOne {};
+
+        for (int k = 0; k < 2; ++k)
+            for (std::size_t b = 0; b < bands; ++b)
+            {
+                s1Pair[static_cast<std::size_t> (k)][b] = s1One[static_cast<std::size_t> (k)][b] = static_cast<float> (next() - 0.5);
+                s2Pair[static_cast<std::size_t> (k)][b] = s2One[static_cast<std::size_t> (k)][b] = static_cast<float> (next() - 0.5);
+                peakPair[static_cast<std::size_t> (k)][b] = peakOne[static_cast<std::size_t> (k)][b] = static_cast<float> (next());
+            }
+
+        for (int done = 0; done < static_cast<int> (left.size());)
+        {
+            const auto n = std::min (1 + static_cast<int> (next() * controlStep), static_cast<int> (left.size()) - done);
+            std::array<std::array<float, controlStep * bands>, 2> powerPair {}, outputPair {}, powerOne {}, outputOne {};
+            const float* keys[2] = { left.data() + done, right.data() + done };
+            std::array<DetectorSlot, 2> pair {}, one {};
+
+            for (std::size_t k = 0; k < 2; ++k)
+            {
+                pair[k] = { keys[k], s1Pair[k].data(), s2Pair[k].data(), peakPair[k].data(), &c[k], powerPair[k].data(), outputPair[k].data() };
+                one[k] = { keys[k], s1One[k].data(), s2One[k].data(), peakOne[k].data(), &c[k], powerOne[k].data(), outputOne[k].data() };
+            }
+
+            runDetectorLanes<simd::F32x8, 2> (pair.data(), n);
+            runDetectorLanes<simd::F32x8, 1> (&one[0], n);
+            runDetectorLanes<simd::F32x8, 1> (&one[1], n);
+
+            for (std::size_t k = 0; k < 2; ++k)
+                different += std::memcmp (powerPair[k].data(), powerOne[k].data(), sizeof (powerPair[k])) == 0
+                             && std::memcmp (outputPair[k].data(), outputOne[k].data(), sizeof (outputPair[k])) == 0
+                             && std::memcmp (s1Pair[k].data(), s1One[k].data(), sizeof (s1Pair[k])) == 0
+                             && std::memcmp (s2Pair[k].data(), s2One[k].data(), sizeof (s2Pair[k])) == 0
+                             && std::memcmp (peakPair[k].data(), peakOne[k].data(), sizeof (peakPair[k])) == 0 ? 0 : 1;
+
+            ++stretches;
+            done += n;
+        }
+    }
+
+    MESSAGE ("detectors of two key channels: " << stretches << " stretches");
+    CHECK (different == 0);
+}
+
 //==============================================================================
 namespace
 {

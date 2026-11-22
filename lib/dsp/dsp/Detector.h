@@ -169,51 +169,93 @@ namespace likyu::dsp
         }
     };
 
-    /** `n` samples of one key channel through the eight bands' detectors at
+    /** One key channel's part in runDetectorLanes: its key, the eight bands'
+        states of it, side by side (dsp/Chain.h), their coefficients, and
+        where their powers go, eight a sample, the bands side by side; and
+        their signals, the same way, for Listen, when `output` is not null. */
+    struct DetectorSlot
+    {
+        const float* key = nullptr;
+        float* s1 = nullptr;
+        float* s2 = nullptr;
+        float* peak = nullptr;
+        const DetectorLanes* c = nullptr;
+        float* power = nullptr;
+        float* output = nullptr;
+    };
+
+    /** `n` samples of `S` key channels through the eight bands' detectors at
         once, over the register type `V` (dsp/simd/Vec.h): a lane does what
         detectorTick does for its band, operation for operation, the types
-        blended where the scalar code branches. `s1`, `s2`, `peak` are the
-        eight bands' states of this key channel, side by side (dsp/Chain.h);
-        `power` takes eight powers a sample, the bands side by side, and
-        `output`, when not null, the eight detector signals the same way, for
-        Listen. */
-    template <typename V = simd::F32x8>
-    inline void runDetectorLanes (const float* key, int n, float* s1, float* s2, float* peak, const DetectorLanes& c,
-                                  float* power, float* output) noexcept
+        blended where the scalar code branches. Two key channels together
+        (a stereo key) are two recurrences side by side in one loop, which a
+        processor runs at once; they share nothing, so the bits are each
+        channel's own. */
+    template <typename V = simd::F32x8, int S = 1>
+    inline void runDetectorLanes (const DetectorSlot* slots, int n) noexcept
     {
         static_assert (V::lanes == DetectorLanes::lanes);
         using Mask = typename V::Mask;
 
-        const auto a1 = V::load (c.a1), a2 = V::load (c.a2), a3 = V::load (c.a3);
-        const auto k = V::load (c.k), kSquared = V::load (c.kSquared), release = V::load (c.release);
-        const Mask bandPass = V::Mask::load (c.bandPass), highPass = V::Mask::load (c.highPass), active = V::Mask::load (c.active);
         const auto two = splat<V> (2.0), zero = splat<V> (0.0);
-        const auto start1 = V::load (s1), start2 = V::load (s2), startPeak = V::load (peak);
-        auto x1 = start1, x2 = start2, p = startPeak;
+        V a1[S], a2[S], a3[S], k[S], kSquared[S], release[S], start1[S], start2[S], startPeak[S], x1[S], x2[S], p[S];
+        Mask bandPass[S], highPass[S], active[S];
+
+        for (int s = 0; s < S; ++s)
+        {
+            const auto& c = *slots[s].c;
+            a1[s] = V::load (c.a1);
+            a2[s] = V::load (c.a2);
+            a3[s] = V::load (c.a3);
+            k[s] = V::load (c.k);
+            kSquared[s] = V::load (c.kSquared);
+            release[s] = V::load (c.release);
+            bandPass[s] = Mask::load (c.bandPass);
+            highPass[s] = Mask::load (c.highPass);
+            active[s] = Mask::load (c.active);
+            x1[s] = start1[s] = V::load (slots[s].s1);
+            x2[s] = start2[s] = V::load (slots[s].s2);
+            p[s] = startPeak[s] = V::load (slots[s].peak);
+        }
 
         for (int i = 0; i < n; ++i)
         {
-            const auto x = splat<V> (key[i]);
-            const auto v3 = x - x2;
-            const auto v1 = mulAdd (a1, x1, a2 * v3);
-            const auto v2 = mulAdd (a3, v3, mulAdd (a2, x1, x2));
-            x1 = mulAdd (two, v1, -x1);
-            x2 = mulAdd (two, v2, -x2);
+            for (int s = 0; s < S; ++s)
+            {
+                const auto x = splat<V> (slots[s].key[i]);
+                const auto v3 = x - x2[s];
+                const auto v1 = mulAdd (a1[s], x1[s], a2[s] * v3);
+                const auto v2 = mulAdd (a3[s], v3, mulAdd (a2[s], x1[s], x2[s]));
+                x1[s] = mulAdd (two, v1, -x1[s]);
+                x2[s] = mulAdd (two, v2, -x2[s]);
 
-            const auto hp = mulAdd (-k, v1, x) - v2;
-            const auto followed = select (highPass, hp, v2);
-            const auto follower = max (followed * followed, p * release);
-            const auto quadrature = kSquared * max (zero, mulAdd (v1, v1, -(v2 * hp)));
+                const auto hp = mulAdd (-k[s], v1, x) - v2;
+                const auto followed = select (highPass[s], hp, v2);
+                const auto follower = max (followed * followed, p[s] * release[s]);
+                const auto quadrature = kSquared[s] * max (zero, mulAdd (v1, v1, -(v2 * hp)));
 
-            p = select (bandPass, p, follower);
-            select (bandPass, quadrature, follower).store (power + i * V::lanes);
+                p[s] = select (bandPass[s], p[s], follower);
+                select (bandPass[s], quadrature, follower).store (slots[s].power + i * V::lanes);
 
-            if (output != nullptr)
-                select (bandPass, k * v1, followed).store (output + i * V::lanes);
+                if (slots[s].output != nullptr)
+                    select (bandPass[s], k[s] * v1, followed).store (slots[s].output + i * V::lanes);
+            }
         }
 
-        select (active, x1, start1).store (s1);
-        select (active, x2, start2).store (s2);
-        select (active, p, startPeak).store (peak);
+        for (int s = 0; s < S; ++s)
+        {
+            select (active[s], x1[s], start1[s]).store (slots[s].s1);
+            select (active[s], x2[s], start2[s]).store (slots[s].s2);
+            select (active[s], p[s], startPeak[s]).store (slots[s].peak);
+        }
+    }
+
+    /** One key channel: runDetectorLanes on that alone. */
+    template <typename V = simd::F32x8>
+    inline void runDetectorLanes (const float* key, int n, float* s1, float* s2, float* peak, const DetectorLanes& c,
+                                  float* power, float* output) noexcept
+    {
+        const DetectorSlot slot { key, s1, s2, peak, &c, power, output };
+        runDetectorLanes<V, 1> (&slot, n);
     }
 }
