@@ -32,7 +32,7 @@ if(CMAKE_HOST_APPLE)
     set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
 endif()
 
-project(likyu VERSION 0.1.0 LANGUAGES C CXX)
+project(likyu VERSION 0.1.1 LANGUAGES C CXX)
 
 # JUCE's Apple sources are Objective-C++.
 if(APPLE)
